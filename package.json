@@ -1,0 +1,24 @@
+{
+  "name": "axis-platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @axis/shared && concurrently -n shared,api,web -c gray,magenta,blue \"npm run dev -w @axis/shared\" \"npm run dev -w @axis/api\" \"npm run dev -w @axis/web\"",
+    "db:start": "npm run start -w @axis/db",
+    "db:migrate": "npm run migrate -w @axis/db",
+    "db:seed": "npm run seed -w @axis/db",
+    "db:validate": "npm run validate -w @axis/db",
+    "build": "npm run build -w @axis/shared && npm run build -w @axis/api && npm run build -w @axis/web",
+    "typecheck": "npm run build -w @axis/shared && npm run typecheck -w @axis/api && npm run typecheck -w @axis/web",
+    "test": "npm run build -w @axis/shared && npm run test -w @axis/web && npm run test -w @axis/api"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "devDependencies": {
+    "concurrently": "9.1.2"
+  }
+}

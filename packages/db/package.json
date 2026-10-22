@@ -1,0 +1,24 @@
+{
+  "name": "@axis/db",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "validate": "prisma validate",
+    "format": "prisma format",
+    "generate": "prisma generate",
+    "start": "node scripts/dev-db.mjs",
+    "migrate": "node scripts/with-env.mjs prisma migrate deploy",
+    "migrate:new": "node scripts/with-env.mjs prisma migrate dev --create-only",
+    "seed": "node scripts/with-env.mjs node prisma/seed.mjs",
+    "postinstall": "prisma generate"
+  },
+  "devDependencies": {
+    "embedded-postgres": "17.2.0-beta.15",
+    "prisma": "5.22.0"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "2.0.2",
+    "@prisma/client": "5.22.0",
+    "pg": "8.13.1"
+  }
+}

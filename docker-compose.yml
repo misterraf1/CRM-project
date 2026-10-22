@@ -1,0 +1,36 @@
+# Alternative to `npm run db:start` for machines with Docker.
+# Same ports/credentials as .env.example, so the apps need no changes.
+services:
+  postgres:
+    image: postgres:17.2
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: axis
+    ports: ["5433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-app-role.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d axis"]
+      interval: 5s
+      retries: 10
+
+  # Used from Phase 3 (queues, websocket fan-out, distributed rate limiting)
+  redis:
+    image: redis:7.4-alpine
+    ports: ["6379:6379"]
+
+  # S3-compatible storage for files (Phase 3)
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: axis
+      MINIO_ROOT_PASSWORD: axis-dev-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [minio:/data]
+
+volumes:
+  pgdata:
+  minio:

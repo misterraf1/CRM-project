@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens as RGB channels (consumed by tailwind.config.ts) */
+:root {
+  --bg: 248 250 252;
+  --surface: 255 255 255;
+  --muted: 241 245 249;
+  --border: 226 232 240;
+  --fg: 15 23 42;
+  --fg-muted: 71 85 105;
+  --fg-subtle: 120 133 153;
+  --accent: 37 99 235;
+  --accent-fg: 255 255 255;
+  --accent-soft: 219 234 254;
+  --success: 22 163 74;
+  --warning: 217 119 6;
+  --danger: 220 38 38;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: 9 12 20;
+  --surface: 17 22 33;
+  --muted: 27 33 47;
+  --border: 39 46 62;
+  --fg: 236 240 246;
+  --fg-muted: 163 173 190;
+  --fg-subtle: 115 126 145;
+  --accent: 96 145 255;
+  --accent-fg: 9 12 20;
+  --accent-soft: 30 45 80;
+  --success: 52 199 110;
+  --warning: 245 166 35;
+  --danger: 248 96 96;
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body {
+    @apply bg-bg text-fg antialiased;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/60 ring-offset-1 ring-offset-bg;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-border bg-surface;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
