@@ -9,4 +9,6 @@ export interface ShellSummary {
   /** My overdue tasks */
   overdue: number;
   unreadNotifications: number;
+  /** Unread team-chat messages */
+  unreadChat: number;
 }

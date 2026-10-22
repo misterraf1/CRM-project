@@ -20,10 +20,11 @@ export function Comments({ taskId, items }: { taskId: string; items: CommentDto[
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!body.trim()) return;
+    const sent = body;
     startTransition(async () => {
-      const res = await api(`/tasks/${taskId}/comments`, "POST", { body });
+      const res = await api(`/tasks/${taskId}/comments`, "POST", { body: sent });
       if (!res.ok) return setError(errorMessage(t, res.code));
-      setBody("");
+      setBody((current) => (current === sent ? "" : current));
       setError(undefined);
       router.refresh();
     });

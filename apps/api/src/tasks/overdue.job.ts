@@ -34,10 +34,18 @@ export class OverdueJob implements OnApplicationBootstrap, OnModuleDestroy {
 
   /** Returns how many notices were sent (used by tests). */
   async run(): Promise<number> {
-    const due = await this.prisma.$queryRaw<{ tenantId: string; taskId: string }[]>`
-      SELECT * FROM tasks_due_for_overdue_notice(${BATCH}::integer)`;
+    // Cross-tenant by nature: find candidates by id only, then handle each one
+    // inside its own tenant-scoped transaction
+    const due = await this.prisma.system(() =>
+      this.prisma.task.findMany({
+        where: { dueAt: { lt: new Date(), not: null }, status: { notIn: ["DONE", "CANCELED"] }, overdueNotifiedAt: null, assigneeId: { not: null } },
+        select: { tenantId: true, id: true },
+        orderBy: { dueAt: "asc" },
+        take: BATCH,
+      }),
+    );
     let sent = 0;
-    for (const { tenantId, taskId } of due) {
+    for (const { tenantId, id: taskId } of due) {
       sent += await this.prisma.scoped(
         async (tx) => {
           const claimed = await tx.task.updateMany({ where: { id: taskId, tenantId, overdueNotifiedAt: null }, data: { overdueNotifiedAt: new Date() } });

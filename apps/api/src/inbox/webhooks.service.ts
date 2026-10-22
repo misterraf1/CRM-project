@@ -54,10 +54,16 @@ export class WebhooksService {
   }
 
   private async resolve(type: ChannelType, externalId: string) {
-    const [row] = await this.prisma.$queryRaw<{ tenantId: string; channelId: string }[]>`
-      SELECT * FROM channel_for_webhook(${type}, ${externalId})`;
-    if (!row) this.logger.warn(`No live ${type} channel for ${externalId}`);
-    return row;
+    // Meta only tells us the phone number / page id: resolve the one live channel
+    // (and its tenant) across tenants, then continue tenant-scoped
+    const channel = await this.prisma.system(() =>
+      this.prisma.channel.findFirst({
+        where: { type, externalId, demo: false, status: { not: "disconnected" } },
+        select: { id: true, tenantId: true },
+      }),
+    );
+    if (!channel) this.logger.warn(`No live ${type} channel for ${externalId}`);
+    return channel ? { tenantId: channel.tenantId, channelId: channel.id } : undefined;
   }
 
   private async whatsapp(value: WaValue) {

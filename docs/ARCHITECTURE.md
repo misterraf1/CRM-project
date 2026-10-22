@@ -63,16 +63,16 @@ Hər mərhələ bitəndə sonuncu bölmədəki "Status" cədvəli yenilənir.
 | UI | **Tailwind CSS** + öz kiçik komponent dəsti, `lucide-react` ikonlar | Dizayn tokenləri (CSS dəyişənləri) ilə light/dark; ağır UI kitabxanası yoxdur |
 | Server state | TanStack Query (Mərhələ 1-dən) | Cache, optimistic update, refetch |
 | Backend | **NestJS** (modul əsaslı) | Domen modulları (crm, inbox, tasks, billing…) aydın sərhədlərlə; DI, guard, interceptor — RBAC və tenant konteksti üçün ideal |
-| ORM | **Prisma** | Tip təhlükəsiz sorğular, migrasiyalar. Sxem: `packages/db/prisma/schema.prisma` |
-| DB | **PostgreSQL 16** | Tranzaksiyalar, JSONB, **Row Level Security**, full-text axtarış |
+| ORM | **Prisma 5** (MongoDB konnektoru) | Tip təhlükəsiz sorğular. Sxem: `packages/db/prisma/schema.prisma`; indekslər `packages/db/scripts/indexes.mjs` |
+| DB | **MongoDB 7** (replica set) | Sahibin qərarı ilə (2026-10-23) PostgreSQL-dən köçürüldü. Tranzaksiyalar üçün replica set məcburidir. Tenant izolyasiyası bazada deyil, API-dəki tenant qoruyucusundadır (§4) |
 | Cache/Queue | **Redis + BullMQ** | Webhook emalı, bildirişlər, təkrarlanan tapşırıqlar, billing cron, rate limit sayğacları |
 | Real-time | **Socket.IO** (NestJS gateway) + Redis adapter | Inbox və komanda çatı; çox instance-da işləyir. Otaq: `tenant:<id>`, `member:<id>`, `room:<id>` |
 | Fayllar | **S3-uyğun** (Cloudflare R2 / MinIO lokal) | Presigned URL ilə birbaşa yükləmə; açar: `tenants/<tenantId>/…` |
 | Auth | Email+şifrə (argon2id), access JWT (15 dəq) + rotasiyalı refresh token (httpOnly cookie, DB-də hash), opsional TOTP 2FA | Öz nəzarətimizdə, tenant/rol claim-ləri ilə |
 | Ödəniş | **Provider adapter** — ilk inteqrasiya Payriff və ya Epoint (AZN, yerli kartlar) | Stripe Azərbaycan şirkətlərini birbaşa dəstəkləmir; adapter sayəsində provider dəyişə bilər |
 | Monitoring | Sentry (xətalar), OpenTelemetry → Grafana/Prometheus, Uptime yoxlaması | |
-| Infra | Docker; başlanğıcda 1 VPS (Hetzner) + managed Postgres; sonra Kubernetes/Fly | Ucuz başla, üfüqi miqyasla |
-| Backup | Postgres: gündəlik tam + WAL (PITR, 14 gün); S3 versioning | |
+| Infra | Docker; başlanğıcda 1 VPS (Hetzner) + MongoDB Atlas (və ya öz replica set-imiz); sonra Kubernetes/Fly | Ucuz başla, üfüqi miqyasla |
+| Backup | MongoDB: Atlas continuous backup / PITR (14 gün) və ya `mongodump` + oplog; S3 versioning | |
 
 ### 3.1 Repo strukturu (monorepo, npm workspaces)
 ```
@@ -82,14 +82,14 @@ apps/
   api/        NestJS — REST + WebSocket gateway (Mərhələ 1)
   worker/     NestJS standalone — BullMQ prosessorları (Mərhələ 1)
 packages/
-  db/         Prisma sxemi, migrasiyalar, RLS SQL, seed
+  db/         Prisma sxemi (MongoDB), indekslər, null-fill, seed, lokal MongoDB skripti
   shared/     Ortaq tiplər, zod sxemləri, icazə kataloqu, plan feature-ları
 docs/         Bu sənəd və ADR-lər
 ```
 
 ### 3.2 Yüksək səviyyəli axın
 ```
- Browser ──HTTPS──▶ Next.js (web/admin) ──REST/WS──▶ NestJS API ──▶ PostgreSQL (RLS)
+ Browser ──HTTPS──▶ Next.js (web/admin) ──REST/WS──▶ NestJS API ──tenant guard──▶ MongoDB
                                                    │            └─▶ Redis (cache, rate-limit, pub/sub)
  Meta/WhatsApp ──webhook──▶ API /webhooks/* ──enqueue──▶ BullMQ ──▶ Worker ──▶ DB + Socket emit
  Payment provider ─webhook─▶ API /webhooks/billing ──▶ Worker (idempotent) ──▶ Subscription state
@@ -110,13 +110,16 @@ Hər modul: `controller` (REST, DTO validasiya zod/class-validator) → `service
 İzolyasiya 3 qatda:
 1. **Routing:** `<slug>.axis.az` → API sorğusunda `tenantId` yalnız **token-dən** götürülür (URL/body-dən heç vaxt). İstifadəçinin bu tenant-da aktiv `Membership`-i yoxlanılır.
 2. **Tətbiq qatı:** `TenantContext` (AsyncLocalStorage) + Prisma extension hər sorğuya avtomatik `where: { tenantId }` əlavə edir; yaradılan obyektlərə `tenantId` yazır.
-3. **DB qatı:** PostgreSQL RLS (`packages/db/sql/rls.sql`). Tətbiqin DB rolu `BYPASSRLS` deyil; hər tranzaksiya `set_config('app.tenant_id', …)` ilə başlayır. Kodda filtr unudulsa belə, DB başqa tenantın sətirini qaytarmır.
+3. **Tenant qoruyucusu (MongoDB-də RLS yoxdur):** bütün Prisma sorğuları `apps/api/src/prisma/tenant-guard.ts`-dən keçir. `tenantId` sahəsi olan hər modeldə oxuma cari şirkətə daraldılır, update/delete yalnız cari şirkətdə işləyir, başqa şirkətə create və `tenantId`-nin dəyişdirilməsi rədd edilir, kontekst olmadıqda heç nə qaytarılmır. Modellər siyahısı sxemdən avtomatik çıxarılır (yeni model unudula bilməz — testlə yoxlanır). Şirkətlərarası platforma əməliyyatları (webhook, fon prosesləri, slug yoxlaması) yalnız açıq `PrismaService.system()` ilə.
+   **PostgreSQL RLS-dən fərqi:** qoruma bazada deyil, prosesdədir — bazaya başqa yoldan (məs. `mongosh`, BI aləti) qoşulan bu qorumanı keçmir. Ona görə production-da baza istifadəçisinin hüquqları minimal saxlanılmalı və bazaya birbaşa giriş məhdudlaşdırılmalıdır.
 
 Əlavə: S3 açarları tenant prefiksli, presigned URL-lər yalnız yoxlamadan sonra verilir; WebSocket otaqları tenant ID ilə; Redis açarları `t:<tenantId>:…`; audit log-da hər impersonate qeyd olunur. **Avtomatik test:** iki tenant yaradıb hər endpoint üçün çarpaz giriş cəhdi (403/404 gözlənilir) — CI-da məcburi.
 
 ---
 
 ## 5. Database modeli
+
+> **MongoDB qeydləri:** (1) Prisma boş buraxılan optional sahəni sənədə yazmır və `{ sahə: null }` filtri yazılmamış sahəni tapmır — `@axis/db/null-fill` middleware-i hər create-də boş sahələri açıq `null` yazır (API və seed eyni kodu istifadə edir). (2) Null ola bilən unikal sahələr (`inviteToken`, `directKey`, `Message.externalId`…) partial unique index-dir. (3) "NULLS LAST" yoxdur — lazım olan siyahılar yaddaşda sıralanır. (4) **Prisma-nın MongoDB müqayisələrində `null` hər tarixdən kiçikdir:** nullable tarixdə `lt`/`lte` filtri `null`-ları da tutur — həmişə `not: null` ilə birlikdə yazılmalıdır (məs. gecikmiş tapşırıqlar). `gt`/`gte` təhlükəsizdir. (5) **Yazılar `w=majority&journal=true` ilə** (bağlantı ünvanında): əks halda tranzaksiyalar "çoxluq snapshot"-ından oxuduğu üçün yenicə təsdiqlənmiş yazını (məs. qeydiyyatdan sonrakı ilk sorğuda sessiyanı) görməyə bilər. (6) Sətir kilidi yoxdur — eyni anda icrası təhlükəli əməliyyatlar (sahibin endirilməsi) tenant sənədinə yazaraq seriallaşdırılır; MongoDB toqquşan tranzaksiyalardan birini dayandırır, `scoped()` onu təkrarlayır.
 
 Tam sxem: [`packages/db/prisma/schema.prisma`](../packages/db/prisma/schema.prisma). Əsas qruplar:
 
@@ -195,13 +198,14 @@ Metriklər: ilk cavab müddəti, orta cavab müddəti, cavab gözləyən söhbə
 
 ### 8.2 Status maşını
 ```
-signup ─▶ TRIALING (14 gün, PRO feature-ları)
+signup ─▶ TRIALING (14 gün, BUSINESS — bütün funksiyalar; sahib hər şeyi sınayıb sonra seçsin)
 TRIALING ── ödəniş ─▶ ACTIVE
 TRIALING ── trial bitdi, ödəniş yox ─▶ SUSPENDED (yalnız oxumaq + billing səhifəsi)
 ACTIVE ── ödəniş uğursuz ─▶ PAST_DUE (7 gün grace, 1/3/5-ci gün təkrar cəhd + email)
 PAST_DUE ── ödəniş ─▶ ACTIVE
 PAST_DUE ── grace bitdi ─▶ SUSPENDED
-SUSPENDED ── 90 gün ─▶ CANCELED (data export imkanı, sonra silinmə)
+SUSPENDED ── 90 gün ─▶ CANCELED (data export imkanı, sonra silinmə) — ⏳ hələ avtomatik deyil
+ACTIVE ── "dövrün sonunda ləğv et" ─▶ dövr bitəndə CANCELED (yalnız oxumaq)
 ```
 - **Upgrade:** dərhal, qalan günlər üçün proporsional (proration) faktura.
 - **Downgrade:** dövrün sonunda (`scheduledPlanId`). Limit aşılırsa (məs. 8 işçi → START 3), downgrade-dən əvvəl hansı işçilərin deaktiv olacağını seçmək tələb olunur.
@@ -245,7 +249,7 @@ SUSPENDED ── 90 gün ─▶ CANCELED (data export imkanı, sonra silinmə)
 | Mərhələ | Məzmun | Nəticə |
 |---|---|---|
 | **0. Fundament** | Monorepo, DB sxemi, dizayn sistemi, app shell, i18n, tema, **Dashboard (demo data)** | ← *bu addım* |
-| **1. Core backend** | NestJS API, auth, tenant konteksti + RLS, members/rollar/dəvət, Docker Compose (Postgres, Redis, MinIO), seed, CI | Real login, real tenant |
+| **1. Core backend** | NestJS API, auth, tenant konteksti + izolyasiya, members/rollar/dəvət, Docker Compose, seed, CI | Real login, real tenant |
 | **2. CRM + Satışlar** | Kontaktlar, kart, zaman xətti, deal Kanban (drag&drop), lost reason, forecast; Dashboard real API-yə keçir | |
 | **3. Tapşırıqlar + Komanda** | Tasks/projects, şərh, fayl (S3), bildirişlər, gecikmə job-u; işçi profili və performans | |
 | **4. Inbox** | Sayt çatı widget, WebSocket, WhatsApp/IG/Messenger adapterləri + demo simulyator, şablonlar, SLA metrikləri | |
@@ -280,7 +284,7 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 | Rate limit (auth endpoint-ləri, IP üzrə) | ✅ | yaddaşda; çox instance üçün Redis-ə keçəcək |
 | Web: login, qeydiyyat, dəvət qəbulu, avtomatik token yenilənməsi, BFF proxy (CSRF yoxlaması), İşçilər səhifəsi | ✅ | tokenlər httpOnly cookie-də, brauzer JS-i onları görmür |
 | Email göndərişi (dəvət) | ⏳ **yoxdur** | dəvət linki UI-də göstərilir, işçiyə əl ilə göndərilir |
-| Paket feature-larına görə bloklama (məs. şöbələr yalnız BUSINESS) | ⏳ | Mərhələ 6 (billing) — hazırda yalnız işçi limiti tətbiq olunur |
+| Paket feature-larına görə bloklama (məs. şöbələr yalnız BUSINESS) | ✅ | Mərhələ 6-da |
 | 2FA, şifrə bərpası, email təsdiqi | ⏳ | email servisi ilə birlikdə |
 
 **Testlər:** 28 API e2e (real Postgres, hər icrada təmiz baza) + 6 web unit. Əsas yoxlananlar: iki şirkət arasında çarpaz giriş cəhdləri (404), RLS-in API-dən kənarda birbaşa SQL ilə yoxlanması, hər `tenantId` cədvəlində RLS-in aktiv olması, refresh token təkrar istifadəsində bütün ailənin ləğvi, deaktiv işçinin sessiyasının dərhal bitməsi, iki sahibin eyni anda bir-birini endirməsi (şirkət sahibsiz qalmır), yer limiti, rate limit.
@@ -352,5 +356,55 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 
 **Testlər:** 73 API e2e (o cümlədən 14 inbox: widget izolyasiyası, daxili qeydin ziyarətçiyə getməməsi, webhook imzası və təkrarlar, Graph API sorğu formatı, 24 saat pəncərəsi, demo kanal, marşrutlama, CRM bağlantısı, metriklər, SSE) + 8 web unit + 10 Playwright UI (başqa saytda yerləşdirilmiş widget → real vaxt inbox → cavab + qeyd → ziyarətçi yalnız cavabı görür).
 
-### Növbəti — Mərhələ 5: Komanda çatı
-Şəxsi və şöbə çatları, real vaxt, fayl göndərmə, axtarış, tapşırıqla əlaqələndirmə.
+### Mərhələ 5 — Komanda çatı ✅
+| Hissə | Vəziyyət | Harada |
+|---|---|---|
+| Şəxsi çat (cütlük üçün tək otaq), şöbə qrupu (avtomatik, üzvlər şöbə ilə sinxron — şöbədən çıxan tarixçəyə girişi itirir), adlı qruplar (üzv əlavə et, çıx) | ✅ | `apps/api/src/chat`, `/chat` |
+| Mesajlar: mətn, fayl (tapşırıq faylları ilə eyni kvota və saxlama), tapşırığa bağlantı (yalnız tapşırığı görə bilənlərə göstərilir), öz mesajını redaktə/silmək, mesajı tapşırığa çevirmək, əvvəlki mesajları yükləmək | ✅ | |
+| Real vaxt: SSE hadisələri **yalnız otağın üzvlərinə** çatır; oxunmamış sayğaclar (otaq və sidebar) | ✅ | tək instans; çoxlu instansda Redis pub/sub |
+| Axtarış yalnız üzv olduğunuz otaqlarda | ✅ | |
+| Müştəri yazışmalarından ayrı: ayrı cədvəllər, ayrı ekran, fərqli rəng | ✅ | |
+| Sesli/görüntülü zəng, mesaja reaksiya, "yazır…" göstəricisi | ⏳ | sonra |
+
+**Bu mərhələdə tapılıb düzəldilənlər:**
+- **Rate limit bütün ofisi bir yerdə sayırdı:** daxil olmuş istifadəçilərin sorğuları IP başına məhdudlaşdırılırdı — bir ofis IP-si arxasındakı 20 işçi limiti tez doldurub səhifələri çökdürərdi (UI testləri ardıcıl icrada bunu üzə çıxardı). İndi daxil olmuş trafik istifadəçi başına (imzası yoxlanmış token ilə), anonim trafik IP başına sayılır.
+- API xətası səhifəni "Application error" ilə çökdürürdü → tətbiq üzrə xəta ekranı və "Yenidən cəhd et".
+- Modul dövri asılılığı (notifications → chat → files → tasks → notifications) Nest DI-ni pozurdu → asılılıqsız köməkçi fayla çıxarıldı.
+
+**Testlər:** 83 API e2e (o cümlədən 9 çat: cütlük otağı, şöbə sinxronu, qruplar, çarpaz şirkət, redaktə/silmə hüququ, tapşırıq görünməsi, fayl girişi, axtarış, SSE yalnız üzvlərə) + 8 web unit + 12 Playwright UI (5 ardıcıl icrada stabil).
+
+### PostgreSQL → MongoDB köçürməsi ✅ (2026-10-23, sahibin qərarı)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Sxem MongoDB konnektoruna, ID-lər `_id`, öz-özünə istinad edən əlaqələr `NoAction` (alt tapşırıq/şöbə uşaqları servis tərəfindən təmizlənir) | ✅ | `packages/db/prisma/schema.prisma` |
+| RLS → tenant qoruyucusu (oxuma daraldılır, yazı yoxlanılır, kontekstsiz heç nə; `system()` açıq keçid) | ✅ | **Qoruma bazada deyil, koddadır** — §4 |
+| Lokal baza: `mongodb-memory-server` replica set (`.data/mongo`), testlərdə müvəqqəti replica set; Docker: `mongo:7.0 --replSet` | ✅ | |
+| SQL-ə bağlı yerlər əvəz edildi: `FOR UPDATE` → tenant sənədi ilə seriallaşdırma + təkrar; SECURITY DEFINER funksiyaları → `system()` ilə yalnız-id sorğular; `NULLS LAST` → yaddaşda sıralama; `skipDuplicates` → əvvəlcədən filtr | ✅ | |
+| Null semantikası (`@axis/db/null-fill`), partial unique index-lər | ✅ | |
+| Köhnə PostgreSQL məlumatı | ⚠️ köçürülməyib | yalnız lokal dev/test məlumatı idi; demo seed yenidən yaradıldı |
+
+**Köçürmə zamanı tapılan və düzəldilən problemlər:** (1) Prisma optional sahələri yazmadığı üçün `null` filtrləri səssizcə heç nə tapmırdı (müştəri və tapşırıq siyahıları boş olardı) → null-fill. (2) Prisma sorğuları "lazy" olduğu üçün tenant konteksti `await`-dən əvvəl itirdi → qoruyucu kontekst blokunun içində gözlənilir. (3) `.env` faylını əvəzləmə zamanı özüm korlamışdım → git-dən bərpa edildi. (4) `dueAt < indi` son tarixi olmayan tapşırıqları da "gecikmiş" sayırdı (Dashboard çökürdü, fon prosesi bütün tarixsiz tapşırıqlar üçün bildiriş göndərərdi) → `not: null`, reqressiya testi. (5) Ara-sıra qeydiyyatdan sonrakı ilk sorğu 401 alırdı → əvvəlcə `w=majority&journal=true` ilə düzəldiyi düşünüldü, amma əsl səbəb Mərhələ 6-da tapıldı (aşağıda, test mühiti problemi idi, məhsul xətası deyildi). (6) Real vaxt yenilənməsi HTTP cavabından tez gələndə mesaj sahəsi istifadəçinin yeni yazdığı mətni silirdi (inbox, çat, şərh, qeyd) → yalnız göndərilmiş mətn təmizlənir.
+
+### Mərhələ 6 — Abunəlik və ödəniş ✅ (DEMO provayder)
+| Hissə | Vəziyyət | Harada |
+|---|---|---|
+| Paketlər, aylıq/illik (illik = 10 ay), əlavə işçi yeri və yaddaş | ✅ | `apps/api/src/billing`, `/settings/billing` |
+| Checkout: yeni dövr; eyni intervalda yüksəltmə — qalan günlər üçün proporsional; interval dəyişəndə — istifadə olunmamış hissə kredit kimi çıxılır; 0 məbləğ avtomatik ödənir; köhnə açıq fakturalar ləğv olunur | ✅ | |
+| Ucuz pakete keçid dövrün sonunda (işçi sayı yeni limitdən çoxdursa rədd edilir), keçidi geri almaq | ✅ | |
+| Fon prosesi: trial xəbərdarlığı və bitməsi, yenilənmə, uğursuz ödəniş → PAST_DUE + 7 gün güzəşt, 1/3/5-ci gün təkrar cəhd, sonra SUSPENDED, dövrün sonunda ləğv | ✅ | `billing.job.ts`, 10 dəqiqədən bir |
+| SUSPENDED/CANCELED: yalnız oxumaq (GET), abunəlik və bildirişlər açıq qalır; ödənişdən sonra dərhal aktiv | ✅ | `AuthGuard` |
+| Feature gating: API (402 `FEATURE_NOT_IN_PLAN`) + UI (sidebar-da kilid, "Paketi yüksəlt" ekranı, Meta kanalları və şöbə yaratma bağlı) | ✅ | `@RequireFeature`, `UpgradeGate` |
+| Faktura nömrələri ardıcıl (`AX-2026-000001`), çap üçün faktura səhifəsi, bildirişlər (ödəniş alındı / alınmadı / trial bitir / dayandırıldı), hər səhifədə xəbərdarlıq zolağı | ✅ | |
+| **DEMO ödəniş provayderi** — ödəniş səhifəsi aydın "DEMO" işarəlidir, real kart yoxdur; "Uğurlu ödəniş" / "Kart rədd edilsin"; demo alətləri: növbəti avtomatik ödəniş uğursuz olsun, növbəti tarixi indi işlət | ✅ | `DemoPaymentProvider`, `BILLING_PROVIDER=demo` |
+| Real provayder (Payriff / Epoint) | ⏳ | `PaymentProvider` interfeysi hazırdır: `checkoutUrl` + `chargeSaved` + webhook; müqavilə və açarlar lazımdır |
+| Ödəniş qəbzinin email-lə göndərilməsi, ƏDV, SUSPENDED → 90 gündən sonra CANCELED, Super Admin-də paket redaktəsi | ⏳ | sonra |
+
+**Bu mərhələdə tapılıb düzəldilənlər:**
+- **Testlərdəki "təsadüfi 401/404"-ün əsl səbəbi:** supertest hər sorğuda serveri bütün interfeyslərdə (IPv6 `::`) təsadüfi portda açır, amma `127.0.0.1`-ə qoşulurdu. Həmin portu kompüterdəki başqa proqram IPv4-də tutanda sorğu bizim API-yə yox, o proqrama gedirdi (cavab gövdəsi bizim formatda deyildi). Diaqnostika ilə sübut olundu; test tətbiqi indi bir dəfə `127.0.0.1`-də dinləyir. Bu, məhsul xətası deyil, test mühiti xətası idi.
+- Demo ödəniş səhifəsində kart rədd ediləndən sonra təkrar cəhd işləmirdi (faktura FAILED olurdu) → cəhd qeyd olunur, faktura açıq qalır, eyni səhifədə yenidən ödəmək olur.
+- Paketsiz "Satışlar" funksiyası müştəri kartını 402 ilə çökdürərdi → kart pipeline-ı yalnız funksiya olanda yükləyir.
+
+**Testlər:** 97 API e2e (o cümlədən 12 billing) + 8 web unit + 13 Playwright UI (yeni: trial → demo checkout → rədd/uğur → uğursuz yenilənmə və güzəşt → ödəniş → downgrade → PRO modullarının bağlanması).
+
+### Növbəti — Mərhələ 7: Super Admin
+§11 planına görə: `apps/admin`, şirkətlərin idarəsi, paket redaktoru, gəlir/xərc/mənfəət, tiketlər, sistem sağlamlığı. Real ödəniş provayderi müqavilədən sonra qoşulur.

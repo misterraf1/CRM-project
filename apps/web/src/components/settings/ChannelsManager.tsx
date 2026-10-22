@@ -1,7 +1,7 @@
 "use client";
 
 import type { CannedResponseDto, ChannelDto, ChannelType } from "@axis/shared";
-import { Check, Copy, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { Check, Copy, ExternalLink, Lock, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { DemoBadge } from "@/components/ui/Card";
@@ -23,12 +23,15 @@ export function ChannelsManager({
   templates,
   canManage,
   canManageTemplates,
+  omnichannel,
   webhookUrl,
 }: {
   channels: ChannelDto[];
   templates: CannedResponseDto[];
   canManage: boolean;
   canManageTemplates: boolean;
+  /** Plan includes WhatsApp / Instagram / Messenger */
+  omnichannel: boolean;
   webhookUrl: string;
 }) {
   const { t } = useI18n();
@@ -85,12 +88,22 @@ export function ChannelsManager({
           </div>
           {canManage && (
             <div className="flex flex-wrap gap-1.5">
-              {CONNECTABLE.map((type) => (
-                <button key={type} type="button" onClick={() => setAdding(type)} className="btn-ghost h-8 border border-border text-xs">
-                  <Plus className="h-3.5 w-3.5" aria-hidden />
-                  {k.types[type]}
-                </button>
-              ))}
+              {CONNECTABLE.map((type) => {
+                const locked = type !== "WEBCHAT" && !omnichannel;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    disabled={locked}
+                    title={locked ? t.billing.lockedHint : undefined}
+                    onClick={() => setAdding(type)}
+                    className="btn-ghost h-8 border border-border text-xs disabled:opacity-60"
+                  >
+                    {locked ? <Lock className="h-3.5 w-3.5" aria-hidden /> : <Plus className="h-3.5 w-3.5" aria-hidden />}
+                    {k.types[type]}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

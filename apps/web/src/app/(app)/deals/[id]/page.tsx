@@ -10,12 +10,15 @@ import { ApiRequestError } from "@/lib/api/server";
 import { formatDate, formatMoney } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
 import { getI18n } from "@/lib/i18n/server";
+import { planGate } from "@/components/billing/UpgradeGate";
 
 export const metadata: Metadata = { title: "Deals" };
 
 type Props = { params: Promise<{ id: string }> };
 
 export default async function DealPage({ params }: Props) {
+  const gate = await planGate("deals.pipeline");
+  if (gate) return gate;
   const { id } = await params;
   const deal = await getDeal(id).catch((e) => {
     if (e instanceof ApiRequestError && e.status === 404) notFound();

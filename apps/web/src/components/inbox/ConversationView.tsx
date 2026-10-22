@@ -42,10 +42,13 @@ export function ConversationView({ conversation: c, templates, backHref }: { con
     e?.preventDefault();
     if (!body.trim() || !canSend) return;
     setError(undefined);
+    const sent = body;
     startTransition(async () => {
-      const res = await api<MessageDto>(`/inbox/conversations/${c.id}/messages`, "POST", { body, internal: mode === "note" });
+      const res = await api<MessageDto>(`/inbox/conversations/${c.id}/messages`, "POST", { body: sent, internal: mode === "note" });
       if (!res.ok) return setError(errorMessage(t, res.code));
-      setBody("");
+      // The live stream may refresh the page before this response arrives and the agent
+      // may already be typing the next message — clear only what was actually sent
+      setBody((current) => (current === sent ? "" : current));
       router.refresh();
     });
   }

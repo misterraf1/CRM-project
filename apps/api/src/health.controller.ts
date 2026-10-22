@@ -11,7 +11,7 @@ export class HealthController {
   @SkipThrottle()
   @Get()
   async check() {
-    await this.prisma.$queryRaw`SELECT 1`;
+    await this.prisma.ping();
     return { status: "ok" };
   }
 }

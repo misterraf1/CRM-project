@@ -58,7 +58,8 @@ export class DepartmentsService {
     await this.prisma.scoped(async (tx) => {
       const current = await tx.department.findFirst({ where: { id, tenantId } });
       if (!current) throw notFound("Department");
-      // Members and sub-departments are detached (FK ON DELETE SET NULL), never deleted
+      // Members (relation SET NULL) and sub-departments are detached, never deleted
+      await tx.department.updateMany({ where: { tenantId, parentId: id }, data: { parentId: null } });
       await tx.department.delete({ where: { id } });
       await this.audit.log(tx, { action: "department.deleted", entityType: "department", entityId: id, diff: { name: current.name } });
     });

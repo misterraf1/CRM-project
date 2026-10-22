@@ -6,12 +6,15 @@ import { Avatar } from "@/components/ui/Avatar";
 import { getSession, getTeamStats, parsePeriod } from "@/lib/api";
 import { formatMoney, formatNumber } from "@/lib/format";
 import { getI18n } from "@/lib/i18n/server";
+import { planGate } from "@/components/billing/UpgradeGate";
 
 export const metadata: Metadata = { title: "Team" };
 
 type Props = { searchParams: Promise<{ period?: string }> };
 
 export default async function TeamPage({ searchParams }: Props) {
+  const gate = await planGate("team.monitoring");
+  if (gate) return gate;
   const period = parsePeriod((await searchParams).period);
   const [{ t, locale }, me, stats] = await Promise.all([getI18n(), getSession(), getTeamStats(period)]);
   const k = t.team;

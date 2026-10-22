@@ -1,7 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { createHash } from "node:crypto";
-import { createApp, ownerClient, PASSWORD, signup, uniqueEmail } from "./helpers";
+import { createApp, PASSWORD, signup, uniqueEmail, withRawDb } from "./helpers";
 
 describe("Auth", () => {
   let app: INestApplication;
@@ -14,13 +14,14 @@ describe("Auth", () => {
 
   it("health check", () => http().get("/health").expect(200, { status: "ok" }));
 
-  it("signup creates company, owner and PRO trial", async () => {
+  it("signup creates company, owner and a full-feature trial (BUSINESS)", async () => {
     const company = await signup(app, "Bakı Tekstil MMC");
     const me = await http().get("/v1/me").set(company.auth).expect(200);
     expect(me.body.membership.role).toBe("OWNER");
     expect(me.body.tenant.name).toBe("Bakı Tekstil MMC");
     expect(me.body.tenant.slug).toMatch(/^baki-tekstil-mmc/);
-    expect(me.body.subscription).toMatchObject({ plan: "PRO", status: "TRIALING", seats: { used: 1, limit: 10 } });
+    expect(me.body.subscription).toMatchObject({ plan: "BUSINESS", status: "TRIALING", seats: { used: 1, limit: 25 }, cancelAtPeriodEnd: false, graceEndsAt: null });
+    expect(me.body.subscription.features).toEqual(expect.arrayContaining(["deals.pipeline", "inbox.omnichannel", "departments", "automations"]));
     expect(me.body.permissions).toContain("billing.manage");
   });
 
@@ -73,14 +74,11 @@ describe("Auth", () => {
 
     // Simulate theft: the original token is replayed later. Concurrent refreshes within
     // 30 s are tolerated, so age this family's rotation timestamps past that window.
-    const db = await ownerClient();
     const hash = createHash("sha256").update(tokens.refreshToken).digest("hex");
-    await db.query(
-      `UPDATE "Session" SET "rotatedAt" = (now() AT TIME ZONE 'UTC') - interval '1 hour'
-       WHERE "rotatedAt" IS NOT NULL AND "familyId" = (SELECT "familyId" FROM "Session" WHERE "tokenHash" = $1)`,
-      [hash],
-    );
-    await db.end();
+    await withRawDb(async (db) => {
+      const { familyId } = await db.session.findUniqueOrThrow({ where: { tokenHash: hash } });
+      await db.session.updateMany({ where: { familyId, rotatedAt: { not: null } }, data: { rotatedAt: new Date(Date.now() - 3600_000) } });
+    });
 
     await http().post("/v1/auth/refresh").send({ refreshToken: tokens.refreshToken }).expect(401);
     // The legitimate latest token is now dead too, and so is its access token

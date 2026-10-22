@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { MemberProfileDto, MemberStatsDto } from "@axis/shared";
 import { authedContext, type AuthedContext } from "../common/context";
 import { notFound } from "../common/errors";
+import { sortNullsLast } from "../common/sort";
 import { addDays, startOfDay } from "../common/time";
 import { ActivityService, TIMELINE_ORDER } from "../crm/activity.service";
 import { ownerScope } from "../crm/scope";
@@ -43,8 +44,8 @@ export class TeamService {
         tx.task.findMany({
           where: { tenantId: ctx.tenantId, assigneeId: memberId, parentId: null, ...OPEN_TASK },
           include: { project: { select: { id: true, name: true } }, subtasks: { select: { status: true } }, _count: { select: { comments: true } } },
-          orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
-          take: 20,
+          orderBy: [{ dueAt: "asc" }, { createdAt: "asc" }],
+          take: 100,
         }),
         tx.activity.findMany({ where: { tenantId: ctx.tenantId, actorId: memberId }, orderBy: TIMELINE_ORDER, take: 20 }),
       ]);
@@ -52,7 +53,7 @@ export class TeamService {
         ...stats,
         joinedAt: m.joinedAt?.toISOString() ?? null,
         department: m.department?.name ?? null,
-        tasks: await this.tasks.toDtos(tx, ctx, taskRows),
+        tasks: await this.tasks.toDtos(tx, ctx, sortNullsLast(taskRows, [(t) => t.dueAt, "asc"], [(t) => t.createdAt, "asc"]).slice(0, 20)),
         activity: await this.activity.toDtos(tx, ctx.tenantId, activityRows),
       };
     });
@@ -70,7 +71,7 @@ export class TeamService {
     const base = { tenantId: ctx.tenantId, parentId: null };
     const [open, overdue, done, won, openDeals] = await Promise.all([
       tx.task.groupBy({ by: ["assigneeId"], where: { ...base, ...OPEN_TASK, assigneeId: { in: ids } }, _count: true }),
-      tx.task.groupBy({ by: ["assigneeId"], where: { ...base, ...OPEN_TASK, assigneeId: { in: ids }, dueAt: { lt: now } }, _count: true }),
+      tx.task.groupBy({ by: ["assigneeId"], where: { ...base, ...OPEN_TASK, assigneeId: { in: ids }, dueAt: { lt: now, not: null } }, _count: true }),
       tx.task.groupBy({ by: ["assigneeId"], where: { ...base, status: "DONE", assigneeId: { in: ids }, completedAt: { gte: start } }, _count: true }),
       tx.deal.groupBy({
         by: ["ownerId"],

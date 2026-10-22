@@ -5,17 +5,18 @@ import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n/client";
 
 /**
- * Subscribes to the inbox event stream and refreshes server-rendered data when
- * something changes. Events carry ids only; the refresh re-reads through the API.
+ * Subscribes to a server-sent event stream (inbox, team chat) and refreshes the
+ * server-rendered page when something changes. Events carry ids only; the refresh
+ * re-reads through the authorised API.
  */
-export function InboxLive() {
+export function LiveRefresh({ url }: { url: string }) {
   const { t } = useI18n();
   const router = useRouter();
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const source = new EventSource("/api/v1/inbox/stream");
+    const source = new EventSource(url);
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false); // EventSource reconnects by itself
     source.onmessage = () => {
@@ -27,7 +28,7 @@ export function InboxLive() {
       clearTimeout(timer);
       source.close();
     };
-  }, [router]);
+  }, [router, url]);
 
   return (
     <span className="inline-flex items-center gap-1.5 text-[11px] text-fg-subtle" title={t.inbox.live}>

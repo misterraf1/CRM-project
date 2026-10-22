@@ -24,6 +24,27 @@ describe("Rate limiting", () => {
     expect(limited.body.error.code).toBe("RATE_LIMITED");
   });
 
+  it("signed-in requests are limited per user, so colleagues behind one office IP don't share a bucket", async () => {
+    const { signup } = await import("./helpers");
+    const http = () => request(app.getHttpServer());
+    const a = await signup(app);
+    const b = await signup(app);
+    const officeIp = "198.51.100.77";
+    // 600/min per user: both users together exceed what a shared 600/min IP bucket would allow
+    const burst = async (auth: Record<string, string>, n: number) => {
+      let limited = 0;
+      for (let i = 0; i < n; i++) if ((await http().get("/v1/me/summary").set(auth).set("x-forwarded-for", officeIp)).status === 429) limited++;
+      return limited;
+    };
+    expect(await burst(a.auth, 400)).toBe(0);
+    expect(await burst(b.auth, 400)).toBe(0);
+    // A forged token falls back to the IP bucket instead of creating a fresh one
+    const forged = { authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.forged" };
+    const statuses = new Set<number>();
+    for (let i = 0; i < 3; i++) statuses.add((await http().get("/v1/me").set(forged).set("x-forwarded-for", officeIp)).status);
+    expect([...statuses]).toEqual([401]);
+  }, 120_000);
+
   it("buckets are per client IP forwarded by the trusted web server", async () => {
     const http = () => request(app.getHttpServer());
     const body = { email: "nobody@test.axis", password: "wrong-password" };

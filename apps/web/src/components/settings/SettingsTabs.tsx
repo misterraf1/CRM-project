@@ -11,6 +11,7 @@ export function SettingsTabs() {
   const tabs = [
     { href: "/settings/members", label: t.members.title },
     { href: "/settings/channels", label: t.channels.title },
+    { href: "/settings/billing", label: t.billing.title },
   ];
   return (
     <nav aria-label={t.nav.settings} className="mb-5 flex gap-1 border-b border-border">
@@ -18,10 +19,10 @@ export function SettingsTabs() {
         <Link
           key={tab.href}
           href={tab.href}
-          aria-current={pathname === tab.href ? "page" : undefined}
+          aria-current={pathname.startsWith(tab.href) ? "page" : undefined}
           className={clsx(
             "-mb-px border-b-2 px-3 py-2 text-sm font-medium",
-            pathname === tab.href ? "border-accent text-accent" : "border-transparent text-fg-muted hover:text-fg",
+            pathname.startsWith(tab.href) ? "border-accent text-accent" : "border-transparent text-fg-muted hover:text-fg",
           )}
         >
           {tab.label}

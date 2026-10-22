@@ -1,6 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { addMember, createApp, ownerClient, PASSWORD, signup, uniqueEmail } from "./helpers";
+import { addMember, createApp, PASSWORD, setPlan, signup, uniqueEmail, withRawDb } from "./helpers";
 
 describe("Members, invites, roles", () => {
   let app: INestApplication;
@@ -53,9 +53,7 @@ describe("Members, invites, roles", () => {
     const owner = await signup(app);
     const email = uniqueEmail("late");
     const inv = await http().post("/v1/members/invites").set(owner.auth).send({ email }).expect(201);
-    const db = await ownerClient();
-    await db.query(`UPDATE "Membership" SET "invitedAt" = (now() AT TIME ZONE 'UTC') - interval '8 days' WHERE id = $1`, [inv.body.member.id]);
-    await db.end();
+    await withRawDb((db) => db.membership.update({ where: { id: inv.body.member.id }, data: { invitedAt: new Date(Date.now() - 8 * 86400_000) } }));
     await http().get(inv.body.invitePath.replace("/invite/", "/v1/invites/")).expect(410);
   });
 
@@ -127,23 +125,14 @@ describe("Members, invites, roles", () => {
     expect([x, y].filter((r) => r.status === 200)).toHaveLength(1);
     expect(["LAST_OWNER", "FORBIDDEN"]).toContain(loser.body.error.code);
 
-    const db = await ownerClient();
-    const { rows } = await db.query(
-      `SELECT count(*)::int AS n FROM "Membership" WHERE "tenantId" = $1 AND role = 'OWNER' AND status = 'ACTIVE'`,
-      [me.body.tenant.id],
-    );
-    await db.end();
-    expect(rows[0].n).toBe(1);
+    const owners = await withRawDb((db) => db.membership.count({ where: { tenantId: me.body.tenant.id, role: "OWNER", status: "ACTIVE" } }));
+    expect(owners).toBe(1);
   });
 
   it("seat limit: pending invites count; START plan allows 3 seats", async () => {
     const owner = await signup(app);
     const me = await http().get("/v1/me").set(owner.auth);
-    const db = await ownerClient();
-    await db.query(`UPDATE "Subscription" SET "planId" = (SELECT id FROM "Plan" WHERE code = 'START') WHERE "tenantId" = $1`, [
-      me.body.tenant.id,
-    ]);
-    await db.end();
+    await setPlan(me.body.tenant.id, "START");
 
     await http().post("/v1/members/invites").set(owner.auth).send({ email: uniqueEmail("s1") }).expect(201);
     const pending = await http().post("/v1/members/invites").set(owner.auth).send({ email: uniqueEmail("s2") }).expect(201);

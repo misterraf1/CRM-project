@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import type { NotificationDto, NotificationListResponse, NotificationType, ShellSummaryDto } from "@axis/shared";
 import { authedContext } from "../common/context";
 import { notFound } from "../common/errors";
+import { unreadChatTotal } from "../chat/unread";
 import { inboxScope } from "../inbox/inbox.service";
 import { PrismaService, type Tx } from "../prisma/prisma.service";
 
@@ -70,14 +71,15 @@ export class NotificationsService {
     const ctx = authedContext();
     return this.prisma.scoped(async (tx) => {
       const scoped = await inboxScope(tx, ctx);
-      const [overdueTasks, unreadNotifications, awaitingConversations] = await Promise.all([
+      const [overdueTasks, unreadNotifications, awaitingConversations, unreadChat] = await Promise.all([
         tx.task.count({
-          where: { tenantId: ctx.tenantId, assigneeId: ctx.membershipId, status: { notIn: ["DONE", "CANCELED"] }, dueAt: { lt: new Date() } },
+          where: { tenantId: ctx.tenantId, assigneeId: ctx.membershipId, status: { notIn: ["DONE", "CANCELED"] }, dueAt: { lt: new Date(), not: null } },
         }),
         tx.notification.count({ where: { tenantId: ctx.tenantId, memberId: ctx.membershipId, readAt: null } }),
         tx.conversation.count({ where: { AND: [{ tenantId: ctx.tenantId, awaitingSince: { not: null }, status: { not: "RESOLVED" } }, scoped] } }),
+        unreadChatTotal(tx, ctx),
       ]);
-      return { overdueTasks, unreadNotifications, awaitingConversations };
+      return { overdueTasks, unreadNotifications, awaitingConversations, unreadChat };
     });
   }
 }

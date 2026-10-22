@@ -1,21 +1,24 @@
 // Axis platform — core data model (PostgreSQL)
 //
-// Tenancy rule: every tenant-owned table carries `tenantId`. The API sets
-// `app.tenant_id` per request/transaction and PostgreSQL Row Level Security
-// policies (migrations/*_rls) reject rows from any other tenant, so a bug in
-// a query can never leak another company's data.
+// Database: MongoDB (replica set — required for transactions).
 //
-// Connections: DATABASE_URL = application role (no BYPASSRLS, not table owner),
-// DIRECT_DATABASE_URL = owner role, used only by migrations.
+// Tenancy rule: every tenant-owned model carries `tenantId`. MongoDB has no row-level
+// security, so isolation is enforced by the tenant guard in apps/api
+// (src/prisma/tenant-guard.ts): every query on a tenant model is filtered to the
+// current tenant, writes for another tenant are rejected, and a query without
+// tenant context matches nothing.
+//
+// Indexes are NOT created by `prisma db push`: unique fields that may be null need
+// partial indexes, which Prisma can't express. They are defined in
+// scripts/indexes.mjs; the @@unique attributes below only shape the Prisma client.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -29,7 +32,7 @@ enum PlatformRole {
 }
 
 model User {
-  id            String       @id @default(cuid())
+  id            String       @id @default(cuid()) @map("_id")
   email         String       @unique
   passwordHash  String?
   fullName      String
@@ -49,7 +52,7 @@ model User {
 // One row per refresh token. Rotation creates a new row in the same family;
 // presenting an already-rotated token revokes the whole family (theft detection).
 model Session {
-  id        String    @id @default(cuid())
+  id        String    @id @default(cuid()) @map("_id")
   userId    String
   tenantId  String // workspace the token is issued for
   familyId  String
@@ -82,16 +85,19 @@ enum TenantStatus {
 }
 
 model Tenant {
-  id        String       @id @default(cuid())
-  slug      String       @unique // subdomain: <slug>.axis.az
-  name      String
-  logoUrl   String?
-  timezone  String       @default("Asia/Baku")
-  currency  String       @default("AZN")
-  locale    Locale       @default(AZ)
-  status    TenantStatus @default(TRIALING)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id          String       @id @default(cuid()) @map("_id")
+  slug        String       @unique // subdomain: <slug>.axis.az
+  name        String
+  logoUrl     String?
+  timezone    String       @default("Asia/Baku")
+  currency    String       @default("AZN")
+  locale      Locale       @default(AZ)
+  status      TenantStatus @default(TRIALING)
+  // Bumped inside transactions that must not run concurrently (e.g. owner changes):
+  // MongoDB aborts one of two transactions writing the same document.
+  lockVersion Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   memberships   Membership[]
   departments   Department[]
@@ -116,21 +122,24 @@ model Tenant {
 // ─────────────────────────────────────────────────────────────
 
 model Plan {
-  id           String   @id @default(cuid())
-  code         String   @unique // START | PRO | BUSINESS
-  name         String
-  priceMonthly Int // minor units (qəpik): 3900 = 39.00 AZN
-  priceYearly  Int
-  currency     String   @default("AZN")
-  seatLimit    Int
-  storageMb    Int
-  aiCredits    Int      @default(0)
+  id                  String   @id @default(cuid()) @map("_id")
+  code                String   @unique // START | PRO | BUSINESS
+  name                String
+  priceMonthly        Int // minor units (qəpik): 3900 = 39.00 AZN
+  priceYearly         Int
+  currency            String   @default("AZN")
+  seatLimit           Int
+  storageMb           Int
+  aiCredits           Int      @default(0)
+  // Add-on prices (minor units per month)
+  extraSeatPrice      Int      @default(900)
+  extraStorageGbPrice Int      @default(500)
   // Feature flags, e.g. ["crm.basic","tasks","team_chat","inbox.webchat"]
-  features     String[]
-  isPublic     Boolean  @default(true)
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  features            String[]
+  isPublic            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   subscriptions Subscription[]
 }
@@ -149,23 +158,30 @@ enum BillingInterval {
 }
 
 model Subscription {
-  id                 String             @id @default(cuid())
-  tenantId           String             @unique
-  planId             String
-  status             SubscriptionStatus @default(TRIALING)
-  interval           BillingInterval    @default(MONTH)
-  extraSeats         Int                @default(0)
-  extraStorageMb     Int                @default(0)
-  trialEndsAt        DateTime?
-  currentPeriodStart DateTime
-  currentPeriodEnd   DateTime
-  graceEndsAt        DateTime?
-  cancelAtPeriodEnd  Boolean            @default(false)
+  id                  String             @id @default(cuid()) @map("_id")
+  tenantId            String             @unique
+  planId              String
+  status              SubscriptionStatus @default(TRIALING)
+  interval            BillingInterval    @default(MONTH)
+  extraSeats          Int                @default(0)
+  extraStorageMb      Int                @default(0)
+  trialEndsAt         DateTime?
+  currentPeriodStart  DateTime
+  currentPeriodEnd    DateTime
+  graceEndsAt         DateTime?
+  cancelAtPeriodEnd   Boolean            @default(false)
   // Pending downgrade applied at period end
-  scheduledPlanId    String?
-  providerRef        String? // payment provider subscription / card token id
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  scheduledPlanId     String?
+  providerRef         String? // payment provider subscription / card token id
+  paymentMethod       Json? // { brand, last4 } — display only, never card data
+  // Failed renewal: retries on days 1, 3, 5 of the grace period
+  retryCount          Int                @default(0)
+  nextRetryAt         DateTime?
+  trialReminderSentAt DateTime?
+  // Demo provider only: the next automatic charge is declined (to try the dunning flow)
+  demoNextChargeFails Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   plan   Plan   @relation(fields: [planId], references: [id])
@@ -180,15 +196,18 @@ enum InvoiceStatus {
 }
 
 model Invoice {
-  id          String        @id @default(cuid())
+  id          String        @id @default(cuid()) @map("_id")
   tenantId    String
   number      String        @unique
+  kind        String        @default("subscription") // subscription | upgrade | renewal | addons
   status      InvoiceStatus @default(OPEN)
   amount      Int // minor units
   currency    String        @default("AZN")
   periodStart DateTime
   periodEnd   DateTime
-  lines       Json // [{ description, quantity, unitAmount }]
+  lines       Json // InvoiceLineDto[]
+  // Applied to the subscription when paid: { planId, interval, periodStart, periodEnd, extraSeats, extraStorageMb, status }
+  apply       Json?
   paidAt      DateTime?
   createdAt   DateTime      @default(now())
 
@@ -199,7 +218,7 @@ model Invoice {
 }
 
 model Payment {
-  id          String   @id @default(cuid())
+  id          String   @id @default(cuid()) @map("_id")
   tenantId    String
   invoiceId   String
   provider    String // "payriff" | "epoint" | "manual" ...
@@ -215,7 +234,7 @@ model Payment {
 }
 
 model UsageCounter {
-  id       String   @id @default(cuid())
+  id       String   @id @default(cuid()) @map("_id")
   tenantId String
   metric   String // "seats" | "storage_mb" | "ai_credits" | "messages"
   period   DateTime // first day of the billing month
@@ -226,8 +245,14 @@ model UsageCounter {
   @@unique([tenantId, metric, period])
 }
 
+/// Platform-wide sequences (invoice numbers)
+model Counter {
+  id    String @id @map("_id") // e.g. "invoice:2026"
+  value Int    @default(0)
+}
+
 model PlatformExpense {
-  id         String   @id @default(cuid())
+  id         String   @id @default(cuid()) @map("_id")
   category   String // "api" | "ai" | "server" | "sms" | "other"
   vendor     String
   amount     Int
@@ -255,7 +280,7 @@ enum MemberStatus {
 }
 
 model Membership {
-  id           String       @id @default(cuid())
+  id           String       @id @default(cuid()) @map("_id")
   tenantId     String
   userId       String
   role         MemberRole   @default(EMPLOYEE)
@@ -279,15 +304,16 @@ model Membership {
 }
 
 model Department {
-  id       String  @id @default(cuid())
+  id       String  @id @default(cuid()) @map("_id")
   tenantId String
   name     String
   headId   String?
   parentId String?
 
   tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  head     Membership?  @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
-  parent   Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
+  // NoAction breaks the Membership ↔ Department cycle (required on MongoDB); members are disabled, never deleted
+  head     Membership?  @relation("DepartmentHead", fields: [headId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parent   Department?  @relation("DepartmentTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   children Department[] @relation("DepartmentTree")
   members  Membership[] @relation("DepartmentMembers")
 
@@ -306,7 +332,7 @@ enum LifecycleStage {
 }
 
 model Contact {
-  id           String         @id @default(cuid())
+  id           String         @id @default(cuid()) @map("_id")
   tenantId     String
   ownerId      String? // Membership id
   type         String         @default("person") // "person" | "company"
@@ -334,7 +360,7 @@ model Contact {
 }
 
 model Pipeline {
-  id        String  @id @default(cuid())
+  id        String  @id @default(cuid()) @map("_id")
   tenantId  String
   name      String
   isDefault Boolean @default(false)
@@ -345,7 +371,7 @@ model Pipeline {
 }
 
 model PipelineStage {
-  id          String @id @default(cuid())
+  id          String @id @default(cuid()) @map("_id")
   tenantId    String
   pipelineId  String
   name        String
@@ -360,7 +386,7 @@ model PipelineStage {
 }
 
 model Deal {
-  id            String    @id @default(cuid())
+  id            String    @id @default(cuid()) @map("_id")
   tenantId      String
   pipelineId    String
   stageId       String
@@ -388,7 +414,7 @@ model Deal {
 
 // Unified timeline for a contact: notes, calls, stage changes, messages, tasks
 model Activity {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   tenantId  String
   contactId String?
   dealId    String?
@@ -424,7 +450,7 @@ enum Priority {
 }
 
 model Project {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   tenantId  String
   name      String
   ownerId   String?
@@ -436,31 +462,31 @@ model Project {
 }
 
 model Task {
-  id          String     @id @default(cuid())
-  tenantId    String
-  projectId   String?
-  parentId    String? // subtasks
-  title       String
-  description String?
-  status      TaskStatus @default(TODO)
-  priority    Priority   @default(MEDIUM)
-  creatorId   String
-  assigneeId  String?
-  dueAt       DateTime?
-  completedAt DateTime?
+  id                String     @id @default(cuid()) @map("_id")
+  tenantId          String
+  projectId         String?
+  parentId          String? // subtasks
+  title             String
+  description       String?
+  status            TaskStatus @default(TODO)
+  priority          Priority   @default(MEDIUM)
+  creatorId         String
+  assigneeId        String?
+  dueAt             DateTime?
+  completedAt       DateTime?
   // When the overdue notice was sent; cleared when the due date moves
   overdueNotifiedAt DateTime?
   // RFC 5545 RRULE subset for recurring tasks, e.g. "FREQ=WEEKLY;INTERVAL=2"
-  recurrence  String?
-  contactId   String?
-  dealId      String?
-  position    Float      @default(0)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  recurrence        String?
+  contactId         String?
+  dealId            String?
+  position          Float      @default(0)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   project  Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  parent   Task?         @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  parent   Task?         @relation("Subtasks", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   subtasks Task[]        @relation("Subtasks")
   comments TaskComment[]
 
@@ -470,7 +496,7 @@ model Task {
 }
 
 model TaskComment {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   tenantId  String
   taskId    String
   authorId  String
@@ -493,7 +519,7 @@ enum ChannelType {
 }
 
 model Channel {
-  id          String      @id @default(cuid())
+  id          String      @id @default(cuid()) @map("_id")
   tenantId    String
   type        ChannelType
   name        String
@@ -519,7 +545,7 @@ enum ConversationStatus {
 }
 
 model Conversation {
-  id              String             @id @default(cuid())
+  id              String             @id @default(cuid()) @map("_id")
   tenantId        String
   channelId       String
   contactId       String?
@@ -554,7 +580,7 @@ enum MessageDirection {
 }
 
 model Message {
-  id             String           @id @default(cuid())
+  id             String           @id @default(cuid()) @map("_id")
   tenantId       String
   conversationId String
   direction      MessageDirection
@@ -572,7 +598,7 @@ model Message {
 }
 
 model CannedResponse {
-  id       String  @id @default(cuid())
+  id       String  @id @default(cuid()) @map("_id")
   tenantId String
   shortcut String // "/salam"
   body     String
@@ -583,7 +609,7 @@ model CannedResponse {
 }
 
 model WebhookEvent {
-  id          String    @id @default(cuid())
+  id          String    @id @default(cuid()) @map("_id")
   provider    String
   externalId  String // provider event id
   payload     Json
@@ -599,19 +625,24 @@ model WebhookEvent {
 // ─────────────────────────────────────────────────────────────
 
 model ChatRoom {
-  id           String   @id @default(cuid())
+  id           String   @id @default(cuid()) @map("_id")
   tenantId     String
   kind         String // "direct" | "department" | "group"
   name         String?
-  departmentId String?
+  departmentId String?  @unique // one room per department, members synced with it
+  directKey    String? // direct chats: sorted "memberA:memberB" so a pair has exactly one room
+  createdById  String?
   createdAt    DateTime @default(now())
 
   tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   members  ChatMember[]
   messages ChatMessage[]
+
+  @@unique([tenantId, directKey])
 }
 
 model ChatMember {
+  id         String    @id @default(cuid()) @map("_id")
   tenantId   String
   roomId     String
   memberId   String // Membership id
@@ -619,11 +650,12 @@ model ChatMember {
 
   room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
-  @@id([roomId, memberId])
+  @@unique([roomId, memberId])
+  @@index([tenantId, memberId])
 }
 
 model ChatMessage {
-  id          String    @id @default(cuid())
+  id          String    @id @default(cuid()) @map("_id")
   tenantId    String
   roomId      String
   authorId    String
@@ -643,7 +675,7 @@ model ChatMessage {
 // ─────────────────────────────────────────────────────────────
 
 model FileObject {
-  id         String   @id @default(cuid())
+  id         String   @id @default(cuid()) @map("_id")
   tenantId   String
   uploaderId String
   key        String   @unique // S3 key: tenants/<tenantId>/<yyyy>/<cuid>
@@ -661,7 +693,7 @@ model FileObject {
 }
 
 model Notification {
-  id        String    @id @default(cuid())
+  id        String    @id @default(cuid()) @map("_id")
   tenantId  String
   memberId  String
   type      String // "task_overdue" | "conversation_assigned" ...
@@ -673,7 +705,7 @@ model Notification {
 }
 
 model AuditLog {
-  id         String   @id @default(cuid())
+  id         String   @id @default(cuid()) @map("_id")
   tenantId   String?
   actorId    String? // User id
   action     String // "deal.updated" | "member.role_changed" ...
@@ -689,7 +721,7 @@ model AuditLog {
 }
 
 model SupportTicket {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   tenantId  String
   authorId  String
   subject   String

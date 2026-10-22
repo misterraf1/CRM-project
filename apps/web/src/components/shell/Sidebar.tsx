@@ -2,11 +2,12 @@
 
 import clsx from "clsx";
 import type { MeResponse } from "@axis/shared";
-import { ChevronsLeft, ChevronsRight, LogOut, X } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Lock, LogOut, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";
 import type { ShellSummary } from "@/lib/api/types";
+import { hasFeature } from "@/lib/billing";
 import { APP_NAME } from "@/lib/config";
 import { useI18n } from "@/lib/i18n/client";
 import { interpolate } from "@/lib/i18n/locales";
@@ -81,25 +82,27 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
                   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
                   const count = item.badge ? summary[item.badge] : 0;
                   const label = t.nav[item.key];
+                  const locked = !!item.feature && !hasFeature(session, item.feature);
                   return (
                     <li key={item.key}>
                       <Link
                         href={item.href}
                         onClick={onCloseMobile}
-                        title={narrow ? label : item.phase ? interpolate(t.common.phase, { n: item.phase }) : undefined}
+                        title={narrow ? label : locked ? t.billing.lockedHint : item.phase ? interpolate(t.common.phase, { n: item.phase }) : undefined}
                         aria-current={active ? "page" : undefined}
                         className={clsx(
                           "relative flex h-9 items-center gap-3 rounded-lg text-sm",
                           narrow ? "justify-center" : "px-3",
                           active
                             ? "bg-accent-soft font-medium text-accent"
-                            : item.phase
+                            : item.phase || locked
                               ? "text-fg-subtle hover:bg-muted hover:text-fg"
                               : "text-fg-muted hover:bg-muted hover:text-fg",
                         )}
                       >
                         <item.icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
                         {!narrow && <span className="flex-1 truncate">{label}</span>}
+                        {!narrow && locked && <Lock className="h-3.5 w-3.5 text-fg-subtle" aria-label={t.billing.lockedHint} />}
                         {count > 0 &&
                           (narrow ? (
                             <span className="absolute right-2 top-1.5 h-2 w-2 rounded-full bg-danger" aria-label={String(count)} />
@@ -107,7 +110,7 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
                             <span
                               className={clsx(
                                 "tabular rounded-full px-1.5 text-[11px] font-semibold leading-5",
-                                item.badge === "overdue" ? "bg-danger/10 text-danger" : "bg-accent text-accent-fg",
+                                item.badge === "overdue" ? "bg-danger/10 text-danger" : item.badge === "unreadChat" ? "bg-success text-white" : "bg-accent text-accent-fg",
                               )}
                             >
                               {count}

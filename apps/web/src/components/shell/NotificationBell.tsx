@@ -51,7 +51,8 @@ export function NotificationBell({ unread: initialUnread }: { unread: number }) 
       setUnread((u) => Math.max(0, u - 1));
     }
     setOpen(false);
-    if (x.payload.taskId) router.push(`/tasks/${x.payload.taskId}`);
+    if (x.type.startsWith("billing_")) router.push("/settings/billing");
+    else if (x.payload.taskId) router.push(`/tasks/${x.payload.taskId}`);
     router.refresh();
   }
 

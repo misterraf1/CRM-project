@@ -4,12 +4,15 @@ import { Board } from "@/components/deals/Board";
 import { ForecastBar } from "@/components/deals/ForecastBar";
 import { getDeals, getForecast, getPipelines } from "@/lib/api";
 import { getI18n } from "@/lib/i18n/server";
+import { planGate } from "@/components/billing/UpgradeGate";
 
 export const metadata: Metadata = { title: "Deals" };
 
 type Props = { searchParams: Promise<{ q?: string }> };
 
 export default async function DealsPage({ searchParams }: Props) {
+  const gate = await planGate("deals.pipeline");
+  if (gate) return gate;
   const { q } = await searchParams;
   const [{ t, locale }, pipelines] = await Promise.all([getI18n(), getPipelines()]);
   const pipeline = pipelines[0];

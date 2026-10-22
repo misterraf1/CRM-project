@@ -17,10 +17,9 @@ jobs:
       - run: npm ci
       - run: npm run db:validate
         env:
-          DATABASE_URL: postgresql://x@localhost/x
-          DIRECT_DATABASE_URL: postgresql://x@localhost/x
+          DATABASE_URL: mongodb://localhost/x
       - run: npm run typecheck
-      # API e2e tests start their own throwaway PostgreSQL (embedded-postgres)
+      # API e2e tests start their own throwaway MongoDB replica set (mongodb-memory-server)
       - run: npm test
       - run: npm run build
       - run: cp .env.example .env
@@ -28,7 +27,7 @@ jobs:
       - name: Start stack
         run: |
           nohup npm run db:start > db.log 2>&1 &
-          timeout 120 bash -c 'until grep -q "PostgreSQL ready" db.log; do sleep 1; done'
+          timeout 180 bash -c 'until grep -q "MongoDB ready" db.log; do sleep 1; done'
           (cd apps/api && nohup node dist/main.js > ../../api.log 2>&1 &)
           (cd apps/web && nohup npx next start -p 3000 > ../../web.log 2>&1 &)
           timeout 60 bash -c 'until curl -sf localhost:4000/health && curl -sf -o /dev/null localhost:3000/login; do sleep 1; done'

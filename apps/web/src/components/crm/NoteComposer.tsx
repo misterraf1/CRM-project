@@ -16,10 +16,11 @@ export function NoteComposer({ contactId }: { contactId: string }) {
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!body.trim()) return;
+    const sent = body;
     startTransition(async () => {
-      const res = await api(`/contacts/${contactId}/notes`, "POST", { body });
+      const res = await api(`/contacts/${contactId}/notes`, "POST", { body: sent });
       if (!res.ok) return setError(errorMessage(t, res.code));
-      setBody("");
+      setBody((current) => (current === sent ? "" : current));
       setError(undefined);
       router.refresh();
     });

@@ -10,12 +10,15 @@ import { ApiRequestError } from "@/lib/api/server";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
 import { getI18n } from "@/lib/i18n/server";
+import { planGate } from "@/components/billing/UpgradeGate";
 
 export const metadata: Metadata = { title: "Team" };
 
 type Props = { params: Promise<{ id: string }> };
 
 export default async function MemberProfilePage({ params }: Props) {
+  const gate = await planGate("team.monitoring");
+  if (gate) return gate;
   const { id } = await params;
   const profile = await getMemberProfile(id).catch((e) => {
     if (e instanceof ApiRequestError && e.status === 404) notFound();

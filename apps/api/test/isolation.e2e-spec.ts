@@ -1,6 +1,9 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { addMember, appRoleClient, createApp, signup } from "./helpers";
+import { Prisma } from "@prisma/client";
+import { PrismaService } from "../src/prisma/prisma.service";
+import { TENANT_MODELS, TenantGuardError } from "../src/prisma/tenant-guard";
+import { addMember, createApp, signup } from "./helpers";
 
 // The core SaaS guarantee: one company can never see or touch another's data.
 
@@ -70,62 +73,71 @@ describe("Tenant isolation", () => {
     await http().post("/v1/auth/switch").set(a.auth).send({ tenantId: meB.body.tenant.id }).expect(404);
   });
 
-  describe("PostgreSQL RLS (below the API)", () => {
-    it("every table with tenantId has RLS enabled and forced (except Session)", async () => {
-      const db = await appRoleClient();
-      const { rows } = await db.query(`
-        SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
-        FROM pg_class c JOIN information_schema.columns col ON col.table_name = c.relname AND col.table_schema = 'public'
-        WHERE col.column_name = 'tenantId' AND c.relkind = 'r'`);
-      await db.end();
-      const unprotected = rows.filter((r: { relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }) => r.relname !== "Session" && !(r.relrowsecurity && r.relforcerowsecurity));
-      expect(rows.length).toBeGreaterThan(20);
-      expect(unprotected).toEqual([]);
+  describe("tenant guard (below the API)", () => {
+    // The same guard every API query passes through, exercised directly with
+    // deliberately unfiltered queries — what a bug in a service would look like.
+    const guarded = () => app.get(PrismaService);
+
+    it("every model with tenantId is guarded (except Session)", () => {
+      const withTenant = Prisma.dmmf.datamodel.models.filter((m) => m.fields.some((f) => f.name === "tenantId")).map((m) => m.name);
+      expect(withTenant.length).toBeGreaterThan(20);
+      expect(withTenant.filter((m) => m !== "Session" && !TENANT_MODELS.has(m))).toEqual([]);
     });
 
-    it("without context the app role sees no tenant rows at all", async () => {
+    it("without tenant context nothing is visible and nothing can be written", async () => {
       await signup(app, "Görünməz");
-      const db = await appRoleClient();
-      const counts = await db.query(`SELECT
-        (SELECT count(*) FROM "Tenant")::int AS tenants,
-        (SELECT count(*) FROM "Membership")::int AS memberships,
-        (SELECT count(*) FROM "Subscription")::int AS subscriptions,
-        (SELECT count(*) FROM "AuditLog")::int AS audit`);
-      await db.end();
-      expect(counts.rows[0]).toEqual({ tenants: 0, memberships: 0, subscriptions: 0, audit: 0 });
+      const db = guarded();
+      expect(await db.tenant.count()).toBe(0);
+      expect(await db.membership.count()).toBe(0);
+      expect(await db.subscription.count()).toBe(0);
+      expect(await db.auditLog.count()).toBe(0);
+      await expect(db.department.create({ data: { tenantId: "anything", name: "x" } })).rejects.toThrow(TenantGuardError);
     });
 
-    it("with tenant A's context, B's rows are invisible and cannot be written", async () => {
-      const a = await signup(app, "RLS A");
-      const b = await signup(app, "RLS B");
+    it("with tenant A's context, B's data is invisible and can't be changed or created", async () => {
+      const a = await signup(app, "Guard A");
+      const b = await signup(app, "Guard B");
       const [meA, meB] = await Promise.all([http().get("/v1/me").set(a.auth), http().get("/v1/me").set(b.auth)]);
       const A = meA.body.tenant.id as string;
       const B = meB.body.tenant.id as string;
+      const bMembership = meB.body.membership.id as string;
 
-      const db = await appRoleClient();
-      await db.query("BEGIN");
-      await db.query("SELECT set_config('app.tenant_id', $1, true)", [A]);
-      // A query that "forgot" its tenant filter still only returns A
-      const tenants = await db.query(`SELECT id FROM "Tenant"`);
-      expect(tenants.rows.map((r: { id: string }) => r.id)).toEqual([A]);
-      const leaked = await db.query(`SELECT count(*)::int AS n FROM "Membership" WHERE "tenantId" = $1`, [B]);
-      expect(leaked.rows[0].n).toBe(0);
-      // Updates against B affect nothing
-      const upd = await db.query(`UPDATE "Tenant" SET name = 'pwned' WHERE id = $1`, [B]);
-      expect(upd.rowCount).toBe(0);
-      // Inserting a row for B is rejected by the policy
-      await expect(db.query(`INSERT INTO "Department" (id, "tenantId", name) VALUES ('x', $1, 'evil')`, [B])).rejects.toThrow(
-        /row-level security/,
-      );
-      await db.query("ROLLBACK");
+      await guarded().scoped(
+        async (tx) => {
+          // Queries that "forgot" their tenant filter still only see A
+          expect((await tx.tenant.findMany({ select: { id: true } })).map((t) => t.id)).toEqual([A]);
+          expect(await tx.membership.count({ where: { tenantId: B } })).toBe(0);
+          expect(await tx.membership.findUnique({ where: { id: bMembership } })).toBeNull();
+          // Writes against B affect nothing
+          expect((await tx.tenant.updateMany({ where: { id: B }, data: { name: "pwned" } })).count).toBe(0);
+          expect((await tx.membership.updateMany({ where: { id: bMembership }, data: { role: "EMPLOYEE" } })).count).toBe(0);
+          await expect(tx.membership.update({ where: { id: bMembership }, data: { role: "EMPLOYEE" } })).rejects.toThrow();
+          // Creating rows for B, or moving a row to B, is rejected
+          await expect(tx.department.create({ data: { tenantId: B, name: "evil" } })).rejects.toThrow(TenantGuardError);
+          await expect(tx.contact.createMany({ data: [{ tenantId: A, name: "ok" }, { tenantId: B, name: "evil" }] })).rejects.toThrow(TenantGuardError);
+          const own = await tx.contact.create({ data: { tenantId: A, name: "Mine" } });
+          await expect(tx.contact.update({ where: { id: own.id }, data: { tenantId: B } })).rejects.toThrow(TenantGuardError);
+          throw new Error("rollback");
+        },
+        { tenantId: A },
+      ).catch((e) => {
+        if (e.message !== "rollback") throw e;
+      });
 
-      // Platform finance table is off-limits; plans are read-only
-      await expect(db.query(`SELECT * FROM "PlatformExpense"`)).rejects.toThrow(/permission denied/);
-      await expect(db.query(`UPDATE "Plan" SET "priceMonthly" = 0`)).rejects.toThrow(/permission denied/);
-      await db.end();
+      // Platform tables: finance is off-limits, plans are read-only
+      await expect(guarded().platformExpense.findMany()).rejects.toThrow(TenantGuardError);
+      await expect(guarded().plan.updateMany({ data: { priceMonthly: 0 } })).rejects.toThrow(TenantGuardError);
+      expect(await guarded().plan.count()).toBe(3);
 
       const stillB = await http().get("/v1/me").set(b.auth).expect(200);
-      expect(stillB.body.tenant.name).toBe("RLS B");
+      expect(stillB.body.tenant.name).toBe("Guard B");
+      expect(stillB.body.membership.role).toBe("OWNER");
+    });
+
+    it("system() is the only way across tenants", async () => {
+      await signup(app, "Sistem");
+      expect(await guarded().tenant.count()).toBe(0);
+      expect(await guarded().system(() => guarded().tenant.count())).toBeGreaterThan(0);
     });
   });
 });

@@ -1,6 +1,9 @@
 import { Controller, Get, HttpCode, Param, Post } from "@nestjs/common";
+import { AllowInactive } from "../common/decorators";
 import { NotificationsService } from "./notifications.service";
 
+// Reading notices (e.g. "payment failed") must work while suspended
+@AllowInactive()
 @Controller("v1")
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}

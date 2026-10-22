@@ -66,11 +66,11 @@ export class DashboardService {
       const [refs, doneByMember, overdueByMember, openTasks, overdueTasks, overdueItems] = await Promise.all([
         memberRefs(tx, ctx.tenantId, ids),
         tx.task.groupBy({ by: ["assigneeId"], where: { tenantId: ctx.tenantId, parentId: null, status: "DONE", assigneeId: { in: ids }, completedAt: { gte: start } }, _count: true }),
-        tx.task.groupBy({ by: ["assigneeId"], where: { ...openTask, assigneeId: { in: ids }, dueAt: { lt: now } }, _count: true }),
+        tx.task.groupBy({ by: ["assigneeId"], where: { ...openTask, assigneeId: { in: ids }, dueAt: { lt: now, not: null } }, _count: true }),
         tx.task.count({ where: { AND: [openTask, taskWhere] } }),
-        tx.task.count({ where: { AND: [openTask, taskWhere, { dueAt: { lt: now } }] } }),
+        tx.task.count({ where: { AND: [openTask, taskWhere, { dueAt: { lt: now, not: null } }] } }),
         tx.task.findMany({
-          where: { AND: [openTask, taskWhere, { dueAt: { lt: now } }] },
+          where: { AND: [openTask, taskWhere, { dueAt: { lt: now, not: null } }] },
           orderBy: { dueAt: "asc" },
           take: 5,
           select: { id: true, title: true, dueAt: true, priority: true, assigneeId: true },

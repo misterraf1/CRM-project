@@ -10,12 +10,14 @@ import {
   type DealUpdateInput,
 } from "@axis/shared";
 import { z } from "zod";
-import { RequirePermission } from "../common/decorators";
+import { RequireFeature, RequirePermission } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { DealsService } from "./deals.service";
 
 const forecastQuery = z.object({ pipelineId: z.string().min(1).max(64).optional() });
 
+// Sales pipeline: PRO and up
+@RequireFeature("deals.pipeline")
 @Controller("v1")
 export class DealsController {
   constructor(private readonly deals: DealsService) {}

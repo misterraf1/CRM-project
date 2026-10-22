@@ -1,20 +1,17 @@
 # Alternative to `npm run db:start` for machines with Docker.
-# Same ports/credentials as .env.example, so the apps need no changes.
+# Same port as .env.example (directConnection=true), so the apps need no changes.
 services:
-  postgres:
-    image: postgres:17.2
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: axis
-    ports: ["5433:5432"]
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-app-role.sql:ro
+  # Single-node replica set: MongoDB transactions require one
+  mongo:
+    image: mongo:7.0
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports: ["27018:27017"]
+    volumes: [mongodata:/data/db]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d axis"]
+      # Initiates the replica set on first start, then reports healthy
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] }).ok }\""]
       interval: 5s
-      retries: 10
+      retries: 20
 
   # Used from Phase 3 (queues, websocket fan-out, distributed rate limiting)
   redis:
@@ -32,5 +29,5 @@ services:
     volumes: [minio:/data]
 
 volumes:
-  pgdata:
+  mongodata:
   minio:

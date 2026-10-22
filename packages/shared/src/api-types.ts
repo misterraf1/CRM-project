@@ -13,6 +13,9 @@ export type ErrorCode =
   | "SEAT_LIMIT"
   | "STORAGE_LIMIT"
   | "FILE_TOO_LARGE"
+  | "FEATURE_NOT_IN_PLAN"
+  | "SUBSCRIPTION_INACTIVE"
+  | "PAYMENT_FAILED"
   | "WINDOW_CLOSED"
   | "CHANNEL_ERROR"
   | "INVITE_INVALID"
@@ -44,7 +47,12 @@ export interface MeResponse {
     status: SubscriptionStatus;
     trialEndsAt: string | null;
     currentPeriodEnd: string;
+    /** PAST_DUE: access continues until then, then the account is suspended */
+    graceEndsAt: string | null;
+    cancelAtPeriodEnd: boolean;
     seats: { used: number; limit: number };
+    /** Plan features in effect (trial = everything) */
+    features: string[];
   };
   memberships: { tenantId: string; tenantName: string; slug: string; role: MemberRole }[];
 }

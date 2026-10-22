@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from "@nestjs/common";
 import { departmentSchema, type DepartmentInput } from "@axis/shared";
-import { RequirePermission } from "../common/decorators";
+import { RequireFeature, RequirePermission } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { DepartmentsService } from "./departments.service";
 
@@ -14,12 +14,14 @@ export class DepartmentsController {
     return this.departments.list();
   }
 
+  @RequireFeature("departments")
   @RequirePermission("departments.manage")
   @Post()
   create(@Body(new ZodPipe(departmentSchema)) body: DepartmentInput) {
     return this.departments.create(body);
   }
 
+  @RequireFeature("departments")
   @RequirePermission("departments.manage")
   @Patch(":id")
   update(@Param("id") id: string, @Body(new ZodPipe(departmentSchema)) body: DepartmentInput) {

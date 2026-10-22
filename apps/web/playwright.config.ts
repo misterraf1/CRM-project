@@ -17,5 +17,6 @@ export default defineConfig({
     // scrolls an off-screen target into view mid-drag, which cancels HTML5 drag.
     viewport: { width: 1920, height: 1080 },
     trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
 });

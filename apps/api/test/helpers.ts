@@ -2,7 +2,8 @@ import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import type { AuthTokens, InviteCreatedResponse, MemberRole } from "@axis/shared";
-import { Client } from "pg";
+import { createNullFill } from "@axis/db/null-fill";
+import { Prisma, PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/bootstrap";
@@ -11,7 +12,10 @@ export async function createApp() {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication({ bodyParser: false, rawBody: true });
   configureApp(app);
-  await app.init();
+  // Listen once on IPv4 loopback. Otherwise supertest listens on an ephemeral port on
+  // every interface per request but connects to 127.0.0.1 — when another local program
+  // holds that port on IPv4, the request reaches it instead (random 401/404 failures).
+  await app.listen(0, "127.0.0.1");
   return app;
 }
 
@@ -29,8 +33,8 @@ export async function signup(app: INestApplication, companyName = "Test Şirkət
   const email = uniqueEmail("owner");
   const res = await request(app.getHttpServer())
     .post("/v1/auth/signup")
-    .send({ companyName, fullName: "Test Sahib", email, password: PASSWORD })
-    .expect(201);
+    .send({ companyName, fullName: "Test Sahib", email, password: PASSWORD });
+  if (res.status !== 201) throw new Error(`signup failed ${res.status}: ${JSON.stringify(res.body)}`);
   return { tokens: res.body, email, auth: { authorization: `Bearer ${res.body.accessToken}` } };
 }
 
@@ -48,16 +52,22 @@ export async function addMember(app: INestApplication, owner: Company, role: Mem
   return { email, memberId: body.member.id, auth: { authorization: `Bearer ${accepted.body.accessToken}` } };
 }
 
-/** Raw connection as the application role, to test RLS below the API. */
-export async function appRoleClient() {
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
-  await client.connect();
-  return client;
+/**
+ * Platform-level client without the tenant guard, for test setup the API can't do
+ * (ageing timestamps, switching plans). Mirrors what the seed script uses.
+ */
+export async function withRawDb<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
+  const db = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
+  db.$use(createNullFill(Prisma.dmmf));
+  try {
+    return await fn(db);
+  } finally {
+    await db.$disconnect();
+  }
 }
 
-/** Owner connection for test setup that the API itself cannot do (e.g. changing plans). */
-export async function ownerClient() {
-  const client = new Client({ connectionString: process.env.DIRECT_DATABASE_URL });
-  await client.connect();
-  return client;
-}
+export const setPlan = (tenantId: string, code: "START" | "PRO" | "BUSINESS") =>
+  withRawDb(async (db) => {
+    const plan = await db.plan.findUniqueOrThrow({ where: { code } });
+    await db.subscription.update({ where: { tenantId }, data: { planId: plan.id } });
+  });

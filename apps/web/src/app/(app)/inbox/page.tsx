@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ConversationList } from "@/components/inbox/ConversationList";
 import { ConversationView } from "@/components/inbox/ConversationView";
 import { CustomerPanel } from "@/components/inbox/CustomerPanel";
-import { InboxLive } from "@/components/inbox/InboxLive";
+import { LiveRefresh } from "@/components/shell/LiveRefresh";
 import { getChannels, getConversation, getConversations, getDepartments, getInboxMetrics, getMembers, getTemplates } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatDuration } from "@/lib/format";
@@ -52,7 +52,7 @@ export default async function InboxPage({ searchParams }: Props) {
             <div className="flex items-center justify-between gap-2">
               <h1 className="text-base font-semibold">{k.title}</h1>
               <div className="flex items-center gap-2">
-                <InboxLive />
+                <LiveRefresh url="/api/v1/inbox/stream" />
                 <Link href="/settings/channels" title={k.settings} aria-label={k.settings} className="grid h-7 w-7 place-items-center rounded-md text-fg-muted hover:bg-muted">
                   <Settings className="h-4 w-4" />
                 </Link>

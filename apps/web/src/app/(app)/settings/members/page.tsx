@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DepartmentsCard } from "@/components/members/DepartmentsCard";
 import { MembersManager } from "@/components/members/MembersManager";
 import { getDepartments, getMembers, getSession } from "@/lib/api";
+import { hasFeature } from "@/lib/billing";
 import { getI18n } from "@/lib/i18n/server";
 import { interpolate } from "@/lib/i18n/locales";
 
@@ -23,7 +24,7 @@ export default async function MembersPage() {
           <MembersManager me={me} members={members} departments={departments} />
         </div>
         <div className="min-w-0">
-          <DepartmentsCard departments={departments} canManage={me.permissions.includes("departments.manage")} />
+          <DepartmentsCard departments={departments} canManage={me.permissions.includes("departments.manage")} locked={!hasFeature(me, "departments")} />
         </div>
       </div>
     </div>

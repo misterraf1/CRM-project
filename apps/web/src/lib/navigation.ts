@@ -22,8 +22,10 @@ export interface NavItem {
   icon: LucideIcon;
   /** Development phase that delivers the module (docs/ARCHITECTURE.md §11); null = available now. */
   phase: number | null;
+  /** Plan feature the module needs; without it the sidebar shows a lock. */
+  feature?: string;
   /** Sidebar counter fed by the shell summary. */
-  badge?: "awaiting" | "overdue";
+  badge?: "awaiting" | "overdue" | "unreadChat";
 }
 
 export const NAV_GROUPS: { label: "groupWork" | "groupManage"; items: NavItem[] }[] = [
@@ -33,15 +35,15 @@ export const NAV_GROUPS: { label: "groupWork" | "groupManage"; items: NavItem[] 
       { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, phase: null },
       { key: "inbox", href: "/inbox", icon: MessageSquareText, phase: 4, badge: "awaiting" },
       { key: "crm", href: "/crm", icon: Users, phase: null },
-      { key: "deals", href: "/deals", icon: Handshake, phase: null },
+      { key: "deals", href: "/deals", icon: Handshake, phase: null, feature: "deals.pipeline" },
       { key: "tasks", href: "/tasks", icon: CheckSquare, phase: null, badge: "overdue" },
-      { key: "chat", href: "/chat", icon: MessagesSquare, phase: 5 },
+      { key: "chat", href: "/chat", icon: MessagesSquare, phase: null, badge: "unreadChat" },
     ],
   },
   {
     label: "groupManage",
     items: [
-      { key: "team", href: "/team", icon: UsersRound, phase: null },
+      { key: "team", href: "/team", icon: UsersRound, phase: null, feature: "team.monitoring" },
       { key: "files", href: "/files", icon: FolderOpen, phase: 8 },
       { key: "analytics", href: "/analytics", icon: BarChart3, phase: 8 },
       { key: "automations", href: "/automations", icon: Workflow, phase: 8 },

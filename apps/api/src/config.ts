@@ -35,6 +35,12 @@ const schema = z.object({
   META_APP_SECRET: z.string().min(16).optional(),
   META_VERIFY_TOKEN: z.string().min(8).optional(),
   META_GRAPH_URL: z.string().url().default("https://graph.facebook.com/v21.0"),
+  /**
+   * Payment provider. Only "demo" exists today: a hosted page on our own web app,
+   * clearly labelled, that charges nothing. Payriff / Epoint plug in as providers.
+   */
+  BILLING_PROVIDER: z.enum(["demo"]).default("demo"),
+  GRACE_DAYS: z.coerce.number().int().positive().default(7),
   /** Requests per minute per IP on auth endpoints */
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(10),
 });

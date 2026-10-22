@@ -17,6 +17,7 @@ import { ApiRequestError } from "@/lib/api/server";
 import { formatMoney } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
 import { getI18n } from "@/lib/i18n/server";
+import { hasFeature } from "@/lib/billing";
 
 export const metadata: Metadata = { title: "CRM" };
 
@@ -24,7 +25,9 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function ContactPage({ params }: Props) {
   const { id } = await params;
-  const [{ t, locale }, me, members, pipelines] = await Promise.all([getI18n(), getSession(), getMembers(), getPipelines()]);
+  const [{ t, locale }, me, members] = await Promise.all([getI18n(), getSession(), getMembers()]);
+  // Deals are a PRO feature; without it the contact page simply has no deals block
+  const pipelines = hasFeature(me, "deals.pipeline") ? await getPipelines() : [];
   const [contact, activities, tasks, conversations] = await Promise.all([
     getContact(id),
     getContactActivities(id),

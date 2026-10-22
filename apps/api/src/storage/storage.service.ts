@@ -4,6 +4,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { Readable } from "node:stream";
 import { config } from "../config";
+import type { Tx } from "../prisma/prisma.service";
 
 /**
  * File storage behind a small interface so production can swap in an S3-compatible
@@ -43,3 +44,13 @@ export class LocalFileStorage implements FileStorage {
 }
 
 export const FILE_STORAGE = Symbol("FILE_STORAGE");
+
+/**
+ * Deletes the file records attached to entities and returns their storage keys;
+ * callers remove the blobs after the transaction commits.
+ */
+export async function detachFiles(tx: Tx, tenantId: string, entityType: "task" | "chat", entityIds: string[]) {
+  const files = await tx.fileObject.findMany({ where: { tenantId, entityType, entityId: { in: entityIds } }, select: { key: true } });
+  await tx.fileObject.deleteMany({ where: { tenantId, entityType, entityId: { in: entityIds } } });
+  return files.map((f) => f.key);
+}

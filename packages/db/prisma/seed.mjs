@@ -1,11 +1,14 @@
 import "../scripts/load-env.mjs";
 import { hash } from "@node-rs/argon2";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
+import { createNullFill } from "../null-fill.js";
 
 // Idempotent: safe to run on every `npm run db:start`.
 // Plans always; the demo workspace only when SEED_DEMO !== "false".
 
-const prisma = new PrismaClient({ datasourceUrl: process.env.DIRECT_DATABASE_URL });
+// Seeding is a platform operation: it uses the plain client, outside the API tenant guard
+const prisma = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
+prisma.$use(createNullFill(Prisma.dmmf));
 
 const PLANS = [
   {
@@ -64,11 +67,11 @@ async function seedPlans() {
 
 async function seedDemo() {
   const passwordHash = await hash(DEMO_PASSWORD);
-  const pro = await prisma.plan.findUniqueOrThrow({ where: { code: "PRO" } });
+  // Trials run on the top plan so every feature can be tried
+  const pro = await prisma.plan.findUniqueOrThrow({ where: { code: "BUSINESS" } });
   const now = new Date();
 
   await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${DEMO_TENANT.id}, true)`;
     if (await tx.tenant.findUnique({ where: { id: DEMO_TENANT.id } })) return;
 
     await tx.tenant.create({ data: { ...DEMO_TENANT, status: "TRIALING" } });
@@ -142,7 +145,6 @@ const DEMO_DEALS = [
 
 async function seedDemoCrm() {
   await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${DEMO_TENANT.id}, true)`;
     let pipeline = await tx.pipeline.findFirst({ where: { tenantId: DEMO_TENANT.id, isDefault: true }, include: { stages: true } });
     if (!pipeline) {
       pipeline = await tx.pipeline.create({
@@ -209,7 +211,6 @@ const DEMO_TASKS = [
 
 async function seedDemoTasks() {
   await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${DEMO_TENANT.id}, true)`;
     if (await tx.task.count({ where: { tenantId: DEMO_TENANT.id } })) return;
     const members = await tx.membership.findMany({ where: { tenantId: DEMO_TENANT.id }, orderBy: { createdAt: "asc" } });
     const contacts = await tx.contact.findMany({ where: { tenantId: DEMO_TENANT.id }, orderBy: { createdAt: "desc" } });
@@ -244,7 +245,6 @@ async function seedDemoTasks() {
 // Demo inbox: a website chat (real widget) and a demo WhatsApp channel (nothing is sent to Meta)
 async function seedDemoInbox() {
   await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${DEMO_TENANT.id}, true)`;
     if (await tx.channel.count({ where: { tenantId: DEMO_TENANT.id } })) return;
     const members = await tx.membership.findMany({ where: { tenantId: DEMO_TENANT.id }, orderBy: { createdAt: "asc" } });
     const contacts = await tx.contact.findMany({ where: { tenantId: DEMO_TENANT.id } });
@@ -299,6 +299,37 @@ async function seedDemoInbox() {
   });
 }
 
+// Demo team chat: department room (Satış), a management group and a direct chat
+async function seedDemoChat() {
+  await prisma.$transaction(async (tx) => {
+    if (await tx.chatRoom.count({ where: { tenantId: DEMO_TENANT.id } })) return;
+    const [owner, admin, manager, employee] = await tx.membership.findMany({ where: { tenantId: DEMO_TENANT.id }, orderBy: { createdAt: "asc" }, take: 4 });
+    const sales = await tx.department.findFirst({ where: { tenantId: DEMO_TENANT.id, name: "Satış" } });
+    const min = 60_000;
+    const room = async (data, memberIds, msgs) => {
+      const r = await tx.chatRoom.create({ data: { tenantId: DEMO_TENANT.id, ...data, members: { create: memberIds.map((memberId) => ({ tenantId: DEMO_TENANT.id, memberId })) } } });
+      for (const [author, ago, body] of msgs) {
+        await tx.chatMessage.create({ data: { tenantId: DEMO_TENANT.id, roomId: r.id, authorId: author.id, body, createdAt: new Date(Date.now() - ago * min) } });
+      }
+    };
+    if (sales) {
+      await room({ kind: "department", name: sales.name, departmentId: sales.id }, [manager.id, employee.id], [
+        [manager, 180, "Salam komanda! Bu həftə Gəncə Aqro ilə müqaviləni bağlamalıyıq."],
+        [employee, 170, "Təklifi bu gün göndərirəm 👍"],
+        [manager, 40, "Sabah 10:00-da qısa iclas edək."],
+      ]);
+    }
+    await room({ kind: "group", name: "Rəhbərlik", createdById: owner.id }, [owner.id, admin.id, manager.id], [
+      [owner, 300, "Oktyabr nəticələrini cümə günü müzakirə edək."],
+      [admin, 290, "Hesabat hazırdır, paylaşacam."],
+    ]);
+    await room({ kind: "direct", directKey: [owner.id, manager.id].sort().join(":"), createdById: owner.id }, [owner.id, manager.id], [
+      [manager, 25, "Kamran bəy, Mobil tətbiq MVP üzrə endirim verə bilərikmi?"],
+    ]);
+    console.log("Demo chat: 3 rooms");
+  });
+}
+
 try {
   await seedPlans();
   if (process.env.SEED_DEMO !== "false") {
@@ -306,6 +337,7 @@ try {
     await seedDemoCrm();
     await seedDemoTasks();
     await seedDemoInbox();
+    await seedDemoChat();
   }
   console.log("Seed complete");
 } finally {

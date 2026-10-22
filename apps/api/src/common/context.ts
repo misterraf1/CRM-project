@@ -15,6 +15,9 @@ export interface RequestContext {
   sessionId?: string;
   role?: MemberRole;
   permissions?: Permission[];
+  /** Plan features in effect for the tenant (trial = all) */
+  features?: string[];
+  subscriptionStatus?: string;
 }
 
 export type AuthedContext = Required<Pick<RequestContext, "userId" | "tenantId" | "membershipId" | "sessionId" | "role" | "permissions">> &

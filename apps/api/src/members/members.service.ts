@@ -129,12 +129,11 @@ export class MembersService {
 
       const losesOwner = target.role === "OWNER" && ((input.role && input.role !== "OWNER") || input.status === "DISABLED");
       if (losesOwner) {
-        // Row locks serialise concurrent demotions (two owners demoting each other at once)
-        const owners = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id FROM "Membership"
-          WHERE "tenantId" = ${ctx.tenantId} AND role = 'OWNER' AND status = 'ACTIVE'
-          FOR UPDATE`;
-        if (owners.length <= 1) throw new AppError("LAST_OWNER", "The company must keep at least one active owner");
+        // Writing the tenant document serialises concurrent owner changes: MongoDB aborts
+        // one of two transactions touching it, and the retry sees the committed state
+        await tx.tenant.update({ where: { id: ctx.tenantId }, data: { lockVersion: { increment: 1 } } });
+        const owners = await tx.membership.count({ where: { tenantId: ctx.tenantId, role: "OWNER", status: "ACTIVE" } });
+        if (owners <= 1) throw new AppError("LAST_OWNER", "The company must keep at least one active owner");
       }
 
       if (input.status === "ACTIVE" && target.status !== "ACTIVE") {

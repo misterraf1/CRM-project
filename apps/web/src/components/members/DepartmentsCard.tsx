@@ -1,7 +1,8 @@
 "use client";
 
 import type { DepartmentDto } from "@axis/shared";
-import { Trash2 } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { api } from "@/lib/api/client";
@@ -9,7 +10,8 @@ import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
 import { interpolate } from "@/lib/i18n/locales";
 
-export function DepartmentsCard({ departments, canManage }: { departments: DepartmentDto[]; canManage: boolean }) {
+/** `locked`: the plan has no department management — existing ones can still be removed. */
+export function DepartmentsCard({ departments, canManage, locked }: { departments: DepartmentDto[]; canManage: boolean; locked: boolean }) {
   const { t } = useI18n();
   const m = t.members;
   const router = useRouter();
@@ -63,7 +65,13 @@ export function DepartmentsCard({ departments, canManage }: { departments: Depar
         </ul>
       )}
       {error && <p role="alert" className="mx-4 mb-2 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{error}</p>}
-      {canManage && (
+      {canManage && locked && (
+        <Link href="/settings/billing" className="flex items-center gap-2 border-t border-border p-3 text-xs text-fg-muted hover:text-fg">
+          <Lock className="h-3.5 w-3.5" aria-hidden />
+          {t.billing.lockedHint}
+        </Link>
+      )}
+      {canManage && !locked && (
         <form onSubmit={add} className="flex gap-2 border-t border-border p-3">
           <input name="name" required minLength={2} maxLength={80} placeholder={m.departmentName} aria-label={m.departmentName} className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 text-sm" />
           <button type="submit" disabled={pending} className="h-8 rounded-lg bg-accent px-3 text-xs font-semibold text-accent-fg disabled:opacity-60">

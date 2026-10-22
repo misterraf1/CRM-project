@@ -13,6 +13,7 @@ import type {
 } from "@axis/shared";
 import { authedContext, type AuthedContext } from "../common/context";
 import { AppError, forbidden, notFound } from "../common/errors";
+import { sortNullsLast } from "../common/sort";
 import { addDays, startOfDay } from "../common/time";
 import { ActivityService } from "../crm/activity.service";
 import { memberRefs, ownerScope } from "../crm/scope";
@@ -90,11 +91,12 @@ export class InboxService {
           ],
         },
         include: INCLUDE,
-        // Longest-waiting first, then most recent activity
-        orderBy: [{ awaitingSince: { sort: "asc", nulls: "last" } }, { lastMessageAt: { sort: "desc", nulls: "last" } }],
+        orderBy: { lastMessageAt: "desc" },
         take: 200,
       });
-      return this.toListDtos(tx, ctx, rows);
+      // Longest-waiting first, then most recent activity (nulls last)
+      const sorted = sortNullsLast(rows, [(c) => c.awaitingSince, "asc"], [(c) => c.lastMessageAt, "desc"]);
+      return this.toListDtos(tx, ctx, sorted);
     });
   }
 

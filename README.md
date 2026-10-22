@@ -10,14 +10,14 @@ Node.js 20.11+ lazımdır. Docker **lazım deyil**.
 cp .env.example .env     # bir dəfə
 npm install              # bir dəfə
 
-npm run db:start         # Terminal 1: PostgreSQL (.data/pg), migrasiya + seed. Açıq saxlayın.
+npm run db:start         # Terminal 1: MongoDB replica set (.data/mongo), indekslər + seed. Açıq saxlayın.
 npm run dev              # Terminal 2: API http://localhost:4000 + web http://localhost:3000
 ```
 
 Demo hesablar (şifrə `demo12345`): `owner@demo.axis`, `admin@demo.axis`, `manager@demo.axis`, `employee@demo.axis`.
 Və ya `/signup` səhifəsində öz şirkətinizi yaradın.
 
-Docker varsa `npm run db:start` əvəzinə: `docker compose up -d postgres && npm run db:migrate && npm run db:seed`.
+Docker varsa `npm run db:start` əvəzinə: `docker compose up -d mongo && npm run db:indexes && npm run db:seed`.
 
 ## Mesaj kanalları
 
@@ -29,11 +29,11 @@ Docker varsa `npm run db:start` əvəzinə: `docker compose up -d postgres && np
 ## Əmrlər
 
 ```bash
-npm test             # web unit + API e2e (öz müvəqqəti Postgres-ini qaldırır)
+npm test             # web unit + API e2e (öz müvəqqəti MongoDB replica set-ini qaldırır)
 npm run test:ui -w @axis/web   # Playwright UI testləri (db:start + dev işləyərkən; sistemdəki Chrome ilə)
 npm run typecheck
 npm run build
-npm run db:migrate   # yeni migrasiyaları tətbiq et
+npm run db:indexes   # MongoDB indekslərini yarat/yenilə (packages/db/scripts/indexes.mjs)
 ```
 
 ## Struktur
@@ -42,6 +42,6 @@ npm run db:migrate   # yeni migrasiyaları tətbiq et
 apps/api/        NestJS — REST API (auth, members, departments, audit)
 apps/web/        Next.js 15 — şirkət tətbiqi (BFF: tokenlər httpOnly cookie-də)
 packages/shared/ İcazə kataloqu, zod sxemləri, API tipləri (API və web üçün ortaq)
-packages/db/     Prisma sxemi, migrasiyalar (RLS daxil), seed, lokal Postgres skripti
+packages/db/     Prisma sxemi (MongoDB), indekslər, null-fill, seed, lokal MongoDB skripti
 docs/            Arxitektura sənədi
 ```

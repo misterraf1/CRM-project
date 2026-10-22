@@ -1,11 +1,14 @@
 "use client";
 
 import clsx from "clsx";
-import { Menu } from "lucide-react";
+import { AlertTriangle, Menu } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import type { MeResponse } from "@axis/shared";
 import type { ShellSummary } from "@/lib/api/types";
+import { formatDate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
+import { interpolate } from "@/lib/i18n/locales";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { NotificationBell } from "./NotificationBell";
 import { Sidebar } from "./Sidebar";
@@ -69,8 +72,38 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
             <ThemeToggle />
           </div>
         </header>
+        <SubscriptionBanner session={session} />
         <main className="mx-auto max-w-[1400px] px-4 py-6 lg:px-6">{children}</main>
       </div>
+    </div>
+  );
+}
+
+/** Payment problems and a scheduled end are visible on every page, not only in settings. */
+function SubscriptionBanner({ session }: { session: MeResponse }) {
+  const { t, locale } = useI18n();
+  const b = t.billing.banners;
+  const sub = session.subscription;
+  const date = (iso: string | null) => (iso ? formatDate(iso, locale, "long") : "");
+  const text =
+    sub.status === "PAST_DUE"
+      ? interpolate(b.PAST_DUE, { date: date(sub.graceEndsAt) })
+      : sub.status === "SUSPENDED" || sub.status === "CANCELED"
+        ? b[sub.status]
+        : sub.cancelAtPeriodEnd
+          ? interpolate(b.cancelAtPeriodEnd, { date: date(sub.currentPeriodEnd) })
+          : null;
+  if (!text) return null;
+  const severe = sub.status !== "ACTIVE" && sub.status !== "TRIALING";
+  return (
+    <div role="status" className={clsx("flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm lg:px-6", severe ? "bg-danger/10 text-danger" : "bg-warning/10 text-warning")}>
+      <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+      <span className="flex-1">{text}</span>
+      {session.permissions.includes("billing.manage") && (
+        <Link href="/settings/billing" className="font-medium underline-offset-2 hover:underline">
+          {b.action}
+        </Link>
+      )}
     </div>
   );
 }

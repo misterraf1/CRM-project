@@ -13,11 +13,12 @@ import { AppError, forbidden, notFound } from "../common/errors";
 import { memberRefs, ownerScope } from "../crm/scope";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService, type Tx } from "../prisma/prisma.service";
-import { FILE_STORAGE, type FileStorage } from "../storage/storage.service";
+import { detachFiles, FILE_STORAGE, type FileStorage } from "../storage/storage.service";
 
 const OPEN: Prisma.TaskWhereInput = { status: { notIn: ["DONE", "CANCELED"] } };
 const RECENT_DONE_DAYS = 14;
 const POSITION_STEP = 1024;
+const LIST_LIMIT = 500;
 
 const INCLUDE = {
   project: { select: { id: true, name: true } },
@@ -76,7 +77,7 @@ export class TasksService {
           : query.view === "created"
             ? { creatorId: ctx.membershipId }
             : query.view === "overdue"
-              ? { ...OPEN, dueAt: { lt: now } }
+              ? { ...OPEN, dueAt: { lt: now, not: null } }
               : {};
       const done: Prisma.TaskWhereInput = query.status
         ? { status: query.status }
@@ -84,8 +85,7 @@ export class TasksService {
           ? { OR: [OPEN, { completedAt: { gte: new Date(now.getTime() - RECENT_DONE_DAYS * 86_400_000) } }] }
           : OPEN;
       const q = query.q?.trim();
-      const rows = await tx.task.findMany({
-        where: {
+      const where: Prisma.TaskWhereInput = {
           AND: [
             { tenantId: ctx.tenantId, parentId: null },
             scoped,
@@ -97,12 +97,11 @@ export class TasksService {
             query.dealId ? { dealId: query.dealId } : {},
             q ? { title: { contains: q, mode: "insensitive" } } : {},
           ],
-        },
-        include: INCLUDE,
-        orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { position: "asc" }, { createdAt: "asc" }],
-        take: 500,
-      });
-      return this.toDtos(tx, ctx, rows);
+      };
+      // Dated tasks first by due date, then undated ones (no NULLS LAST in MongoDB)
+      const dated = await tx.task.findMany({ where: { AND: [where, { dueAt: { not: null } }] }, include: INCLUDE, orderBy: [{ dueAt: "asc" }, { position: "asc" }], take: LIST_LIMIT });
+      const undated = await tx.task.findMany({ where: { AND: [where, { dueAt: null }] }, include: INCLUDE, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: LIST_LIMIT - dated.length });
+      return this.toDtos(tx, ctx, [...dated, ...undated]);
     });
   }
 
@@ -233,11 +232,11 @@ export class TasksService {
       const task = await this.findVisible(tx, ctx, id);
       if (!this.canDelete(ctx, task)) throw forbidden("Only the creator or a manager can delete this task");
       const taskIds = [id, ...(await tx.task.findMany({ where: { tenantId: ctx.tenantId, parentId: id }, select: { id: true } })).map((t) => t.id)];
-      const files = await tx.fileObject.findMany({ where: { tenantId: ctx.tenantId, entityType: "task", entityId: { in: taskIds } }, select: { key: true } });
-      await tx.fileObject.deleteMany({ where: { tenantId: ctx.tenantId, entityType: "task", entityId: { in: taskIds } } });
-      // Subtasks and comments cascade via foreign keys
+      const keys = await detachFiles(tx, ctx.tenantId, "task", taskIds);
+      // Subtasks are removed explicitly (self-relations can't cascade on MongoDB); comments cascade
+      await tx.task.deleteMany({ where: { tenantId: ctx.tenantId, parentId: id } });
       await tx.task.delete({ where: { id } });
-      return files.map((f) => f.key);
+      return keys;
     });
     // Blobs go after the commit; a failure leaves an orphan blob, never a dangling record
     for (const key of keys) await this.storage.remove(key).catch((e) => this.logger.warn(`Orphan blob ${key}: ${e}`));

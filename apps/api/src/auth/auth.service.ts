@@ -37,7 +37,8 @@ export class AuthService {
       throw new AppError("EMAIL_TAKEN", "An account with this email already exists");
     }
     const passwordHash = await hashPassword(input.password);
-    const plan = await this.prisma.plan.findUniqueOrThrow({ where: { code: "PRO" } });
+    // The trial runs on the top plan so every feature can be tried before choosing
+    const plan = await this.prisma.plan.findUniqueOrThrow({ where: { code: "BUSINESS" } });
     const slug = await this.freeSlug(slugify(input.companyName));
     const tenantId = newId("tnt");
     const userId = newId("usr");
@@ -82,7 +83,9 @@ export class AuthService {
   private async freeSlug(base: string) {
     for (let n = 1; n <= 50; n++) {
       const candidate = n === 1 ? base : `${base}-${n}`;
-      const [{ taken }] = await this.prisma.$queryRaw<[{ taken: boolean }]>`SELECT tenant_slug_taken(${candidate}) AS taken`;
+      // Other tenants are invisible to tenant-scoped queries; this check only learns
+      // whether a public subdomain is taken
+      const taken = await this.prisma.system(() => this.prisma.tenant.count({ where: { slug: candidate } }));
       if (!taken) return candidate;
     }
     return `${base}-${Math.random().toString(36).slice(2, 8)}`;
@@ -158,7 +161,10 @@ export class AuthService {
           status: subscription.status,
           trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
           currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
+          graceEndsAt: subscription.graceEndsAt?.toISOString() ?? null,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
           seats,
+          features: this.entitlements.features(subscription),
         },
         memberships: memberships.map((m) => ({ tenantId: m.tenantId, tenantName: m.tenant.name, slug: m.tenant.slug, role: m.role })),
       };

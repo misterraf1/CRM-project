@@ -54,6 +54,10 @@ export class ChannelsService {
     if (input.type === "WEBCHAT") {
       externalId = `web_${randomToken(9)}`;
     } else {
+      // WhatsApp / Instagram / Messenger (demo channels included): PRO and up
+      if (!authedContext().features?.includes("inbox.omnichannel")) {
+        throw new AppError("FEATURE_NOT_IN_PLAN", "Messaging channels need the PRO plan or higher", { feature: "inbox.omnichannel" });
+      }
       demo = input.demo;
       const providerId = input.type === "WHATSAPP" ? input.phoneNumberId : input.accountId;
       if (demo) {

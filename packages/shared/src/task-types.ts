@@ -55,12 +55,20 @@ export interface ProjectDto {
   openTasks: number;
 }
 
-export type NotificationType = "task_assigned" | "task_comment" | "task_completed" | "task_overdue";
+export type NotificationType =
+  | "task_assigned"
+  | "task_comment"
+  | "task_completed"
+  | "task_overdue"
+  | "billing_paid"
+  | "billing_payment_failed"
+  | "billing_trial_ending"
+  | "billing_suspended";
 
 export interface NotificationDto {
   id: string;
   type: NotificationType;
-  payload: { taskId?: string; title?: string; actorName?: string; [k: string]: unknown };
+  payload: { taskId?: string; title?: string; actorName?: string; invoiceId?: string; [k: string]: unknown };
   readAt: string | null;
   createdAt: string;
 }
@@ -75,6 +83,8 @@ export interface ShellSummaryDto {
   overdueTasks: number;
   /** Conversations waiting for a reply, within the caller's inbox scope */
   awaitingConversations: number;
+  /** Unread team-chat messages across my rooms */
+  unreadChat: number;
   unreadNotifications: number;
 }
 

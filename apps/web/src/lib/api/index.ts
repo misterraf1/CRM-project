@@ -1,6 +1,11 @@
 import "server-only";
 import type {
   ActivityDto,
+  BillingOverviewDto,
+  InvoiceDto,
+  ChatRoomDetailDto,
+  ChatRoomDto,
+  ChatSearchHitDto,
   CannedResponseDto,
   ChannelDto,
   ConversationDetailDto,
@@ -36,7 +41,7 @@ export const getDepartments = () => apiFetch<DepartmentDto[]>("/v1/departments")
 
 export const getShellSummary = cache(async (): Promise<ShellSummary> => {
   const s = await apiFetch<ShellSummaryDto>("/v1/me/summary");
-  return { awaiting: s.awaitingConversations, overdue: s.overdueTasks, unreadNotifications: s.unreadNotifications };
+  return { awaiting: s.awaitingConversations, overdue: s.overdueTasks, unreadNotifications: s.unreadNotifications, unreadChat: s.unreadChat };
 });
 
 export const getDashboard = (period: Period) => apiFetch<DashboardCrmDto>(`/v1/dashboard?period=${period}`);
@@ -87,6 +92,17 @@ export const getChannels = () => apiFetch<ChannelDto[]>("/v1/inbox/channels");
 export const getTemplates = () => apiFetch<CannedResponseDto[]>("/v1/inbox/templates");
 
 export const getInboxMetrics = () => apiFetch<InboxMetricsDto>("/v1/inbox/metrics");
+
+export const getChatRooms = () => apiFetch<ChatRoomDto[]>("/v1/chat/rooms");
+
+export const getChatRoom = (id: string, before?: string) =>
+  apiFetch<ChatRoomDetailDto>(`/v1/chat/rooms/${encodeURIComponent(id)}${query({ before })}`);
+
+export const searchChat = (q: string) => apiFetch<ChatSearchHitDto[]>(`/v1/chat/search${query({ q })}`);
+
+export const getBilling = () => apiFetch<BillingOverviewDto>("/v1/billing");
+
+export const getInvoice = (id: string) => apiFetch<InvoiceDto & { company: string; plan: string }>(`/v1/billing/invoices/${encodeURIComponent(id)}`);
 
 export function parsePeriod(value: string | string[] | undefined): Period {
   return typeof value === "string" && (PERIODS as readonly string[]).includes(value) ? (value as Period) : "30d";

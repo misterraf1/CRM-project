@@ -10,7 +10,7 @@ import {
 } from "@axis/shared";
 import type { z } from "zod";
 import { config } from "../config";
-import { Public } from "../common/decorators";
+import { AllowInactive, Public } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { AuthService } from "./auth.service";
 import { TokensService } from "./tokens.service";
@@ -53,6 +53,7 @@ export class AuthController {
     await this.tokens.revokeByRefreshToken(body.refreshToken);
   }
 
+  @AllowInactive()
   @HttpCode(200)
   @Post("switch")
   switch(@Body(new ZodPipe(switchTenantSchema)) body: z.infer<typeof switchTenantSchema>) {

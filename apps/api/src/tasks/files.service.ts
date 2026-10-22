@@ -35,12 +35,21 @@ export class FilesService {
 
   async uploadToTask(taskId: string, file: UploadedFile | undefined): Promise<FileDto> {
     const ctx = authedContext();
+    await this.prisma.scoped((tx) => this.tasks.findVisible(tx, ctx, taskId));
+    return this.store({ entityType: "task", entityId: taskId }, file);
+  }
+
+  /**
+   * Stores an upload for any entity after the caller has checked access to it:
+   * enforces the plan's storage quota, writes the record, then the blob.
+   */
+  async store(target: { entityType: "task" | "chat"; entityId: string }, file: UploadedFile | undefined): Promise<FileDto> {
+    const ctx = authedContext();
     if (!file) throw new AppError("VALIDATION_FAILED", "No file", { file: ["Required"] });
     const id = newId("fil");
     const key = `tenants/${ctx.tenantId}/${id}`;
 
     const record = await this.prisma.scoped(async (tx) => {
-      await this.tasks.findVisible(tx, ctx, taskId);
       // Storage quota = plan + purchased add-on
       const [sub, used] = await Promise.all([
         tx.subscription.findUniqueOrThrow({ where: { tenantId: ctx.tenantId }, include: { plan: true } }),
@@ -61,8 +70,8 @@ export class FilesService {
           name: displayName(file.originalname),
           mimeType: file.mimetype.slice(0, 100) || "application/octet-stream",
           sizeBytes: file.size,
-          entityType: "task",
-          entityId: taskId,
+          entityType: target.entityType,
+          entityId: target.entityId,
         },
       });
     });
@@ -94,6 +103,10 @@ export class FilesService {
       if (f.entityType === "task" && f.entityId) await this.tasks.findVisible(tx, ctx, f.entityId).catch(() => {
         throw notFound("File");
       });
+      // Chat files: only current members of the room (entityId = room id)
+      if (f.entityType === "chat" && !(await tx.chatMember.count({ where: { roomId: f.entityId ?? "", memberId: ctx.membershipId } }))) {
+        throw notFound("File");
+      }
       return f;
     });
     return { file, stream: this.storage.read(file.key) };
@@ -103,6 +116,7 @@ export class FilesService {
     const ctx = authedContext();
     const key = await this.prisma.scoped(async (tx) => {
       const f = await tx.fileObject.findFirst({ where: { id, tenantId: ctx.tenantId } });
+      // Chat attachments are removed together with their message
       if (!f || f.entityType !== "task" || !f.entityId) throw notFound("File");
       const task = await this.tasks.findVisible(tx, ctx, f.entityId).catch(() => {
         throw notFound("File");

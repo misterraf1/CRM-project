@@ -3,7 +3,7 @@ import type { TaskDetailDto, TaskDto } from "@axis/shared";
 import request from "supertest";
 import { OverdueJob } from "../src/tasks/overdue.job";
 import { nextOccurrence } from "../src/tasks/tasks.service";
-import { addMember, createApp, ownerClient, signup, type Company } from "./helpers";
+import { addMember, createApp, setPlan, signup, withRawDb, type Company } from "./helpers";
 
 type Who = { auth: Record<string, string> };
 
@@ -160,6 +160,22 @@ describe("Tasks, files, notifications, team", () => {
     expect(await titles(owner, { view: "overdue" })).toEqual(["Gecikən"]);
   });
 
+  it("tasks without a due date are never overdue (MongoDB orders null before any date)", async () => {
+    const owner = await signup(app);
+    const emp = await addMember(app, owner, "EMPLOYEE");
+    await task(owner, { title: "Tarixsiz", assigneeId: emp.memberId }).expect(201);
+    await task(owner, { title: "Gələcək", assigneeId: emp.memberId, dueAt: new Date(Date.now() + 86400_000) }).expect(201);
+    expect(await titles(owner, { view: "overdue" })).toEqual([]);
+    expect((await http().get("/v1/me/summary").set(emp.auth)).body.overdueTasks).toBe(0);
+    const dash = (await http().get("/v1/dashboard").set(owner.auth).expect(200)).body;
+    expect(dash.tasks).toMatchObject({ open: 2, overdue: 0, overdueItems: [] });
+    const stats = (await http().get("/v1/team/stats").set(owner.auth)).body;
+    expect(stats.find((r: { member: { id: string } }) => r.member.id === emp.memberId)).toMatchObject({ openTasks: 2, overdueTasks: 0 });
+    // The background job ignores them too
+    await app.get(OverdueJob).run();
+    expect((await notifications(emp)).items.filter((n: { type: string }) => n.type === "task_overdue")).toEqual([]);
+  });
+
   it("links to CRM: contact reminders; foreign contact ids rejected", async () => {
     const owner = await signup(app);
     const other = await signup(app);
@@ -209,14 +225,12 @@ describe("Tasks, files, notifications, team", () => {
       expect(big.body.error.code).toBe("FILE_TOO_LARGE");
 
       // START plan = 2 048 MB; fill it up to 8 bytes below the limit
-      const db = await ownerClient();
-      await db.query(`UPDATE "Subscription" SET "planId" = (SELECT id FROM "Plan" WHERE code = 'START') WHERE "tenantId" = $1`, [me.tenant.id]);
-      await db.query(
-        `INSERT INTO "FileObject" (id, "tenantId", "uploaderId", key, name, "mimeType", "sizeBytes")
-         VALUES ('fil_quota_' || $1, $1, 'x', 'quota/' || $1, 'filler', 'x', $2)`,
-        [me.tenant.id, 2048 * 1024 * 1024 - 8],
+      await setPlan(me.tenant.id, "START");
+      await withRawDb((db) =>
+        db.fileObject.create({
+          data: { tenantId: me.tenant.id, uploaderId: "x", key: `quota/${me.tenant.id}`, name: "filler", mimeType: "x", sizeBytes: 2048 * 1024 * 1024 - 8 },
+        }),
       );
-      await db.end();
       const over = await http().post(`/v1/tasks/${t.id}/files`).set(owner.auth).attach("file", Buffer.from("hello world"), "a.txt");
       expect(over.status).toBe(402);
       expect(over.body.error.code).toBe("STORAGE_LIMIT");
