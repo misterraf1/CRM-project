@@ -9,7 +9,7 @@ import { configureApp } from "../src/bootstrap";
 
 export async function createApp() {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  const app = moduleRef.createNestApplication({ bodyParser: false });
+  const app = moduleRef.createNestApplication({ bodyParser: false, rawBody: true });
   configureApp(app);
   await app.init();
   return app;

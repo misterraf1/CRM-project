@@ -32,3 +32,12 @@ export function safeNext(value: unknown, fallback = "/dashboard") {
     ? value
     : fallback;
 }
+
+/**
+ * Client IP to forward to the API, so its per-IP rate limits see real users instead
+ * of this server. Next.js sets x-forwarded-for from the socket when there is no proxy.
+ */
+export function clientIpHeader(headers: Headers): Record<string, string> {
+  const ip = headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip");
+  return ip ? { "x-forwarded-for": ip } : {};
+}

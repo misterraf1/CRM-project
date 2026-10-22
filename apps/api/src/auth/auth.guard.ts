@@ -46,6 +46,7 @@ export class AuthGuard implements CanActivate {
       tenantId: payload.tid,
       sessionId: payload.sid,
       membershipId: membership.id,
+      departmentId: membership.departmentId,
       role: membership.role,
       permissions,
     });

@@ -1,12 +1,13 @@
 "use client";
 
 import clsx from "clsx";
-import { FlaskConical, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { MeResponse } from "@axis/shared";
 import type { ShellSummary } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n/client";
 import { LocaleSwitcher } from "./LocaleSwitcher";
+import { NotificationBell } from "./NotificationBell";
 import { Sidebar } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -62,17 +63,8 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
           >
             <Menu className="h-5 w-5" />
           </button>
-          {summary.demo && (
-            <span
-              title={t.common.demoHint}
-              className="inline-flex items-center gap-1.5 rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning"
-            >
-              <FlaskConical className="h-3.5 w-3.5" aria-hidden />
-              {t.common.demo}
-              <span className="hidden font-normal sm:inline">— {t.common.demoHint}</span>
-            </span>
-          )}
           <div className="ml-auto flex items-center gap-2">
+            <NotificationBell unread={summary.unreadNotifications} />
             <LocaleSwitcher />
             <ThemeToggle />
           </div>

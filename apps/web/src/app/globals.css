@@ -54,4 +54,19 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+  .field-label {
+    @apply block text-xs font-medium text-fg-muted;
+  }
+  .input {
+    @apply mt-1 block h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg hover:bg-accent/90 disabled:opacity-60;
+  }
+  .btn-ghost {
+    @apply inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-muted hover:text-fg disabled:opacity-60;
+  }
+  .btn-danger {
+    @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium text-danger hover:bg-danger/10 disabled:opacity-60;
+  }
 }

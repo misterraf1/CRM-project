@@ -3,18 +3,18 @@ import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ChannelIcon } from "@/components/ui/ChannelIcon";
-import type { DashboardData } from "@/lib/api/types";
+import type { DashboardCrmDto } from "@axis/shared";
 import { formatDuration } from "@/lib/format";
 import type { Dictionary } from "@/lib/i18n/dictionaries/az";
 import { interpolate, type Locale } from "@/lib/i18n/locales";
 
-export function AwaitingInbox({ inbox, now, t, locale }: { inbox: DashboardData["inbox"]; now: Date; t: Dictionary; locale: Locale }) {
+export function AwaitingInbox({ inbox, now, t, locale }: { inbox: DashboardCrmDto["inbox"]; now: Date; t: Dictionary; locale: Locale }) {
   const d = t.dashboard.inbox;
   return (
     <Card>
       <CardHeader
         title={d.title}
-        meta={interpolate(d.avgResponse, { time: formatDuration(inbox.avgFirstResponseMin, locale) })}
+        meta={inbox.avgFirstResponseMin !== null ? interpolate(d.avgResponse, { time: formatDuration(inbox.avgFirstResponseMin, locale) }) : undefined}
         action={{ href: "/inbox", label: t.common.viewAll }}
       />
       {inbox.items.length === 0 ? (
@@ -32,7 +32,7 @@ export function AwaitingInbox({ inbox, now, t, locale }: { inbox: DashboardData[
                   <ChannelIcon channel={c.channel} label={t.dashboard.channels[c.channel]} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="truncate text-sm font-medium">{c.contactName}</p>
+                      <p className="truncate text-sm font-medium">{c.displayName || t.inbox.visitor}</p>
                       <span className={`tabular shrink-0 text-xs ${waitMin > 60 ? "font-medium text-warning" : "text-fg-subtle"}`}>
                         {formatDuration(waitMin, locale)}
                       </span>

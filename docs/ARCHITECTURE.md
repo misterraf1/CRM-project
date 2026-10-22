@@ -285,5 +285,72 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 
 **Testlər:** 28 API e2e (real Postgres, hər icrada təmiz baza) + 6 web unit. Əsas yoxlananlar: iki şirkət arasında çarpaz giriş cəhdləri (404), RLS-in API-dən kənarda birbaşa SQL ilə yoxlanması, hər `tenantId` cədvəlində RLS-in aktiv olması, refresh token təkrar istifadəsində bütün ailənin ləğvi, deaktiv işçinin sessiyasının dərhal bitməsi, iki sahibin eyni anda bir-birini endirməsi (şirkət sahibsiz qalmır), yer limiti, rate limit.
 
-### Növbəti — Mərhələ 2: CRM + Satışlar
-Kontaktlar, müştəri kartı, zaman xətti, deal Kanban, Dashboard-un real API-yə keçməsi.
+### Mərhələ 2 — CRM + Satışlar ✅
+| Hissə | Vəziyyət | Harada |
+|---|---|---|
+| Müştərilər: siyahı (axtarış ad/email/telefon/şirkət, status və məsul filtri, səhifələmə), yaratma, redaktə, soft delete | ✅ | `apps/api/src/crm/contacts.*`, `/crm`, `/crm/new`, `/crm/[id]` |
+| Lead → Kvalifikasiya → Müştəri → İtirilmiş; satış qazanılanda müştəri avtomatik "Müştəri" olur | ✅ | |
+| Qeydlər və vahid zaman xətti (müştəri, satış, Dashboard eyni mənbədən) | ✅ | `Activity` cədvəli; adlar yazılma anında saxlanılır |
+| Satış pipeline-ı: Kanban (sürüşdür-burax + hər kartda mərhələ seçimi — klaviatura/mobil), itirmə səbəbi məcburi, bağlanmış satışlar 30 gün lövhədə | ✅ | `/deals`, `/deals/[id]` |
+| Proqnoz: açıq məbləğ, ehtimalla çəkili proqnoz, bu ay qazanılan/itirilən + səbəblər | ✅ | `GET /v1/deals/forecast` |
+| Görünmə sahəsi: Sahib/Admin hamısı · Rəhbər öz şöbəsi + təyin olunmamışlar · İşçi yalnız özününkü; başqasına təyin etmək yalnız Rəhbər+ | ✅ | `apps/api/src/crm/scope.ts` |
+| Dashboard real API-də (yeni müştərilər, aktiv satışlar, satış məbləği, dinamika, işçi performansı, fəaliyyət) | ✅ | `GET /v1/dashboard`; tarixlər şirkətin saat qurşağında |
+| Mesajlar və tapşırıqlar panelləri (Dashboard) | 🟡 **Demo** | ayrıca "Demo" nişanı ilə; Mərhələ 3–4 |
+| Xatırlatmalar | ⏳ | Tapşırıqlar modulu ilə (Mərhələ 3) |
+| Müştəri kartından mesaj yazmaq | ⏳ | Inbox ilə (Mərhələ 4) |
+| Bir neçə pipeline, mərhələləri redaktə etmək | ⏳ | sxem hazırdır, UI sonra |
+| Silinmiş müştərini bərpa etmək (UI) | ⏳ | məlumat saxlanılır (`deletedAt`) |
+
+**Bu mərhələdə tapılıb düzəldilənlər:**
+- BFF arxasında API bütün istifadəçiləri bir IP kimi görürdü → rate limit bütün platforma üçün ortaq olardı. İndi web real müştəri IP-sini ötürür, API ona yalnız etibarlı proksidən inanır (`TRUST_PROXY`).
+- Bir sorğuda yazılan hadisələrin vaxtı eyni olduğundan zaman xəttinin sırası təsadüfi idi → monoton vaxt + ikinci sıralama açarı.
+- Kanban sütunları sabit enli idi və 1400px konteynerə sığmırdı → elastik sütunlar.
+
+**Testlər:** 43 API e2e (o cümlədən 14 CRM: rollar üzrə görünmə, çarpaz şirkət, Kanban qaydaları, proqnoz, Dashboard rəqəmlərinin bir-biri ilə uyğunluğu) + 7 web unit + 4 Playwright UI ssenarisi (qeydiyyat → müştəri → qeyd → satış → Kanban sürüşdürmə → qazanılan → Dashboard; itirmə dialoqu; dəvət olunan işçinin məhdud görünüşü; dil və çıxış).
+
+### Mərhələ 3 — Tapşırıqlar + Komanda ✅
+| Hissə | Vəziyyət | Harada |
+|---|---|---|
+| Tapşırıqlar: məsul, son tarix (şirkətin saat qurşağında), prioritet, status, təsvir, layihə, siyahı və lövhə (sürüşdürmə + seçim), bir kliklə tamamlama, axtarış, "Mənim / Yaratdığım / Hamısı / Gecikmiş" | ✅ | `apps/api/src/tasks`, `/tasks`, `/tasks/[id]` |
+| Alt tapşırıqlar (1 səviyyə), şərhlər, təkrarlanan tapşırıqlar (gündəlik / həftəlik / 2 həftə / aylıq — tamamlananda növbəti yaranır) | ✅ | |
+| Müştəri/satışa bağlı tapşırıq = xatırlatma; müştəri kartında "Tapşırıqlar və xatırlatmalar" | ✅ | |
+| Görünmə: Sahib/Admin hamısı · Rəhbər öz şöbəsinin (məsul və ya yaradan) · İşçi özününkü; təyin etmə: Rəhbər+ hər kəsə, İşçi özünə və şöbə həmkarına | ✅ | `taskScope()`; yeni icazə `tasks.view_all` |
+| Fayllar: yükləmə (10 MB), endirmə (həmişə "attachment", `nosniff`, `sandbox`), silmə, paket yaddaş limiti | ✅ lokal disk | `apps/api/src/storage` — **S3 adapteri yazılmayıb** (interfeys hazırdır; deploy mərhələsində) |
+| Bildirişlər: təyin olunma, şərh, tamamlanma, gecikmə; zəng ikonu, oxundu/hamısını oxu | ✅ | `apps/api/src/notifications` |
+| Gecikmə bildirişi fon prosesi (5 dəq): hər tapşırıq üçün bir dəfə, bir neçə API instansında da təkrarlanmır; son tarix dəyişəndə yenidən aktivləşir | ✅ | `tasks/overdue.job.ts` + DB funksiyası `tasks_due_for_overdue_notice` (yalnız id qaytarır) |
+| Komanda: işçi kartları (açıq/gecikən/tamamlanan tapşırıq, satış, məbləğ, açıq satış, dövr filtri), işçi profili (cari tapşırıqlar, fəaliyyət) | ✅ | `/team`, `/team/[id]` |
+| Dashboard: tapşırıq KPI və gecikmiş tapşırıqlar paneli real; işçi cədvəlində tamamlanan/gecikən | ✅ | demo yalnız Mesajlar üçün qalır |
+| E-poçt/push bildirişləri, ümumi "Fayllar" səhifəsi, tapşırıq şablonları | ⏳ | sonra |
+
+**Bu mərhələdə tapılıb düzəldilənlər:**
+- Yeni icazə əlavə edilərkən skript səhvən onu Rəhbər roluna da yazmışdı → Rəhbər bütün şirkətin tapşırıqlarını görərdi. Test tutdu; düzəldildi və rol matrisi indi ayrıca testlə sabitlənib (`test/permissions.e2e-spec.ts`).
+- Azərbaycan hərfli fayl adları ("müqavilə") yükləmədə korlanırdı (multipart adları latin1 kimi oxunurdu) → UTF-8 bərpası.
+- Tapşırıq silinəndə faylları diskdə yetim qalırdı → qeydlər tranzaksiyada, bloblar commit-dən sonra silinir.
+
+**Testlər:** 54 API e2e + 5 rol matrisi + 8 web unit + 7 Playwright UI ssenarisi (o cümlədən tapşırıq → lövhə → alt tapşırıq → şərh → fayl yükləmə/endirmə; bildiriş zəngi ilə təyin olunma; müştəri xatırlatması).
+
+### Mərhələ 4 — Vahid mesaj mərkəzi ✅
+| Hissə | Vəziyyət | Harada |
+|---|---|---|
+| Sayt çatı: `<script src=".../widget.js">` ilə istənilən sayta qoşulur, iframe-də işləyir (sahib saytı yazışmanı və cookie-ləri görmür), ziyarətçi tokeni yalnız hash kimi saxlanılır | ✅ **real** | `public/widget.js`, `/widget/[key]`, `apps/api/src/inbox/widget.controller.ts` |
+| WhatsApp Cloud API, Messenger, Instagram: rəsmi Graph endpoint-ləri, `X-Hub-Signature-256` yoxlaması, idempotent webhook, çatdırılma statusları, WhatsApp 24 saat pəncərəsi | ✅ kod + testlər | **Real Meta-ya qarşı yoxlanmayıb** — testlər lokal saxta Graph serverinə qarşıdır. Real qoşulma üçün Meta tətbiqi, `META_APP_SECRET`, `META_VERIFY_TOKEN` və ictimai HTTPS API ünvanı lazımdır |
+| Access token-lər AES-256-GCM ilə şifrəli (`CHANNEL_SECRET_KEY`), API heç vaxt qaytarmır | ✅ | `inbox/secrets.ts` |
+| Demo kanallar: açarsız, "Demo" nişanlı, heç nə göndərilmir, gələn mesaj simulyatoru | ✅ | Parametrlər → Kanallar |
+| Mesaj mərkəzi: 3 panel, status (Açıq/Gözləmədə/Həll edilib), "Mənim/Təyin olunmayıb", axtarış, oxunmamış sayı, gözləmə müddəti | ✅ | `/inbox` |
+| "Müştəriyə cavab" ↔ "Daxili qeyd" aydın ayrımı (fərqli rəng; qeyd heç vaxt müştəriyə/widget-ə getmir) | ✅ | testlə təsdiqlənib |
+| Təyin etmə, şöbəyə yönləndirmə, ilk cavabda avtomatik təyin, müştəri yenidən yazanda avtomatik açılma | ✅ | |
+| CRM-ə əlavə etmə; telefon/email üzrə avtomatik müştəri tanıma; müştəri kartında yazışmalar | ✅ | |
+| Hazır cavablar (siyahıdan və ya `/qısayol` + boşluq) | ✅ | |
+| Real vaxt: SSE axını (`/v1/inbox/stream`), agent ekranı yenilənmədən dəyişir | ✅ | tək API instansı üçün; çoxlu instansda Redis pub/sub lazımdır |
+| Cavab müddəti metrikləri (ümumi, işçi, kanal) → Dashboard və işçi cədvəli | ✅ | demo məlumat modulu **tam silindi** |
+| Görünmə: Sahib/Admin hamısı · Rəhbər öz şöbəsi + təyin olunmamışlar · İşçi yalnız ona təyin olunanlar | ✅ | `inboxScope()`; yeni icazə `inbox.view_all` |
+| WhatsApp şablon mesajları (24 saatdan sonra yazmaq), media fayllar, email kanalı | ⏳ | sonra |
+
+**Bu mərhələdə tapılıb düzəldilənlər:**
+- `useEffect(() => el.scrollIntoView())` kimi qısa effektlər Chrome-un yeni versiyalarında (scroll metodları Promise qaytarır) səhifəni çökdürürdü — widget və yazışma ekranı dahil 7 yerdə düzəldildi.
+- Sidebar sayğacları real olduqdan sonra keçid adları dəyişdi — test köməkçisi buna uyğunlaşdırıldı.
+
+**Testlər:** 73 API e2e (o cümlədən 14 inbox: widget izolyasiyası, daxili qeydin ziyarətçiyə getməməsi, webhook imzası və təkrarlar, Graph API sorğu formatı, 24 saat pəncərəsi, demo kanal, marşrutlama, CRM bağlantısı, metriklər, SSE) + 8 web unit + 10 Playwright UI (başqa saytda yerləşdirilmiş widget → real vaxt inbox → cavab + qeyd → ziyarətçi yalnız cavabı görür).
+
+### Növbəti — Mərhələ 5: Komanda çatı
+Şəxsi və şöbə çatları, real vaxt, fayl göndərmə, axtarış, tapşırıqla əlaqələndirmə.

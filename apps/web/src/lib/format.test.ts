@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatDate, formatDuration, formatMoney, formatNumber, formatRelative, percentChange } from "./format.ts";
+import { formatDate, formatDateTime, formatDuration, formatMoney, fromDateTimeInput, toDateTimeInput, formatNumber, formatRelative, moneyInputValue, parseMoneyInput, percentChange } from "./format.ts";
 
 const NBSP = " ";
 
@@ -46,4 +46,25 @@ test("percent change", () => {
   assert.equal(percentChange(120, 100), 20);
   assert.equal(percentChange(80, 100), -20);
   assert.equal(percentChange(5, 0), null);
+});
+
+test("money input parsing", () => {
+  assert.equal(parseMoneyInput("1250"), 125000);
+  assert.equal(parseMoneyInput("1 250,5"), 125050);
+  assert.equal(parseMoneyInput("0.99"), 99);
+  assert.equal(parseMoneyInput(""), null);
+  assert.equal(parseMoneyInput("-5"), null);
+  assert.equal(parseMoneyInput("12.345"), null);
+  assert.equal(parseMoneyInput("abc"), null);
+  assert.equal(moneyInputValue(125050), "1250.5");
+});
+
+test("date-time inputs use the tenant time zone (Baku, UTC+4), not the machine's", () => {
+  assert.equal(fromDateTimeInput("2026-10-22T18:00"), "2026-10-22T14:00:00.000Z");
+  assert.equal(toDateTimeInput("2026-10-22T14:00:00.000Z"), "2026-10-22T18:00");
+  assert.equal(toDateTimeInput(fromDateTimeInput("2026-12-31T23:30")!), "2026-12-31T23:30");
+  assert.equal(fromDateTimeInput("garbage"), null);
+  assert.equal(toDateTimeInput(null), "");
+  assert.equal(formatDateTime("2026-10-22T14:00:00.000Z", "az"), "22 okt, 18:00");
+  assert.equal(formatDateTime("2026-10-21T20:00:00.000Z", "en"), "22 Oct");
 });

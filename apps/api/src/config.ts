@@ -12,6 +12,29 @@ const schema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
   INVITE_TTL_DAYS: z.coerce.number().int().positive().default(7),
   TRIAL_DAYS: z.coerce.number().int().positive().default(14),
+  /**
+   * Which hops may set X-Forwarded-For (Express "trust proxy"). The web BFF calls the
+   * API from the same host/private network and forwards the browser's IP, so rate
+   * limits apply per real client. Never trust arbitrary internet hops.
+   */
+  TRUST_PROXY: z.string().default("loopback, linklocal, uniquelocal"),
+  /** Where the local storage driver keeps uploads (S3 driver: Phase 7 deployment) */
+  FILE_STORAGE_DIR: z.string().default(resolve(__dirname, "../../../.data/files")),
+  MAX_UPLOAD_MB: z.coerce.number().positive().default(10),
+  /** Background jobs (overdue notices). Off in tests, which trigger jobs explicitly. */
+  JOBS_ENABLED: z
+    .enum(["true", "false"])
+    .default(process.env.NODE_ENV === "test" ? "false" : "true")
+    .transform((v) => v === "true"),
+  /** 32 bytes, base64. Encrypts channel credentials (provider access tokens) at rest. */
+  CHANNEL_SECRET_KEY: z
+    .string()
+    .refine((v) => Buffer.from(v, "base64").length === 32, "CHANNEL_SECRET_KEY must be 32 bytes, base64")
+    .optional(),
+  /** Meta app (WhatsApp Cloud API, Messenger, Instagram). Webhooks are rejected without the secret. */
+  META_APP_SECRET: z.string().min(16).optional(),
+  META_VERIFY_TOKEN: z.string().min(8).optional(),
+  META_GRAPH_URL: z.string().url().default("https://graph.facebook.com/v21.0"),
   /** Requests per minute per IP on auth endpoints */
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(10),
 });

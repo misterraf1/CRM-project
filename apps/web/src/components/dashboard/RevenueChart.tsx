@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { DashboardData } from "@/lib/api/types";
+import type { DashboardCrmDto } from "@axis/shared";
 import { formatDate, formatMoney } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { interpolate } from "@/lib/i18n/locales";
@@ -16,7 +16,7 @@ function niceMax(value: number) {
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow;
 }
 
-export function RevenueChart({ revenue }: { revenue: DashboardData["revenue"] }) {
+export function RevenueChart({ revenue, currency }: { revenue: DashboardCrmDto["revenue"]; currency: string }) {
   const { t, locale } = useI18n();
   const [active, setActive] = useState<number | null>(null);
   const { points, bucket } = revenue;
@@ -31,7 +31,7 @@ export function RevenueChart({ revenue }: { revenue: DashboardData["revenue"] })
       <div className="mb-2 h-10 text-sm" aria-live="polite">
         {current ? (
           <>
-            <p className="tabular font-semibold">{formatMoney(current.amount, locale)}</p>
+            <p className="tabular font-semibold">{formatMoney(current.amount, locale, currency)}</p>
             <p className="text-xs text-fg-subtle">
               {formatDate(current.date, locale, "long")} ·{" "}
               {interpolate(t.dashboard.revenue.deals, { n: current.deals })}
@@ -43,7 +43,7 @@ export function RevenueChart({ revenue }: { revenue: DashboardData["revenue"] })
         <div className="tabular flex flex-col justify-between text-right text-[11px] text-fg-subtle" style={{ height: HEIGHT }}>
           {[...ticks].reverse().map((v) => (
             <span key={v} className="-translate-y-1/2 first:translate-y-0 last:translate-y-0">
-              {formatMoney(v, locale, "AZN", true)}
+              {formatMoney(v, locale, currency, true)}
             </span>
           ))}
         </div>
@@ -68,7 +68,7 @@ export function RevenueChart({ revenue }: { revenue: DashboardData["revenue"] })
                 onMouseEnter={() => setActive(i)}
                 onFocus={() => setActive(i)}
                 onBlur={() => setActive(null)}
-                aria-label={`${formatDate(p.date, locale)}: ${formatMoney(p.amount, locale)}`}
+                aria-label={`${formatDate(p.date, locale)}: ${formatMoney(p.amount, locale, currency)}`}
                 className="group flex h-full min-w-0 flex-1 items-end"
               >
                 <span

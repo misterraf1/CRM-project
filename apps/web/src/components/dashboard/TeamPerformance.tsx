@@ -1,18 +1,20 @@
 "use client";
 
+import type { DashboardCrmDto } from "@axis/shared";
 import clsx from "clsx";
 import { ArrowDown, ArrowUp } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { CardHeader } from "@/components/ui/Card";
-import type { MemberPerformance } from "@/lib/api/types";
 import { formatDuration, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { interpolate } from "@/lib/i18n/locales";
 
+type Row = DashboardCrmDto["team"][number];
 type SortKey = "dealsWon" | "revenue" | "tasksDone" | "tasksOverdue" | "avgResponseMin";
 
-export function TeamPerformance({ rows }: { rows: MemberPerformance[] }) {
+export function TeamPerformance({ rows, currency, canViewTeam }: { rows: Row[]; currency: string; canViewTeam: boolean }) {
   const { t, locale } = useI18n();
   const d = t.dashboard.team;
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "revenue", desc: true });
@@ -21,29 +23,28 @@ export function TeamPerformance({ rows }: { rows: MemberPerformance[] }) {
     { key: "dealsWon", label: d.dealsWon },
     { key: "revenue", label: d.revenue },
     { key: "tasksDone", label: d.tasksDone },
-    { key: "tasksOverdue", label: d.overdue },
+    { key: "tasksOverdue", label: d.tasksOverdue },
     { key: "avgResponseMin", label: d.response },
   ];
 
-  const sorted = useMemo(() => {
-    const dir = sort.desc ? -1 : 1;
-    // Members without a value (no inbox work) always go last
-    return [...rows].sort((a, b) => {
-      const av = a[sort.key];
-      const bv = b[sort.key];
-      if (av === null) return 1;
-      if (bv === null) return -1;
-      return (av - bv) * dir;
-    });
-  }, [rows, sort]);
-
+  const sorted = useMemo(
+    () =>
+      [...rows].sort((a, b) => {
+        const av = a[sort.key];
+        const bv = b[sort.key];
+        // Members without inbox work always go last
+        if (av === null || bv === null) return av === bv ? 0 : av === null ? 1 : -1;
+        return (av - bv) * (sort.desc ? -1 : 1) || a.member.name.localeCompare(b.member.name);
+      }),
+    [rows, sort],
+  );
   const maxRevenue = Math.max(1, ...rows.map((r) => r.revenue));
 
   return (
     <section className="card">
-      <CardHeader title={d.title} action={{ href: "/team", label: t.common.viewAll }} />
+      <CardHeader title={d.title} action={canViewTeam ? { href: "/team", label: t.common.viewAll } : undefined} />
       <div className="mt-2 overflow-x-auto">
-        <table className="w-full min-w-[560px] text-sm">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-y border-border text-xs text-fg-subtle">
               <th scope="col" className="px-5 py-2 text-left font-medium">
@@ -77,17 +78,17 @@ export function TeamPerformance({ rows }: { rows: MemberPerformance[] }) {
             {sorted.map((row) => (
               <tr key={row.member.id} className="hover:bg-muted/50">
                 <td className="px-5 py-2.5">
-                  <div className="flex items-center gap-2.5">
+                  <Link href={`/team/${row.member.id}`} className="flex items-center gap-2.5 hover:text-accent">
                     <Avatar name={row.member.name} />
                     <div className="min-w-0 leading-tight">
                       <p className="truncate font-medium">{row.member.name}</p>
-                      <p className="truncate text-xs text-fg-subtle">{row.member.title}</p>
+                      {row.member.title && <p className="truncate text-xs text-fg-subtle">{row.member.title}</p>}
                     </div>
-                  </div>
+                  </Link>
                 </td>
                 <td className="tabular px-3 text-right">{formatNumber(row.dealsWon, locale)}</td>
                 <td className="tabular px-3 text-right">
-                  <div className="font-medium">{formatMoney(row.revenue, locale)}</div>
+                  <div className="font-medium">{formatMoney(row.revenue, locale, currency)}</div>
                   <div className="ml-auto mt-1 h-1 w-20 overflow-hidden rounded-full bg-muted">
                     <div className="h-full rounded-full bg-accent" style={{ width: `${(row.revenue / maxRevenue) * 100}%` }} />
                   </div>
@@ -96,9 +97,7 @@ export function TeamPerformance({ rows }: { rows: MemberPerformance[] }) {
                 <td className={clsx("tabular px-3 text-right", row.tasksOverdue > 0 ? "font-medium text-danger" : "text-fg-subtle")}>
                   {row.tasksOverdue}
                 </td>
-                <td className="tabular px-3 pr-5 text-right text-fg-muted">
-                  {row.avgResponseMin === null ? "—" : formatDuration(row.avgResponseMin, locale)}
-                </td>
+                <td className="tabular px-3 pr-5 text-right text-fg-muted">{row.avgResponseMin === null ? "—" : formatDuration(row.avgResponseMin, locale)}</td>
               </tr>
             ))}
           </tbody>

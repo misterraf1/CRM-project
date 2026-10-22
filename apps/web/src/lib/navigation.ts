@@ -32,17 +32,17 @@ export const NAV_GROUPS: { label: "groupWork" | "groupManage"; items: NavItem[] 
     items: [
       { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, phase: null },
       { key: "inbox", href: "/inbox", icon: MessageSquareText, phase: 4, badge: "awaiting" },
-      { key: "crm", href: "/crm", icon: Users, phase: 2 },
-      { key: "deals", href: "/deals", icon: Handshake, phase: 2 },
-      { key: "tasks", href: "/tasks", icon: CheckSquare, phase: 3, badge: "overdue" },
+      { key: "crm", href: "/crm", icon: Users, phase: null },
+      { key: "deals", href: "/deals", icon: Handshake, phase: null },
+      { key: "tasks", href: "/tasks", icon: CheckSquare, phase: null, badge: "overdue" },
       { key: "chat", href: "/chat", icon: MessagesSquare, phase: 5 },
     ],
   },
   {
     label: "groupManage",
     items: [
-      { key: "team", href: "/team", icon: UsersRound, phase: 3 },
-      { key: "files", href: "/files", icon: FolderOpen, phase: 3 },
+      { key: "team", href: "/team", icon: UsersRound, phase: null },
+      { key: "files", href: "/files", icon: FolderOpen, phase: 8 },
       { key: "analytics", href: "/analytics", icon: BarChart3, phase: 8 },
       { key: "automations", href: "/automations", icon: Workflow, phase: 8 },
       { key: "settings", href: "/settings", icon: Settings, phase: null },

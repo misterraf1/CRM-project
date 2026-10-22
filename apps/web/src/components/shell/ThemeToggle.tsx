@@ -20,7 +20,9 @@ export function ThemeToggle() {
   const { t } = useI18n();
   const [theme, setTheme] = useState<Theme>("system");
 
-  useEffect(() => setTheme(readTheme()), []);
+  useEffect(() => {
+    setTheme(readTheme());
+  }, []);
 
   // Follow OS changes while in "system" mode
   useEffect(() => {

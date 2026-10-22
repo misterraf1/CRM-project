@@ -19,10 +19,18 @@ Və ya `/signup` səhifəsində öz şirkətinizi yaradın.
 
 Docker varsa `npm run db:start` əvəzinə: `docker compose up -d postgres && npm run db:migrate && npm run db:seed`.
 
+## Mesaj kanalları
+
+- **Sayt çatı** dərhal işləyir: Parametrlər → Kanallar → "Sayt çatı", verilən kodu saytınıza əlavə edin.
+- **WhatsApp / Instagram / Messenger**: Meta tətbiqi lazımdır. `.env`-də `META_APP_SECRET`, `META_VERIFY_TOKEN`
+  təyin edin, Meta-da webhook ünvanını `https://<api-domain>/v1/webhooks/meta` göstərin. Açarlar olmadan "Demo"
+  kanal yaradıb simulyatorla sınaqdan keçirə bilərsiniz.
+
 ## Əmrlər
 
 ```bash
 npm test             # web unit + API e2e (öz müvəqqəti Postgres-ini qaldırır)
+npm run test:ui -w @axis/web   # Playwright UI testləri (db:start + dev işləyərkən; sistemdəki Chrome ilə)
 npm run typecheck
 npm run build
 npm run db:migrate   # yeni migrasiyaları tətbiq et

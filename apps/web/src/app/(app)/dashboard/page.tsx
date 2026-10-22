@@ -32,19 +32,19 @@ export default async function DashboardPage({ searchParams }: Props) {
         <PeriodFilter value={period} t={t} />
       </div>
 
-      <KpiGrid kpis={data.kpis} t={t} locale={locale} />
+      <KpiGrid crm={data} t={t} locale={locale} />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="min-w-0 space-y-5 lg:col-span-2">
           <section className="card">
             <CardHeader title={r.title} meta={interpolate(r.subtitle, { unit: data.revenue.bucket === "week" ? r.unitWeek : r.unitDay })} />
-            <RevenueChart revenue={data.revenue} />
+            <RevenueChart revenue={data.revenue} currency={data.currency} />
           </section>
-          <TeamPerformance rows={data.team} />
+          <TeamPerformance rows={data.team} currency={data.currency} canViewTeam={session.permissions.includes("members.view")} />
         </div>
         <div className="min-w-0 space-y-5">
           <AwaitingInbox inbox={data.inbox} now={now} t={t} locale={locale} />
-          <OverdueTasks tasks={data.overdueTasks} now={now} t={t} locale={locale} />
+          <OverdueTasks tasks={data.tasks.overdueItems} now={now} t={t} locale={locale} />
           <ActivityFeed items={data.activity} now={now} t={t} locale={locale} />
         </div>
       </div>

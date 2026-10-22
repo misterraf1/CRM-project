@@ -7,18 +7,20 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --no-warnings --test src/**/*.test.ts"
+    "test": "node --experimental-strip-types --no-warnings --test src/**/*.test.ts",
+    "test:ui": "playwright test"
   },
   "dependencies": {
+    "@axis/shared": "0.1.0",
     "clsx": "2.1.1",
     "lucide-react": "0.469.0",
     "next": "15.1.6",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "server-only": "^0.0.1",
-    "@axis/shared": "0.1.0"
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.49.1",
     "@types/node": "22.10.7",
     "@types/react": "19.0.7",
     "@types/react-dom": "19.0.3",

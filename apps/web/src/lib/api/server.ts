@@ -1,8 +1,8 @@
 import "server-only";
 import type { ApiError, ErrorCode } from "@axis/shared";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { ACCESS_COOKIE, API_URL } from "../auth/cookies";
+import { ACCESS_COOKIE, API_URL, clientIpHeader } from "../auth/cookies";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -21,6 +21,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     ...init,
     cache: "no-store",
     headers: {
+      ...clientIpHeader(await headers()),
       ...(init.body ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...init.headers,
@@ -39,7 +40,7 @@ export async function apiPublic<T>(path: string, init: RequestInit = {}) {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     cache: "no-store",
-    headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },
+    headers: { ...clientIpHeader(await headers()), ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },
   });
   const body = res.status === 204 ? undefined : await res.json().catch(() => null);
   if (!res.ok) {

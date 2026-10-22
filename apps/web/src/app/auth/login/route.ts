@@ -11,7 +11,6 @@ export async function POST(req: NextRequest) {
   const result = await apiPublic<AuthTokens>("/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password: String(form.get("password") ?? "") }),
-    headers: { "x-forwarded-for": req.headers.get("x-forwarded-for") ?? "" },
   });
 
   if (!result.ok) {

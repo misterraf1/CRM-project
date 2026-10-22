@@ -401,6 +401,7 @@ model Activity {
 
   @@index([tenantId, createdAt])
   @@index([contactId, createdAt])
+  @@index([dealId, createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -447,7 +448,9 @@ model Task {
   assigneeId  String?
   dueAt       DateTime?
   completedAt DateTime?
-  // RFC 5545 RRULE for recurring tasks, e.g. "FREQ=WEEKLY;BYDAY=MO"
+  // When the overdue notice was sent; cleared when the due date moves
+  overdueNotifiedAt DateTime?
+  // RFC 5545 RRULE subset for recurring tasks, e.g. "FREQ=WEEKLY;INTERVAL=2"
   recurrence  String?
   contactId   String?
   dealId      String?
@@ -463,6 +466,7 @@ model Task {
 
   @@index([tenantId, assigneeId, status])
   @@index([tenantId, dueAt])
+  @@index([tenantId, parentId])
 }
 
 model TaskComment {
@@ -494,8 +498,11 @@ model Channel {
   type        ChannelType
   name        String
   externalId  String // WABA phone number id, IG account id, page id, widget id
-  // Encrypted at rest (AES-GCM, key from KMS); never returned by the API
+  // Encrypted at rest (AES-256-GCM, CHANNEL_SECRET_KEY); never returned by the API
   credentials Bytes?
+  // Demo channels never talk to a provider; the UI labels them "Demo"
+  demo        Boolean     @default(false)
+  settings    Json        @default("{}") // e.g. { greeting } for website chat
   status      String      @default("connected") // "connected" | "error" | "disconnected"
   createdAt   DateTime    @default(now())
 
@@ -516,7 +523,10 @@ model Conversation {
   tenantId        String
   channelId       String
   contactId       String?
-  externalThread  String // provider thread / sender id
+  externalThread  String // provider sender id; website chat: sha256(visitor token)
+  displayName     String? // profile name from the provider, until a CRM contact is linked
+  handle          String? // phone number / IG handle / visitor email
+  lastInboundAt   DateTime? // WhatsApp 24 h reply window
   status          ConversationStatus @default(OPEN)
   assigneeId      String?
   departmentId    String?

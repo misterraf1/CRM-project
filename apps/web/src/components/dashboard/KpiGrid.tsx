@@ -1,7 +1,7 @@
 import clsx from "clsx";
+import type { DashboardCrmDto } from "@axis/shared";
 import { ArrowDownRight, ArrowUpRight, CheckSquare, Handshake, MessageSquareText, UserPlus, Wallet, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import type { DashboardData } from "@/lib/api/types";
 import { formatDuration, formatMoney, formatNumber, percentChange } from "@/lib/format";
 import type { Dictionary } from "@/lib/i18n/dictionaries/az";
 import { interpolate, type Locale } from "@/lib/i18n/locales";
@@ -27,48 +27,36 @@ function Delta({ value, label }: { value: number; label: string }) {
   );
 }
 
-export function KpiGrid({ kpis, t, locale }: { kpis: DashboardData["kpis"]; t: Dictionary; locale: Locale }) {
+const delta = (c: { value: number; previous: number | null }) => (c.previous === null ? null : percentChange(c.value, c.previous));
+
+export function KpiGrid({ crm, t, locale }: { crm: DashboardCrmDto; t: Dictionary; locale: Locale }) {
   const k = t.dashboard.kpi;
+  const { kpis, currency } = crm;
   const items: Kpi[] = [
-    {
-      label: k.newContacts,
-      value: formatNumber(kpis.newContacts.value, locale),
-      href: "/crm",
-      icon: UserPlus,
-      delta: percentChange(kpis.newContacts.value, kpis.newContacts.previous),
-    },
+    { label: k.newContacts, value: formatNumber(kpis.newContacts.value, locale), href: "/crm", icon: UserPlus, delta: delta(kpis.newContacts) },
     {
       label: k.activeDeals,
       value: formatNumber(kpis.activeDeals.value, locale),
       href: "/deals",
       icon: Handshake,
-      delta: percentChange(kpis.activeDeals.value, kpis.activeDeals.previous),
-      hint: interpolate(k.activeDealsHint, { amount: formatMoney(kpis.activeDeals.pipelineValue, locale, "AZN", true) }),
+      hint: interpolate(k.activeDealsHint, { amount: formatMoney(kpis.activeDeals.pipelineValue, locale, currency, true) }),
     },
-    {
-      label: k.revenue,
-      value: formatMoney(kpis.revenue.value, locale),
-      href: "/deals",
-      icon: Wallet,
-      delta: percentChange(kpis.revenue.value, kpis.revenue.previous),
-    },
+    { label: k.revenue, value: formatMoney(kpis.revenue.value, locale, currency), href: "/deals", icon: Wallet, delta: delta(kpis.revenue) },
     {
       label: k.awaiting,
-      value: formatNumber(kpis.awaiting.value, locale),
+      value: formatNumber(crm.inbox.awaiting, locale),
       href: "/inbox",
       icon: MessageSquareText,
-      tone: kpis.awaiting.longestWaitMin > 60 ? "warning" : "default",
-      hint: kpis.awaiting.value
-        ? interpolate(k.awaitingHint, { time: formatDuration(kpis.awaiting.longestWaitMin, locale) })
-        : undefined,
+      tone: (crm.inbox.longestWaitMin ?? 0) > 60 ? "warning" : "default",
+      hint: crm.inbox.longestWaitMin !== null ? interpolate(k.awaitingHint, { time: formatDuration(crm.inbox.longestWaitMin, locale) }) : undefined,
     },
     {
       label: k.openTasks,
-      value: formatNumber(kpis.openTasks.value, locale),
+      value: formatNumber(crm.tasks.open, locale),
       href: "/tasks",
       icon: CheckSquare,
-      tone: kpis.openTasks.overdue > 0 ? "danger" : "default",
-      hint: kpis.openTasks.overdue ? interpolate(k.openTasksHint, { n: kpis.openTasks.overdue }) : undefined,
+      tone: crm.tasks.overdue > 0 ? "danger" : "default",
+      hint: crm.tasks.overdue ? interpolate(k.openTasksHint, { n: crm.tasks.overdue }) : undefined,
     },
   ];
 
@@ -80,19 +68,17 @@ export function KpiGrid({ kpis, t, locale }: { kpis: DashboardData["kpis"]; t: D
           href={item.href}
           className={clsx("card group min-w-0 p-4 transition-colors hover:border-accent/40", i === 2 && "col-span-2 md:col-span-1")}
         >
-          <div className="flex items-center justify-between text-fg-subtle">
-            <span className="text-xs font-medium text-fg-muted">{item.label}</span>
-            <item.icon className="h-4 w-4 group-hover:text-accent" aria-hidden />
+          <div className="flex items-center justify-between gap-2 text-fg-subtle">
+            <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-fg-muted">
+              <span className="truncate">{item.label}</span>
+            </span>
+            <item.icon className="h-4 w-4 shrink-0 group-hover:text-accent" aria-hidden />
           </div>
           <p className="tabular mt-2 truncate text-2xl font-semibold tracking-tight">{item.value}</p>
           <div className="mt-1 flex min-h-5 flex-wrap items-center gap-x-2 text-xs">
             {item.delta != null && <Delta value={item.delta} label={t.dashboard.vsPrevious} />}
             {item.hint && (
-              <span
-                className={clsx(
-                  item.tone === "danger" ? "text-danger" : item.tone === "warning" ? "text-warning" : "text-fg-subtle",
-                )}
-              >
+              <span className={clsx(item.tone === "danger" ? "text-danger" : item.tone === "warning" ? "text-warning" : "text-fg-subtle")}>
                 {item.hint}
               </span>
             )}

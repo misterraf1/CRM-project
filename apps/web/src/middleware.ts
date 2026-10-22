@@ -1,8 +1,9 @@
 import type { AuthTokens } from "@axis/shared";
 import { NextResponse, type NextRequest } from "next/server";
-import { ACCESS_COOKIE, API_URL, clearTokens, REFRESH_COOKIE, writeTokens } from "./lib/auth/cookies";
+import { ACCESS_COOKIE, API_URL, clearTokens, clientIpHeader, REFRESH_COOKIE, writeTokens } from "./lib/auth/cookies";
 
-const PUBLIC = [/^\/login$/, /^\/signup$/, /^\/invite\//, /^\/auth\//];
+// The website chat widget and its API calls are used by anonymous site visitors
+const PUBLIC = [/^\/login$/, /^\/signup$/, /^\/invite\//, /^\/auth\//, /^\/widget\//, /^\/api\/v1\/widget\//];
 
 function unauthenticated(req: NextRequest) {
   if (req.nextUrl.pathname.startsWith("/api/")) {
@@ -28,7 +29,7 @@ export async function middleware(req: NextRequest) {
 
   const res = await fetch(`${API_URL}/v1/auth/refresh`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...clientIpHeader(req.headers) },
     body: JSON.stringify({ refreshToken }),
   }).catch(() => null);
 

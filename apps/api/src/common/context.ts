@@ -11,6 +11,7 @@ export interface RequestContext {
   userId?: string;
   tenantId?: string;
   membershipId?: string;
+  departmentId?: string | null;
   sessionId?: string;
   role?: MemberRole;
   permissions?: Permission[];

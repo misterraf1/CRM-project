@@ -8,7 +8,7 @@ import { config } from "./config";
 
 async function main() {
   const { API_PORT } = config();
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false, rawBody: true });
   configureApp(app);
   await app.listen(API_PORT);
   Logger.log(`API listening on http://localhost:${API_PORT}`, "Bootstrap");
