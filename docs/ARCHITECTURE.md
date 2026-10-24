@@ -42,11 +42,14 @@ Hər mərhələ bitəndə sonuncu bölmədəki "Status" cədvəli yenilənir.
 | **Avtomatlaşdırma** | `/automations` (trigger → şərt → əməl) | BUSINESS (Mərhələ 2) |
 | **Parametrlər** | `/settings/company`, `/settings/members`, `/settings/roles`, `/settings/channels`, `/settings/pipelines`, `/settings/billing`, `/settings/security` | Hamısı |
 
-### 2.3 Super Admin — `admin.axis.az` (ayrıca tətbiq, ayrıca auth guard)
+### 2.3 Super Admin — `/admin` (ayrıca sessiya, ayrıca token issuer, ayrıca guard)
+
+> **Qərar (Mərhələ 7):** ayrıca Next tətbiqi əvəzinə `apps/web` daxilində `/admin` altında qurulub. Səbəb: i18n, tema və UI komponentləri təkrarlanmır. Təhlükəsizlik sərhədi isə tətbiqin özündə deyil, sessiyadadır: ayrıca cookie (`axis_adm`, `SameSite=Strict`), ayrıca JWT issuer (`axis-admin`), hər sorğuda yoxlanan `AdminSession`. Şirkət tokeni admin API-də, admin tokeni şirkət API-də işləmir (e2e testlə yoxlanır). Production-da `admin.axis.az` domeni middleware-də host üzrə `/admin`-ə yönləndiriləcək.
+
 | Səhifə | Məzmun |
 |---|---|
 | `/` Overview | MRR, ARR, aktiv/trial/dayandırılmış, yeni qeydiyyatlar, churn, mənfəət |
-| `/tenants`, `/tenants/:id` | Şirkətlər, abunə, limitlər, istifadə, impersonate (audit ilə) |
+| `/tenants`, `/tenants/:id` | Şirkətlər, abunə, limitlər, istifadə; sınağı uzatmaq, dayandırmaq / bərpa (audit ilə). Impersonate — ⏳ |
 | `/plans` | Paket/qiymət/limit/feature redaktoru |
 | `/billing` | Fakturalar, ödənişlər, uğursuz ödənişlər |
 | `/expenses` | API/AI/server xərcləri → mənfəət hesabı |
@@ -255,7 +258,7 @@ ACTIVE ── "dövrün sonunda ləğv et" ─▶ dövr bitəndə CANCELED (yaln
 | **4. Inbox** | Sayt çatı widget, WebSocket, WhatsApp/IG/Messenger adapterləri + demo simulyator, şablonlar, SLA metrikləri | |
 | **5. Komanda çatı** | Otaqlar, real-time, axtarış, tapşırıq linki | |
 | **6. Billing** | Plan/entitlement servisi, trial/grace job-ları, ödəniş adapteri, faktura | Satışa hazır |
-| **7. Super Admin** | `apps/admin`, tenant idarəsi, plan redaktoru, gəlir/xərc/mənfəət, tiketlər, sistem sağlamlığı | |
+| **7. Super Admin** | `/admin` (apps/web daxilində, ayrıca sessiya), tenant idarəsi, plan redaktoru, gəlir/xərc/mənfəət, tiketlər, sistem sağlamlığı | |
 | **8. Sonrakı** | Avtomatlaşdırma, AI, geniş analitika, email kanalı | |
 
 Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright), tenant izolyasiya testi (Mərhələ 1-dən), bu sənəddə Status yenilənir.
@@ -406,5 +409,50 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 
 **Testlər:** 97 API e2e (o cümlədən 12 billing) + 8 web unit + 13 Playwright UI (yeni: trial → demo checkout → rədd/uğur → uğursuz yenilənmə və güzəşt → ödəniş → downgrade → PRO modullarının bağlanması).
 
-### Növbəti — Mərhələ 7: Super Admin
-§11 planına görə: `apps/admin`, şirkətlərin idarəsi, paket redaktoru, gəlir/xərc/mənfəət, tiketlər, sistem sağlamlığı. Real ödəniş provayderi müqavilədən sonra qoşulur.
+### Mərhələ 7 — Super Admin ✅
+| Hissə | Vəziyyət | Harada |
+|---|---|---|
+| Platforma girişi: yalnız `platformRole` olan istifadəçilər; ayrıca issuer, cookie və `AdminSession`; çıxış və rolun götürülməsi dərhal təsir edir; rollar SUPER_ADMIN (hər şey) və SUPPORT (baxış + müraciətlər) | ✅ | `apps/api/src/admin`, `/admin/login` |
+| Ümumi baxış: MRR/ARR (illik = 1/12), statuslar üzrə şirkətlər, 30 günlük qeydiyyat/ləğv, gəlir/xərc/mənfəət, son 6 ayın qrafiki + cədvəl, uğursuz ödənişlər, açıq müraciətlər | ✅ | `/admin` |
+| Şirkətlər: axtarış, status filtri, səhifələmə; detal (abunə, istifadə, işçilər, fakturalar, audit); sınağı uzatmaq, dayandırmaq (səbəblə), ödənilmiş dövr ərzində bərpa | ✅ | `/admin/tenants` |
+| Paket redaktoru: qiymət, limit, əlavələrin qiyməti, funksiyalar; yeni qiymət növbəti fakturadan | ✅ | `/admin/plans` |
+| Ödənişlər (bütün şirkətlər, status filtri, cəmlər), xərclər (əlavə et / sil) | ✅ | `/admin/billing`, `/admin/expenses` |
+| Dəstək müraciətləri: şirkət yazır (`/support`), platforma cavab verir; müəllifə bildiriş; şirkət cavabı «Axis dəstək» adı ilə görür; bağlı müraciətə yazanda yenidən açılır; dayandırılmış şirkət də yaza bilir | ✅ | `apps/api/src/support`, `/support`, `/admin/tickets` |
+| Sistem: baza (gecikmə), iş müddəti, yaddaş, fon proseslərinin son icrası və xətası, webhook və kanal xətaları, ödəniş provayderi | ✅ | `/admin/system` |
+| Platforma əməliyyatları şirkətin öz audit jurnalında da görünür (`platform.*`) | ✅ | |
+| **Platforma hesabları üçün 2FA** | ⏳ **production-dan əvvəl vacibdir** | `User.mfaSecret` sahəsi hazırdır |
+| Impersonate (şirkətə onun adından baxmaq), `admin.axis.az` host yönləndirməsi, email bildirişləri | ⏳ | |
+
+**İlk Super Admin:** `.env`-də `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD`, sonra `npm run db:seed` (şifrə yalnız hesab yaradılarkən yazılır). Demo: `platform@demo.axis`, `support@demo.axis` (şifrə `demo12345`).
+
+**Bu mərhələdə tapılıb düzəldilənlər:**
+- Demo seed platforma rolunu demo şirkətin işçisi `admin@demo.axis`-ə verirdi (şirkət hesabı ilə platforma hesabı qarışırdı) → ayrıca `platform@demo.axis`.
+- **Mobil görünüş:** bir neçə səhifə telefonda yana sürüşürdü. Səbəb: (1) grid sütunu cədvəlin eninə qədər böyüyürdü (çat, inbox, admin), (2) cədvəl başlığındakı ekran oxuyucu mətni (`sr-only`, absolute) sürüşən konteynerdən çıxırdı (abunəlik, müştərilər, işçilər). İndi bütün səhifələr 390px-ə sığır; bunu yoxlayan UI testi əlavə olundu.
+- Qeydiyyat səhifəsi hələ də "PRO sınaq" yazırdı, halbuki sınaq bütün funksiyalarla işləyir → mətn düzəldildi (az/en/ru).
+- Müvəqqəti diaqnostika ilə təsdiqləndi: testlərdəki təsadüfi 401 xətası ardıcıl 10 icrada bir dəfə də təkrarlanmadı.
+
+**Testlər:** 107 API e2e (yeni 10 admin testi: sessiyaların ayrılığı, rol götürülməsi, rəqəmlərin real ödənişlə dəyişməsi, şirkət əməliyyatları, SUPPORT məhdudiyyətləri, paket qiyməti, müraciət axını və izolyasiya, sistem) + 8 web unit + 16 Playwright UI (yeni: admin axını, 2 mobil en testi).
+
+### Mərhələ 8 (1-ci hissə) — Analitika, avtomatlaşdırma, prioritet dəstək ✅
+Səbəb: bu funksiyalar paketlərdə satılırdı (PRO: əsas analitika; BUSINESS: geniş analitika, avtomatlaşdırma, prioritet dəstək), amma hələ mövcud deyildi.
+
+| Hissə | Vəziyyət | Harada |
+|---|---|---|
+| **Əsas analitika (PRO):** sövdələşmələrin nəticəsi, qazanma faizi, orta sövdələşmə və satış müddəti, satış hunisi, itirmə səbəbləri, müştəri mənbələri (alıcıya çevrilmə, gətirdiyi gəlir), kanallar üzrə ilk cavab, tapşırıqların vaxtında icrası; 30 gün / 90 gün / 1 il | ✅ | `apps/api/src/analytics`, `/analytics` |
+| **Geniş analitika (BUSINESS):** işçilər üzrə nəticələr (qazanma faizi, gəlir, müddət, tapşırıqlar, cavab müddəti), 12 aylıq dinamika, sövdələşmələrin CSV ixracı (`deals.export` icazəsi, Excel üçün BOM, formula hücumuna qarşı qorunma) | ✅ | |
+| Görünürlük CRM ilə eynidir: sahib/admin — bütün şirkət, rəhbər — şöbə, işçi — giriş yoxdur (`analytics.view`) | ✅ | |
+| **Avtomatlaşdırma (BUSINESS):** «belə olanda — bunu et» qaydaları. Hadisələr: yeni sövdələşmə, mərhələ dəyişməsi, yeni müştəri, yeni yazışma, gecikən tapşırıq. Şərtlər: mərhələ, minimum məbləğ, mənbə, kanal. Əməliyyatlar: tapşırıq yarat, bildiriş göndər, məsul təyin et (bir nəfərə və ya növbə ilə). 4 hazır nümunə, icra tarixçəsi, son xəta | ✅ | `apps/api/src/automations`, `/automations` |
+| Etibarlılıq: hadisə dəyişikliklə eyni tranzaksiyada yazılır (outbox), commit-dən dərhal sonra və 30 saniyədən bir işlənir; bir neçə instansda təkrar icra olunmur; xətalı qayda digərlərini dayandırmır; avtomatlaşdırmanın etdiyi dəyişiklik yeni hadisə yaratmır (sonsuz dövr yoxdur); paket endiriləndə qaydalar qalır, amma işləmir | ✅ | `automation.runner.ts` |
+| **Prioritet dəstək (BUSINESS):** belə şirkətlərin müraciətləri platforma növbəsində birinci gəlir, «Prioritet» nişanı ilə | ✅ | `/admin/tickets` |
+| Yeni icazə `automations.manage` (sahib və admin); icazə matrisi testi yeniləndi | ✅ | |
+| AI, email kanalı, ümumi Fayllar bölməsi | ⏳ | Mərhələ 8 (2-ci hissə) / 9 |
+
+**Bu mərhələdə tapılıb düzəldilənlər:**
+- Demo seed-də bağlanmış sövdələşmələrin yaradılma tarixi bağlanma tarixindən sonra idi; analitika mənfi satış müddəti göstərirdi. Seed düzəldildi, analitikaya da müdafiə əlavə olundu.
+- Bakı vaxtı ilə ayın başlanğıcı UTC-də əvvəlki günün 20:00-ı olduğu üçün aylıq dinamika ayları bir ay geri göstərərdi → saat qurşağını nəzərə alan format funksiyası və unit test.
+- Avtomatlaşdırma şərtindəki «mənbə» sərbəst mətn idi, amma müştəri mənbələri sabit siyahıdır → seçim siyahısı.
+
+**Testlər:** 117 API e2e (yeni: 4 analitika, 5 avtomatlaşdırma, 1 prioritet dəstək) + 9 web unit + 18 Playwright UI (yeni: analitika + CSV yükləmə; avtomatlaşdırma nümunədən real vaxtda işləməyə qədər; mobil en testinə yeni səhifələr).
+
+### Növbəti — Mərhələ 8 (2-ci hissə)
+Email servisi (dəvət, şifrə bərpası, qəbzlər) və email kanalı, platforma hesabları üçün 2FA, AI köməkçisi, ümumi Fayllar bölməsi. Production-dan əvvəl: real ödəniş provayderi (Payriff / Epoint).

@@ -2,7 +2,7 @@ import "server-only";
 import type { ApiError, ErrorCode } from "@axis/shared";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { ACCESS_COOKIE, API_URL, clientIpHeader } from "../auth/cookies";
+import { ACCESS_COOKIE, ADMIN_COOKIE, API_URL, clientIpHeader } from "../auth/cookies";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -15,8 +15,13 @@ export class ApiRequestError extends Error {
 }
 
 /** Calls the API with the caller's access token. A rejected session ends at /auth/expired. */
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = (await cookies()).get(ACCESS_COOKIE)?.value;
+export const apiFetch = <T>(path: string, init: RequestInit = {}) => authedFetch<T>(ACCESS_COOKIE, "/auth/expired", path, init);
+
+/** Platform console calls (/v1/admin/*) with the staff session; expired → staff sign-in. */
+export const adminFetch = <T>(path: string, init: RequestInit = {}) => authedFetch<T>(ADMIN_COOKIE, "/admin/login", `/v1/admin${path}`, init);
+
+async function authedFetch<T>(cookie: string, expired: string, path: string, init: RequestInit): Promise<T> {
+  const token = (await cookies()).get(cookie)?.value;
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     cache: "no-store",
@@ -27,7 +32,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       ...init.headers,
     },
   });
-  if (res.status === 401) redirect("/auth/expired");
+  if (res.status === 401) redirect(expired);
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as ApiError | null;
     throw new ApiRequestError(res.status, body?.error.code ?? "INTERNAL", body?.error.details);

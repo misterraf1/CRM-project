@@ -45,7 +45,7 @@ export default async function InboxPage({ searchParams }: Props) {
 
   return (
     <div className="-my-6 -mx-4 lg:-mx-6">
-      <div className="grid h-[calc(100dvh-3.5rem)] lg:grid-cols-[340px_minmax(0,1fr)_280px]">
+      <div className="grid h-[calc(100dvh-3.5rem)] grid-cols-[minmax(0,1fr)] lg:grid-cols-[340px_minmax(0,1fr)_280px]">
         {/* Conversation list — hidden on mobile while a conversation is open */}
         <aside className={clsx("flex min-h-0 flex-col border-r border-border bg-surface", selected && "hidden lg:flex")}>
           <div className="space-y-2 border-b border-border p-3">

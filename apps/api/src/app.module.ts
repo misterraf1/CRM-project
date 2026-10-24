@@ -2,7 +2,16 @@ import { Module, type MiddlewareConsumer, type NestModule } from "@nestjs/common
 import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 import { JwtModule } from "@nestjs/jwt";
 import { ThrottlerModule } from "@nestjs/throttler";
+import { AdminAuthController, AdminController } from "./admin/admin.controller";
+import { AdminAuthService } from "./admin/admin-auth.service";
+import { AdminGuard } from "./admin/admin.guard";
+import { AdminService } from "./admin/admin.service";
+import { AnalyticsController } from "./analytics/analytics.controller";
+import { AnalyticsService } from "./analytics/analytics.service";
 import { AuditController } from "./audit/audit.controller";
+import { AutomationRunner } from "./automations/automation.runner";
+import { AutomationsController } from "./automations/automations.controller";
+import { AutomationsService } from "./automations/automations.service";
 import { AuditService } from "./audit/audit.service";
 import { AuthController, MeController } from "./auth/auth.controller";
 import { AuthGuard } from "./auth/auth.guard";
@@ -14,6 +23,7 @@ import { BillingService } from "./billing/billing.service";
 import { EntitlementsService } from "./billing/entitlements.service";
 import { DemoPaymentProvider, PAYMENT_PROVIDER } from "./billing/provider";
 import { ContextMiddleware } from "./common/context.middleware";
+import { JobsMonitor } from "./common/jobs-monitor";
 import { ActivityService } from "./crm/activity.service";
 import { ContactsController } from "./crm/contacts.controller";
 import { ContactsService } from "./crm/contacts.service";
@@ -44,6 +54,8 @@ import { WidgetController } from "./inbox/widget.controller";
 import { NotificationsController } from "./notifications/notifications.controller";
 import { NotificationsService } from "./notifications/notifications.service";
 import { PrismaModule } from "./prisma/prisma.module";
+import { SupportController } from "./support/support.controller";
+import { SupportService } from "./support/support.service";
 import { FILE_STORAGE, LocalFileStorage } from "./storage/storage.service";
 import { FilesService } from "./tasks/files.service";
 import { OverdueJob } from "./tasks/overdue.job";
@@ -80,6 +92,11 @@ import { TeamService } from "./team/team.service";
     WidgetController,
     ChatController,
     BillingController,
+    SupportController,
+    AnalyticsController,
+    AutomationsController,
+    AdminAuthController,
+    AdminController,
   ],
   providers: [
     AuthService,
@@ -108,6 +125,14 @@ import { TeamService } from "./team/team.service";
     ChatService,
     BillingService,
     BillingJob,
+    JobsMonitor,
+    SupportService,
+    AnalyticsService,
+    AutomationsService,
+    AutomationRunner,
+    AdminAuthService,
+    AdminGuard,
+    AdminService,
     // Swap for a real provider (Payriff / Epoint) without touching billing logic
     { provide: PAYMENT_PROVIDER, useClass: DemoPaymentProvider },
     { provide: FILE_STORAGE, useClass: LocalFileStorage },

@@ -1,5 +1,7 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
+import { AutomationRunner } from "../automations/automation.runner";
 import { config } from "../config";
+import { JobsMonitor } from "../common/jobs-monitor";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -18,12 +20,15 @@ export class OverdueJob implements OnApplicationBootstrap, OnModuleDestroy {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly monitor: JobsMonitor,
     private readonly notifications: NotificationsService,
+    private readonly automations: AutomationRunner,
   ) {}
 
   onApplicationBootstrap() {
+    this.monitor.register("overdue-tasks");
     if (!config().JOBS_ENABLED) return;
-    const tick = () => this.run().catch((e) => this.logger.error(e instanceof Error ? e.stack : String(e)));
+    const tick = () => this.monitor.track("overdue-tasks", () => this.run());
     this.timer = setInterval(tick, EVERY_MS);
     void tick();
   }
@@ -56,6 +61,7 @@ export class OverdueJob implements OnApplicationBootstrap, OnModuleDestroy {
             title: task.title,
             dueAt: task.dueAt?.toISOString() ?? null,
           });
+          await this.automations.enqueue(tx, tenantId, "task.overdue", { taskId });
           return 1;
         },
         { tenantId },

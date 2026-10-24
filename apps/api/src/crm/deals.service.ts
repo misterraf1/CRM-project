@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { AutomationRunner } from "../automations/automation.runner";
 import type { Deal, Prisma } from "@prisma/client";
 import type {
   ActivityDto,
@@ -52,6 +53,7 @@ export class DealsService {
     private readonly prisma: PrismaService,
     private readonly activity: ActivityService,
     private readonly audit: AuditService,
+    private readonly automations: AutomationRunner,
   ) {}
 
   async pipelines(): Promise<PipelineDto[]> {
@@ -136,6 +138,7 @@ export class DealsService {
         contactId: deal.contactId,
         payload: { dealTitle: deal.title, amount: deal.amount, stage: stage.name, contactName: contact?.name ?? null },
       });
+      await this.automations.enqueue(tx, ctx.tenantId, "deal.created", { dealId: deal.id });
       return dealToDto(deal, await memberRefs(tx, ctx.tenantId, [ownerId]));
     });
   }
@@ -193,6 +196,7 @@ export class DealsService {
         if (to.kind === "lost") {
           await this.activity.record(tx, { ...base, type: "deal_lost", payload: { dealTitle: deal.title, amount: deal.amount, reason: updated.lostReason } });
         }
+        await this.automations.enqueue(tx, ctx.tenantId, "deal.stage_changed", { dealId: id, fromStageId: from.id, toStageId: to.id });
       }
       return dealToDto(updated, await memberRefs(tx, ctx.tenantId, [updated.ownerId]));
     });

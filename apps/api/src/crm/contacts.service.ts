@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { AutomationRunner } from "../automations/automation.runner";
 import type { Contact, Prisma } from "@prisma/client";
 import type {
   ActivityDto,
@@ -27,6 +28,7 @@ export class ContactsService {
     private readonly prisma: PrismaService,
     private readonly activity: ActivityService,
     private readonly audit: AuditService,
+    private readonly automations: AutomationRunner,
   ) {}
 
   async list(query: ContactListQuery): Promise<ContactListResponse> {
@@ -106,6 +108,7 @@ export class ContactsService {
         include: OPEN_DEALS,
       });
       await this.activity.record(tx, { type: "contact_created", contactId: contact.id, payload: { contactName: contact.name } });
+      await this.automations.enqueue(tx, ctx.tenantId, "contact.created", { contactId: contact.id });
       return (await this.toDtos(tx, ctx.tenantId, [contact]))[0]!;
     });
   }

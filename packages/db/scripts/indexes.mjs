@@ -53,6 +53,17 @@ export const INDEXES = [
   ["FileObject", { tenantId: 1, entityType: 1, entityId: 1 }],
   ["Notification", { memberId: 1, readAt: 1 }],
   ["AuditLog", { tenantId: 1, createdAt: -1 }],
+  // Platform
+  ["AdminSession", { userId: 1 }],
+  ["SupportTicket", { tenantId: 1, updatedAt: -1 }],
+  ["SupportTicket", { status: 1, updatedAt: -1 }],
+  ["SupportTicketMessage", { ticketId: 1, createdAt: 1 }],
+  ["Payment", { status: 1, createdAt: -1 }],
+  ["PlatformExpense", { incurredOn: -1 }],
+  // Automations
+  ["AutomationRule", { tenantId: 1, trigger: 1, enabled: 1 }],
+  ["AutomationEvent", { status: 1, createdAt: 1 }],
+  ["AutomationRun", { ruleId: 1, createdAt: -1 }],
   // Inbox
   ["Channel", { type: 1, externalId: 1 }, { unique: true }],
   ["Conversation", { channelId: 1, externalThread: 1 }, { unique: true }],

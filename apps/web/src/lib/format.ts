@@ -94,6 +94,21 @@ export function formatDate(iso: string, locale: Locale, style: "day" | "short" |
   return `${day} ${month}`;
 }
 
+/** Calendar month of a UTC month-start date: "okt 2026". */
+export function formatMonth(iso: string, locale: Locale) {
+  const d = new Date(iso);
+  return `${MONTHS[locale].short[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+const zonedMonth = new Intl.DateTimeFormat("en-US", { timeZone: TIME_ZONE, year: "numeric", month: "numeric" });
+
+/** Month of an instant in the tenant time zone (a Baku month start is 20:00 UTC the day before). */
+export function formatLocalMonth(iso: string, locale: Locale) {
+  const parts = zonedMonth.formatToParts(new Date(iso));
+  const month = Number(parts.find((p) => p.type === "month")!.value);
+  return `${MONTHS[locale].short[month - 1]} ${parts.find((p) => p.type === "year")!.value}`;
+}
+
 /** Percent change; null when there is no baseline to compare against. */
 export function percentChange(current: number, previous: number): number | null {
   if (previous === 0) return null;

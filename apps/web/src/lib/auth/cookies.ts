@@ -1,10 +1,12 @@
-import type { AuthTokens } from "@axis/shared";
+import type { AdminTokens, AuthTokens } from "@axis/shared";
 
 // Tokens live in httpOnly cookies on the web origin (BFF pattern): browser JS never
 // sees them; server components and route handlers attach them to API calls.
 
 export const ACCESS_COOKIE = "axis_at";
 export const REFRESH_COOKIE = "axis_rt";
+/** Platform staff (Super Admin) session — separate from any company session. */
+export const ADMIN_COOKIE = "axis_adm";
 
 export const API_URL = process.env.API_URL ?? "http://localhost:4000";
 
@@ -19,6 +21,11 @@ export function writeTokens(jar: CookieJar, tokens: AuthTokens) {
   // Expire the access cookie a minute early so the middleware refreshes before the JWT dies
   jar.set(ACCESS_COOKIE, tokens.accessToken, { ...base, maxAge: Math.max(60, tokens.expiresIn - 60) });
   jar.set(REFRESH_COOKIE, tokens.refreshToken, { ...base, expires: new Date(tokens.refreshExpiresAt) });
+}
+
+export function writeAdminToken(jar: CookieJar, tokens: AdminTokens) {
+  // Strict: admin actions are never triggered by links from other sites
+  jar.set(ADMIN_COOKIE, tokens.accessToken, { ...base, sameSite: "strict", expires: new Date(tokens.expiresAt) });
 }
 
 export function clearTokens(jar: CookieJar) {

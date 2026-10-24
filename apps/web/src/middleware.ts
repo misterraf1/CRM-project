@@ -1,6 +1,6 @@
 import type { AuthTokens } from "@axis/shared";
 import { NextResponse, type NextRequest } from "next/server";
-import { ACCESS_COOKIE, API_URL, clearTokens, clientIpHeader, REFRESH_COOKIE, writeTokens } from "./lib/auth/cookies";
+import { ACCESS_COOKIE, ADMIN_COOKIE, API_URL, clearTokens, clientIpHeader, REFRESH_COOKIE, writeTokens } from "./lib/auth/cookies";
 
 // The website chat widget and its API calls are used by anonymous site visitors
 const PUBLIC = [/^\/login$/, /^\/signup$/, /^\/invite\//, /^\/auth\//, /^\/widget\//, /^\/api\/v1\/widget\//];
@@ -21,6 +21,9 @@ function unauthenticated(req: NextRequest) {
  * token exists, rotate it before the request reaches pages or the API proxy.
  */
 export async function middleware(req: NextRequest) {
+  // Platform console: its own session, never the company one
+  const path = req.nextUrl.pathname;
+  if (path === "/admin" || path.startsWith("/admin/") || path.startsWith("/api/admin/")) return adminGate(req);
   if (PUBLIC.some((re) => re.test(req.nextUrl.pathname))) return NextResponse.next();
   if (req.cookies.get(ACCESS_COOKIE)) return NextResponse.next();
 
@@ -47,6 +50,17 @@ export async function middleware(req: NextRequest) {
   // …and persist them in the browser
   writeTokens(out.cookies, tokens);
   return out;
+}
+
+function adminGate(req: NextRequest) {
+  const path = req.nextUrl.pathname;
+  if (path === "/admin/login" || path.startsWith("/admin/auth/") || req.cookies.get(ADMIN_COOKIE)) return NextResponse.next();
+  if (path.startsWith("/api/")) {
+    return NextResponse.json({ error: { code: "UNAUTHENTICATED", message: "Sign in required" } }, { status: 401 });
+  }
+  const url = new URL("/admin/login", req.url);
+  if (path !== "/admin") url.searchParams.set("next", path + req.nextUrl.search);
+  return NextResponse.redirect(url);
 }
 
 export const config = {

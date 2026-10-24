@@ -19,6 +19,8 @@ export default {
         accent: token("accent"),
         "accent-fg": token("accent-fg"),
         "accent-soft": token("accent-soft"),
+        "series-1": token("series-1"),
+        "series-2": token("series-2"),
         success: token("success"),
         warning: token("warning"),
         danger: token("danger"),

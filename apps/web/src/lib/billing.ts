@@ -1,4 +1,4 @@
-import type { InvoiceLineDto, MeResponse } from "@axis/shared";
+import type { InvoiceLineDto, MeResponse, SubscriptionStatus } from "@axis/shared";
 import type { Dictionary } from "./i18n/dictionaries/az";
 import { interpolate } from "./i18n/locales";
 
@@ -24,3 +24,17 @@ export function invoiceLineText(line: InvoiceLineDto, t: Dictionary) {
     n: line.quantity,
   });
 }
+
+/** Badge colours per subscription status (company billing page and platform console). */
+export const SUBSCRIPTION_STATUS_STYLE: Record<SubscriptionStatus, string> = {
+  TRIALING: "bg-accent-soft text-accent",
+  ACTIVE: "bg-success/10 text-success",
+  PAST_DUE: "bg-warning/10 text-warning",
+  SUSPENDED: "bg-danger/10 text-danger",
+  CANCELED: "bg-muted text-fg-subtle",
+};
+
+export const INVOICE_STATUS_STYLE: Record<string, string> = {
+  PAID: "bg-success/10 text-success",
+  FAILED: "bg-danger/10 text-danger",
+};

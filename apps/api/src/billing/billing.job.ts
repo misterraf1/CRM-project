@@ -1,7 +1,8 @@
-import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
+import { Inject, Injectable, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import type { Plan, Prisma, Subscription } from "@prisma/client";
 import type { BillingInterval, InvoiceLineDto } from "@axis/shared";
 import { config } from "../config";
+import { JobsMonitor } from "../common/jobs-monitor";
 import { randomToken } from "../common/ids";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService, type Tx } from "../prisma/prisma.service";
@@ -28,19 +29,20 @@ type Sub = Subscription & { plan: Plan };
  */
 @Injectable()
 export class BillingJob implements OnApplicationBootstrap, OnModuleDestroy {
-  private readonly logger = new Logger("BillingJob");
   private timer?: NodeJS.Timeout;
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly monitor: JobsMonitor,
     private readonly billing: BillingService,
     private readonly notifications: NotificationsService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
   onApplicationBootstrap() {
+    this.monitor.register("billing");
     if (!config().JOBS_ENABLED) return;
-    const tick = () => this.run().catch((e) => this.logger.error(e instanceof Error ? e.stack : String(e)));
+    const tick = () => this.monitor.track("billing", () => this.run());
     this.timer = setInterval(tick, EVERY_MS);
     void tick();
   }

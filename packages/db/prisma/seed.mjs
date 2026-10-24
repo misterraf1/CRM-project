@@ -51,6 +51,7 @@ const PLANS = [
 
 // Demo workspace — one account per role, to try permissions quickly.
 const DEMO_PASSWORD = "demo12345";
+const LOST_REASON = "Qiymət baha gəldi";
 const DEMO_TENANT = { id: "tenant_demo", slug: "demo", name: "Demo Şirkət MMC" };
 const DEMO_MEMBERS = [
   { email: "owner@demo.axis", fullName: "Kamran Əliyev", role: "OWNER", title: "Direktor" },
@@ -179,19 +180,20 @@ async function seedDemoCrm() {
       const stage = stages[si];
       const closedAt = closedDaysAgo === null ? null : new Date(Date.now() - closedDaysAgo * day);
       const ownerId = members[oi]?.id ?? null;
+      // Created before it closed, so cycle-time analytics see a real sales cycle
+      const createdAt = new Date((closedAt ?? new Date()).getTime() - 5 * day);
       const deal = await tx.deal.create({
         data: {
           tenantId: DEMO_TENANT.id, pipelineId: pipeline.id, stageId: stage.id, title,
           amount: azn * 100, contactId: contacts[ci].id, ownerId,
-          position: (n + 1) * 1024, closedAt,
-          lostReason: stage.kind === "lost" ? "price" : null,
+          position: (n + 1) * 1024, closedAt, createdAt,
+          lostReason: stage.kind === "lost" ? LOST_REASON : null,
         },
       });
       const ref = { dealId: deal.id, contactId: contacts[ci].id };
-      const createdAt = new Date((closedAt ?? new Date()).getTime() - 5 * day);
       await activity("deal_created", createdAt, ownerId, ref, { dealTitle: title, amount: azn * 100, stage: stages[0].name, contactName: contacts[ci].name });
       if (stage.kind === "won") await activity("deal_won", closedAt, ownerId, ref, { dealTitle: title, amount: azn * 100 });
-      if (stage.kind === "lost") await activity("deal_lost", closedAt, ownerId, ref, { dealTitle: title, amount: azn * 100, reason: "price" });
+      if (stage.kind === "lost") await activity("deal_lost", closedAt, ownerId, ref, { dealTitle: title, amount: azn * 100, reason: LOST_REASON });
     }
     console.log(`Demo CRM: ${DEMO_CONTACTS.length} contacts, ${DEMO_DEALS.length} deals`);
   });
@@ -330,14 +332,63 @@ async function seedDemoChat() {
   });
 }
 
+/**
+ * Platform staff. Production: the first SUPER_ADMIN comes from PLATFORM_ADMIN_EMAIL /
+ * PLATFORM_ADMIN_PASSWORD (the password is only set when the account is created).
+ * Demo: platform@demo.axis (SUPER_ADMIN) and support@demo.axis (SUPPORT).
+ */
+async function seedPlatformStaff(demo) {
+  const staff = [];
+  if (process.env.PLATFORM_ADMIN_EMAIL && process.env.PLATFORM_ADMIN_PASSWORD) {
+    staff.push({ email: process.env.PLATFORM_ADMIN_EMAIL.toLowerCase(), fullName: "Platform Admin", password: process.env.PLATFORM_ADMIN_PASSWORD, role: "SUPER_ADMIN" });
+  }
+  if (demo) {
+    staff.push({ email: "platform@demo.axis", fullName: "Rafael Axis", password: DEMO_PASSWORD, role: "SUPER_ADMIN" });
+    staff.push({ email: "support@demo.axis", fullName: "Səbinə Dəstək", password: DEMO_PASSWORD, role: "SUPPORT" });
+  }
+  for (const s of staff) {
+    await prisma.user.upsert({
+      where: { email: s.email },
+      create: { email: s.email, fullName: s.fullName, passwordHash: await hash(s.password), platformRole: s.role, emailVerified: new Date() },
+      update: { platformRole: s.role },
+    });
+  }
+  if (staff.length) console.log(`Platform staff: ${staff.map((s) => `${s.email} (${s.role})`).join(", ")}`);
+}
+
+// Demo support ticket and platform costs (notes say "Demo" so they're never mistaken for real figures)
+async function seedDemoPlatform() {
+  await prisma.$transaction(async (tx) => {
+    if (await tx.supportTicket.count({ where: { tenantId: DEMO_TENANT.id } })) return;
+    const employee = await tx.user.findUnique({ where: { email: "employee@demo.axis" } });
+    if (employee) {
+      const body = "Salam! WhatsApp kanalını necə qoşa bilərik? Meta Business hesabımız var.";
+      const t = await tx.supportTicket.create({ data: { tenantId: DEMO_TENANT.id, authorId: employee.id, subject: "WhatsApp qoşulması", body, priority: "MEDIUM" } });
+      await tx.supportTicketMessage.create({ data: { tenantId: DEMO_TENANT.id, ticketId: t.id, authorId: employee.id, body } });
+    }
+    const month = (offset, day) => new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - offset, day));
+    const costs = [
+      ["server", "Hetzner", 9500, month(0, 2)],
+      ["api", "Meta WhatsApp", 2400, month(0, 5)],
+      ["server", "Hetzner", 9500, month(1, 2)],
+      ["sms", "Azercell SMS", 1800, month(1, 12)],
+      ["server", "Hetzner", 9500, month(2, 2)],
+    ];
+    await tx.platformExpense.createMany({ data: costs.map(([category, vendor, amount, incurredOn]) => ({ category, vendor, amount, incurredOn, note: "Demo" })) });
+    console.log("Demo platform: 1 ticket, 5 expenses");
+  });
+}
+
 try {
   await seedPlans();
+  await seedPlatformStaff(process.env.SEED_DEMO !== "false");
   if (process.env.SEED_DEMO !== "false") {
     await seedDemo();
     await seedDemoCrm();
     await seedDemoTasks();
     await seedDemoInbox();
     await seedDemoChat();
+    await seedDemoPlatform();
   }
   console.log("Seed complete");
 } finally {

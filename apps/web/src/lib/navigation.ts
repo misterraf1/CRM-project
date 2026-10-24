@@ -4,6 +4,7 @@ import {
   FolderOpen,
   Handshake,
   LayoutDashboard,
+  LifeBuoy,
   MessageSquareText,
   MessagesSquare,
   Settings,
@@ -12,6 +13,7 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
+import type { Permission } from "@axis/shared";
 import type { Dictionary } from "./i18n/dictionaries/az";
 
 export type ModuleKey = Exclude<keyof Dictionary["nav"], "groupWork" | "groupManage">;
@@ -24,6 +26,8 @@ export interface NavItem {
   phase: number | null;
   /** Plan feature the module needs; without it the sidebar shows a lock. */
   feature?: string;
+  /** Hidden from members without this permission (the API refuses them anyway). */
+  permission?: Permission;
   /** Sidebar counter fed by the shell summary. */
   badge?: "awaiting" | "overdue" | "unreadChat";
 }
@@ -44,10 +48,11 @@ export const NAV_GROUPS: { label: "groupWork" | "groupManage"; items: NavItem[] 
     label: "groupManage",
     items: [
       { key: "team", href: "/team", icon: UsersRound, phase: null, feature: "team.monitoring" },
-      { key: "files", href: "/files", icon: FolderOpen, phase: 8 },
-      { key: "analytics", href: "/analytics", icon: BarChart3, phase: 8 },
-      { key: "automations", href: "/automations", icon: Workflow, phase: 8 },
+      { key: "files", href: "/files", icon: FolderOpen, phase: 9 },
+      { key: "analytics", href: "/analytics", icon: BarChart3, phase: null, feature: "analytics.basic", permission: "analytics.view" },
+      { key: "automations", href: "/automations", icon: Workflow, phase: null, feature: "automations", permission: "automations.manage" },
       { key: "settings", href: "/settings", icon: Settings, phase: null },
+      { key: "support", href: "/support", icon: LifeBuoy, phase: null },
     ],
   },
 ];
@@ -55,6 +60,6 @@ export const NAV_GROUPS: { label: "groupWork" | "groupManage"; items: NavItem[] 
 export const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
 
 export const PLANNED_MODULES = NAV_ITEMS.filter(
-  (item): item is NavItem & { phase: number; key: Exclude<ModuleKey, "dashboard"> } =>
+  (item): item is NavItem & { phase: number; key: Exclude<ModuleKey, "dashboard" | "support" | "analytics" | "automations"> } =>
     item.phase !== null && item.key !== "dashboard",
 );

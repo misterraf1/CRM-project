@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { AutomationRunner } from "../automations/automation.runner";
 import type { Channel } from "@prisma/client";
 import type { Tx } from "../prisma/prisma.service";
 import { InboxEvents } from "./events";
@@ -21,7 +22,10 @@ export interface InboundMessage {
  */
 @Injectable()
 export class IngestService {
-  constructor(private readonly events: InboxEvents) {}
+  constructor(
+    private readonly events: InboxEvents,
+    private readonly automations: AutomationRunner,
+  ) {}
 
   /** Returns null when the message was already stored (provider retry). */
   async inbound(tx: Tx, channel: Channel, msg: InboundMessage) {
@@ -40,6 +44,7 @@ export class IngestService {
           contactId: await this.matchContact(tx, channel.tenantId, msg.handle),
         },
       });
+      await this.automations.enqueue(tx, channel.tenantId, "conversation.created", { conversationId: conversation.id });
     }
     if (msg.externalMessageId) {
       const dup = await tx.message.findUnique({

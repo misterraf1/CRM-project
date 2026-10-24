@@ -43,7 +43,7 @@ export function TeamPerformance({ rows, currency, canViewTeam }: { rows: Row[]; 
   return (
     <section className="card">
       <CardHeader title={d.title} action={canViewTeam ? { href: "/team", label: t.common.viewAll } : undefined} />
-      <div className="mt-2 overflow-x-auto">
+      <div className="relative mt-2 overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-y border-border text-xs text-fg-subtle">

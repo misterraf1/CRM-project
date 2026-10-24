@@ -63,12 +63,14 @@ export type NotificationType =
   | "billing_paid"
   | "billing_payment_failed"
   | "billing_trial_ending"
-  | "billing_suspended";
+  | "billing_suspended"
+  | "support_reply"
+  | "automation";
 
 export interface NotificationDto {
   id: string;
   type: NotificationType;
-  payload: { taskId?: string; title?: string; actorName?: string; invoiceId?: string; [k: string]: unknown };
+  payload: { taskId?: string; title?: string; actorName?: string; invoiceId?: string; ticketId?: string; dealId?: string; contactId?: string; conversationId?: string; [k: string]: unknown };
   readAt: string | null;
   createdAt: string;
 }

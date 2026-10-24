@@ -18,6 +18,9 @@ export interface RequestContext {
   /** Plan features in effect for the tenant (trial = all) */
   features?: string[];
   subscriptionStatus?: string;
+  /** Platform staff requests (Super Admin): set by AdminGuard, never together with a tenant */
+  platformRole?: "SUPPORT" | "SUPER_ADMIN";
+  adminSessionId?: string;
 }
 
 export type AuthedContext = Required<Pick<RequestContext, "userId" | "tenantId" | "membershipId" | "sessionId" | "role" | "permissions">> &

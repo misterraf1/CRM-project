@@ -221,7 +221,7 @@ export function MembersManager({ me, members, departments }: { me: MeResponse; m
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs text-fg-subtle">

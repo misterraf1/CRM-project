@@ -6,6 +6,7 @@ import { createNullFill } from "@axis/db/null-fill";
 import { Prisma, PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
+import { hashPassword } from "../src/auth/password";
 import { configureApp } from "../src/bootstrap";
 
 export async function createApp() {
@@ -71,3 +72,12 @@ export const setPlan = (tenantId: string, code: "START" | "PRO" | "BUSINESS") =>
     const plan = await db.plan.findUniqueOrThrow({ where: { code } });
     await db.subscription.update({ where: { tenantId }, data: { planId: plan.id } });
   });
+
+/** Platform staff account (Super Admin / Support) signed in to the admin API. */
+export async function platformStaff(app: INestApplication, role: "SUPER_ADMIN" | "SUPPORT") {
+  const email = uniqueEmail(`staff-${role.toLowerCase()}`);
+  const passwordHash = await hashPassword(PASSWORD);
+  const user = await withRawDb((db) => db.user.create({ data: { email, fullName: `Staff ${role}`, passwordHash, platformRole: role } }));
+  const res = await request(app.getHttpServer()).post("/v1/admin/auth/login").send({ email, password: PASSWORD }).expect(200);
+  return { userId: user.id, email, auth: { authorization: `Bearer ${res.body.accessToken}` } };
+}

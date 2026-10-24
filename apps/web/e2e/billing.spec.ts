@@ -45,7 +45,7 @@ test("trial → demo checkout → failed renewal and grace → pay → scheduled
   // PRO: deals and team open, departments locked
   await expect(page.locator("aside nav").getByRole("link", { name: /^Satışlar/ })).not.toHaveAttribute("title", /Cari paketdə yoxdur/);
   await page.goto("/settings/members");
-  await expect(page.getByRole("link", { name: "Cari paketdə yoxdur — paketi yüksəldin" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("link", { name: "Cari paketdə yoxdur — paketi yüksəldin" })).toBeVisible();
 
   // Renewal declined → grace period, banner on every page
   await page.goto("/settings/billing");

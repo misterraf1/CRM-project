@@ -25,8 +25,8 @@ describe("Role permission matrix", () => {
     expect(owner.filter((p) => !admin.includes(p))).toEqual(["billing.manage"]);
   });
 
-  it("view-all permissions stay with owners and admins", () => {
-    for (const p of ["dashboard.view_all", "contacts.view_all", "tasks.view_all"] as const) {
+  it("view-all permissions and automation management stay with owners and admins", () => {
+    for (const p of ["dashboard.view_all", "contacts.view_all", "tasks.view_all", "automations.manage"] as const) {
       expect(resolvePermissions("MANAGER")).not.toContain(p);
       expect(resolvePermissions("EMPLOYEE")).not.toContain(p);
       expect(resolvePermissions("ADMIN")).toContain(p);

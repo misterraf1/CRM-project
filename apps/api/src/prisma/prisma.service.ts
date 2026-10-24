@@ -37,7 +37,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * Write conflicts with concurrent transactions are retried.
    */
   async scoped<T>(fn: (tx: Tx) => Promise<T>, scope: Pick<DbScope, "tenantId" | "userId"> = currentContext()): Promise<T> {
-    const s: DbScope = { tenantId: scope.tenantId || undefined, userId: scope.userId || undefined };
+    return this.transaction({ tenantId: scope.tenantId || undefined, userId: scope.userId || undefined }, fn);
+  }
+
+  /** `system()` inside one transaction: cross-tenant platform writes that must commit together. */
+  systemTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.transaction({ system: true }, fn);
+  }
+
+  private async transaction<T>(s: DbScope, fn: (tx: Tx) => Promise<T>): Promise<T> {
     for (let attempt = 1; ; attempt++) {
       try {
         // Prisma promises are lazy: they must be awaited inside the scope, or the

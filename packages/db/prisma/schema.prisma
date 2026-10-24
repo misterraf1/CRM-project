@@ -1,4 +1,4 @@
-// Axis platform — core data model (PostgreSQL)
+// Axis platform — core data model
 //
 // Database: MongoDB (replica set — required for transactions).
 //
@@ -45,8 +45,25 @@ model User {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  memberships Membership[]
-  sessions    Session[]
+  memberships   Membership[]
+  sessions      Session[]
+  adminSessions AdminSession[]
+}
+
+// Platform staff sign-in (Super Admin). Separate from tenant sessions: different
+// token issuer, no tenant, checked on every admin request so logout is immediate.
+model AdminSession {
+  id        String    @id @default(cuid()) @map("_id")
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  ip        String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // One row per refresh token. Rotation creates a new row in the same family;
@@ -99,22 +116,26 @@ model Tenant {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
-  memberships   Membership[]
-  departments   Department[]
-  subscription  Subscription?
-  invoices      Invoice[]
-  usage         UsageCounter[]
-  contacts      Contact[]
-  pipelines     Pipeline[]
-  deals         Deal[]
-  tasks         Task[]
-  projects      Project[]
-  channels      Channel[]
-  conversations Conversation[]
-  chatRooms     ChatRoom[]
-  files         FileObject[]
-  auditLogs     AuditLog[]
-  tickets       SupportTicket[]
+  memberships      Membership[]
+  departments      Department[]
+  subscription     Subscription?
+  invoices         Invoice[]
+  usage            UsageCounter[]
+  contacts         Contact[]
+  pipelines        Pipeline[]
+  deals            Deal[]
+  tasks            Task[]
+  projects         Project[]
+  channels         Channel[]
+  conversations    Conversation[]
+  chatRooms        ChatRoom[]
+  files            FileObject[]
+  auditLogs        AuditLog[]
+  tickets          SupportTicket[]
+  ticketMessages   SupportTicketMessage[]
+  automationRules  AutomationRule[]
+  automationEvents AutomationEvent[]
+  automationRuns   AutomationRun[]
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -731,5 +752,85 @@ model SupportTicket {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  tenant   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages SupportTicketMessage[]
+
+  @@index([tenantId, updatedAt])
+  @@index([status, updatedAt])
+}
+
+/// Conversation on a ticket; `fromStaff` = platform support wrote it
+model SupportTicketMessage {
+  id        String   @id @default(cuid()) @map("_id")
+  tenantId  String
+  ticketId  String
+  authorId  String
+  fromStaff Boolean  @default(false)
+  body      String
+  createdAt DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Automations (BUSINESS): "when X happens, do Y"
+// ─────────────────────────────────────────────────────────────
+
+model AutomationRule {
+  id          String    @id @default(cuid()) @map("_id")
+  tenantId    String
+  name        String
+  // "deal.created" | "deal.stage_changed" | "contact.created" | "conversation.created" | "task.overdue"
+  trigger     String
+  conditions  Json      @default("{}")
+  actions     Json // AutomationAction[]
+  enabled     Boolean   @default(true)
+  createdById String // Membership id
+  // Next member index for round-robin assignment
+  rrCursor    Int       @default(0)
+  runCount    Int       @default(0)
+  lastRunAt   DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  runs   AutomationRun[]
+
+  @@index([tenantId, trigger, enabled])
+}
+
+/// Outbox: written in the same transaction as the change, processed after commit
+model AutomationEvent {
+  id          String    @id @default(cuid()) @map("_id")
+  tenantId    String
+  trigger     String
+  payload     Json
+  status      String    @default("pending") // "pending" | "processing" | "done" | "failed"
+  attempts    Int       @default(0)
+  error       String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+model AutomationRun {
+  id        String   @id @default(cuid()) @map("_id")
+  tenantId  String
+  ruleId    String
+  eventId   String
+  status    String // "success" | "skipped" | "failed"
+  detail    String?
+  createdAt DateTime @default(now())
+
+  rule   AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, createdAt])
 }

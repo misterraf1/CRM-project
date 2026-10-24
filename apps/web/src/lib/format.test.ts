@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatDate, formatDateTime, formatDuration, formatMoney, fromDateTimeInput, toDateTimeInput, formatNumber, formatRelative, moneyInputValue, parseMoneyInput, percentChange } from "./format.ts";
+import { formatDate, formatDateTime, formatDuration, formatLocalMonth, formatMonth, formatMoney, fromDateTimeInput, toDateTimeInput, formatNumber, formatRelative, moneyInputValue, parseMoneyInput, percentChange } from "./format.ts";
 
 const NBSP = " ";
 
@@ -67,4 +67,13 @@ test("date-time inputs use the tenant time zone (Baku, UTC+4), not the machine's
   assert.equal(toDateTimeInput(null), "");
   assert.equal(formatDateTime("2026-10-22T14:00:00.000Z", "az"), "22 okt, 18:00");
   assert.equal(formatDateTime("2026-10-21T20:00:00.000Z", "en"), "22 Oct");
+});
+
+test("months: UTC month starts vs Baku month starts", () => {
+  // Platform figures bucket by UTC month
+  assert.equal(formatMonth("2026-10-01T00:00:00.000Z", "az"), "okt 2026");
+  // A Baku month starts at 20:00 UTC the day before — still October locally
+  assert.equal(formatLocalMonth("2026-09-30T20:00:00.000Z", "az"), "okt 2026");
+  assert.equal(formatMonth("2026-09-30T20:00:00.000Z", "az"), "sen 2026");
+  assert.equal(formatLocalMonth("2025-12-31T20:00:00.000Z", "en"), "Jan 2026");
 });

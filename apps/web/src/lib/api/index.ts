@@ -26,6 +26,12 @@ import type {
   MeResponse,
   MemberDto,
   PipelineDto,
+  TicketDto,
+  AnalyticsAdvancedDto,
+  AnalyticsBasicDto,
+  AnalyticsPeriod,
+  AutomationRuleDto,
+  AutomationRunDto,
 } from "@axis/shared";
 import { cache } from "react";
 import { apiFetch } from "./server";
@@ -67,7 +73,7 @@ export const getDeal = (id: string) => apiFetch<DealDto & { activities: Activity
 export const getForecast = (pipelineId?: string) =>
   apiFetch<ForecastDto>(`/v1/deals/forecast${pipelineId ? `?pipelineId=${encodeURIComponent(pipelineId)}` : ""}`);
 
-function query(params: Record<string, string | undefined>) {
+export function query(params: Record<string, string | undefined>) {
   const qs = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1]));
   return qs.size ? `?${qs}` : "";
 }
@@ -101,6 +107,18 @@ export const getChatRoom = (id: string, before?: string) =>
 export const searchChat = (q: string) => apiFetch<ChatSearchHitDto[]>(`/v1/chat/search${query({ q })}`);
 
 export const getBilling = () => apiFetch<BillingOverviewDto>("/v1/billing");
+
+export const getTickets = () => apiFetch<TicketDto[]>("/v1/support/tickets");
+
+export const getAnalyticsBasic = (period: AnalyticsPeriod) => apiFetch<AnalyticsBasicDto>(`/v1/analytics/basic${query({ period })}`);
+
+export const getAnalyticsAdvanced = (period: AnalyticsPeriod) => apiFetch<AnalyticsAdvancedDto>(`/v1/analytics/advanced${query({ period })}`);
+
+export const getAutomations = () => apiFetch<AutomationRuleDto[]>("/v1/automations");
+
+export const getAutomationRuns = (id: string) => apiFetch<AutomationRunDto[]>(`/v1/automations/${encodeURIComponent(id)}/runs`);
+
+export const getTicket = (id: string) => apiFetch<TicketDto>(`/v1/support/tickets/${encodeURIComponent(id)}`);
 
 export const getInvoice = (id: string) => apiFetch<InvoiceDto & { company: string; plan: string }>(`/v1/billing/invoices/${encodeURIComponent(id)}`);
 

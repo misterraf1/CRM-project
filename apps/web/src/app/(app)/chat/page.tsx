@@ -39,7 +39,7 @@ export default async function ChatPage({ searchParams }: Props) {
 
   return (
     <div className="-my-6 -mx-4 lg:-mx-6">
-      <div className="grid h-[calc(100dvh-3.5rem)] lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid h-[calc(100dvh-3.5rem)] grid-cols-[minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className={clsx("flex min-h-0 flex-col border-r border-border bg-surface", room && "hidden lg:flex")}>
           <div className="space-y-2 border-b border-border p-3">
             <div className="flex items-center justify-between gap-2">

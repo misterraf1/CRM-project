@@ -78,7 +78,7 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
                 </p>
               )}
               <ul className="space-y-0.5">
-                {group.items.map((item) => {
+                {group.items.filter((item) => !item.permission || session.permissions.includes(item.permission)).map((item) => {
                   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
                   const count = item.badge ? summary[item.badge] : 0;
                   const label = t.nav[item.key];

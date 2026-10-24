@@ -8,18 +8,12 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { DemoBadge } from "@/components/ui/Card";
 import { api } from "@/lib/api/client";
+import { INVOICE_STATUS_STYLE, SUBSCRIPTION_STATUS_STYLE } from "@/lib/billing";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
 import { interpolate } from "@/lib/i18n/locales";
 
-const STATUS_STYLE = {
-  TRIALING: "bg-accent-soft text-accent",
-  ACTIVE: "bg-success/10 text-success",
-  PAST_DUE: "bg-warning/10 text-warning",
-  SUSPENDED: "bg-danger/10 text-danger",
-  CANCELED: "bg-muted text-fg-subtle",
-} as const;
 
 const price = (p: PlanDto, interval: BillingInterval) => (interval === "YEAR" ? p.priceYearly : p.priceMonthly);
 
@@ -107,7 +101,7 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
         <section className="card p-5">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-sm font-semibold">{b.currentPlan}</h2>
-            <span className={clsx("rounded-full px-2 py-0.5 text-[11px] font-medium", STATUS_STYLE[sub.status])}>{b.statuses[sub.status]}</span>
+            <span className={clsx("rounded-full px-2 py-0.5 text-[11px] font-medium", SUBSCRIPTION_STATUS_STYLE[sub.status])}>{b.statuses[sub.status]}</span>
           </div>
           <p className="mt-2 text-2xl font-semibold tracking-tight">
             {sub.plan.name}{" "}
@@ -287,7 +281,7 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
         {data.invoices.length === 0 ? (
           <p className="px-5 py-4 text-sm text-fg-muted">{b.noInvoices}</p>
         ) : (
-          <div className="mt-2 overflow-x-auto">
+          <div className="relative mt-2 overflow-x-auto">
             <table className="w-full min-w-[600px] text-sm">
               <thead>
                 <tr className="border-y border-border text-left text-xs text-fg-subtle">
@@ -310,7 +304,7 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
                       <span
                         className={clsx(
                           "rounded-full px-2 py-0.5 text-[11px] font-medium",
-                          inv.status === "PAID" ? "bg-success/10 text-success" : inv.status === "FAILED" ? "bg-danger/10 text-danger" : "bg-muted text-fg-muted",
+                          INVOICE_STATUS_STYLE[inv.status] ?? "bg-muted text-fg-muted",
                         )}
                       >
                         {b.invoiceStatuses[inv.status]}
