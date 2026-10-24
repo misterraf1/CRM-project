@@ -109,6 +109,11 @@ export function formatLocalMonth(iso: string, locale: Locale) {
   return `${MONTHS[locale].short[month - 1]} ${parts.find((p) => p.type === "year")!.value}`;
 }
 
+/** File size: "12 KB", "3,4 MB". */
+export function formatBytes(bytes: number, locale: Locale) {
+  return bytes < 1024 * 1024 ? `${formatNumber(Math.max(1, Math.round(bytes / 1024)), locale)} KB` : `${formatNumber(bytes / 1048576, locale, 1)} MB`;
+}
+
 /** Percent change; null when there is no baseline to compare against. */
 export function percentChange(current: number, previous: number): number | null {
   if (previous === 0) return null;

@@ -6,6 +6,8 @@ import { AdminAuthController, AdminController } from "./admin/admin.controller";
 import { AdminAuthService } from "./admin/admin-auth.service";
 import { AdminGuard } from "./admin/admin.guard";
 import { AdminService } from "./admin/admin.service";
+import { AiService } from "./ai/ai.service";
+import { InboxAiService } from "./ai/inbox-ai.service";
 import { AnalyticsController } from "./analytics/analytics.controller";
 import { AnalyticsService } from "./analytics/analytics.service";
 import { AuditController } from "./audit/audit.controller";
@@ -24,6 +26,8 @@ import { EntitlementsService } from "./billing/entitlements.service";
 import { DemoPaymentProvider, PAYMENT_PROVIDER } from "./billing/provider";
 import { ContextMiddleware } from "./common/context.middleware";
 import { JobsMonitor } from "./common/jobs-monitor";
+import { MailService } from "./mail/mail.service";
+import { PasswordResetService } from "./auth/password-reset.service";
 import { ActivityService } from "./crm/activity.service";
 import { ContactsController } from "./crm/contacts.controller";
 import { ContactsService } from "./crm/contacts.service";
@@ -126,8 +130,12 @@ import { TeamService } from "./team/team.service";
     BillingService,
     BillingJob,
     JobsMonitor,
+    MailService,
+    PasswordResetService,
     SupportService,
     AnalyticsService,
+    AiService,
+    InboxAiService,
     AutomationsService,
     AutomationRunner,
     AdminAuthService,

@@ -11,7 +11,7 @@ export function AuthFrame({ badge, children }: { badge?: string; children: React
         <div className="flex items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-sm font-bold text-accent-fg">{APP_NAME[0]}</span>
           <span className="text-sm font-semibold">{APP_NAME}</span>
-          {badge && <span className="rounded-full bg-fg px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-bg">{badge}</span>}
+          {badge && <span className="rounded-full bg-fg px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-bg">{badge}</span>}
         </div>
         <div className="flex items-center gap-2">
           <LocaleSwitcher />

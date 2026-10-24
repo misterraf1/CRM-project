@@ -38,7 +38,8 @@ export function TaskBoard({ tasks: initial }: { tasks: TaskDto[] }) {
   return (
     <div className="space-y-2">
       {error && <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
-      <div className="-mx-4 overflow-x-auto px-4 pb-2 lg:-mx-6 lg:px-6">
+      {/* Focusable so the board can be scrolled with the keyboard even when it has no cards */}
+      <div role="region" aria-label={k.title} tabIndex={0} className="-mx-4 overflow-x-auto px-4 pb-2 outline-none focus-visible:ring-2 focus-visible:ring-accent/60 lg:-mx-6 lg:px-6">
         <div className="grid auto-cols-[minmax(240px,1fr)] grid-flow-col gap-3">
           {columns.map(({ status, items }) => (
             <section

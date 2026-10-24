@@ -420,7 +420,7 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 | Dəstək müraciətləri: şirkət yazır (`/support`), platforma cavab verir; müəllifə bildiriş; şirkət cavabı «Axis dəstək» adı ilə görür; bağlı müraciətə yazanda yenidən açılır; dayandırılmış şirkət də yaza bilir | ✅ | `apps/api/src/support`, `/support`, `/admin/tickets` |
 | Sistem: baza (gecikmə), iş müddəti, yaddaş, fon proseslərinin son icrası və xətası, webhook və kanal xətaları, ödəniş provayderi | ✅ | `/admin/system` |
 | Platforma əməliyyatları şirkətin öz audit jurnalında da görünür (`platform.*`) | ✅ | |
-| **Platforma hesabları üçün 2FA** | ⏳ **production-dan əvvəl vacibdir** | `User.mfaSecret` sahəsi hazırdır |
+| Platforma hesabları üçün 2FA | ✅ | Mərhələ 8-in 2-ci hissəsində |
 | Impersonate (şirkətə onun adından baxmaq), `admin.axis.az` host yönləndirməsi, email bildirişləri | ⏳ | |
 
 **İlk Super Admin:** `.env`-də `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD`, sonra `npm run db:seed` (şifrə yalnız hesab yaradılarkən yazılır). Demo: `platform@demo.axis`, `support@demo.axis` (şifrə `demo12345`).
@@ -454,5 +454,42 @@ Səbəb: bu funksiyalar paketlərdə satılırdı (PRO: əsas analitika; BUSINES
 
 **Testlər:** 117 API e2e (yeni: 4 analitika, 5 avtomatlaşdırma, 1 prioritet dəstək) + 9 web unit + 18 Playwright UI (yeni: analitika + CSV yükləmə; avtomatlaşdırma nümunədən real vaxtda işləməyə qədər; mobil en testinə yeni səhifələr).
 
-### Növbəti — Mərhələ 8 (2-ci hissə)
-Email servisi (dəvət, şifrə bərpası, qəbzlər) və email kanalı, platforma hesabları üçün 2FA, AI köməkçisi, ümumi Fayllar bölməsi. Production-dan əvvəl: real ödəniş provayderi (Payriff / Epoint).
+### Mərhələ 8 (2-ci hissə) — 2FA, email, Fayllar, AI, email kanalı ✅
+| Hissə | Vəziyyət | Harada |
+|---|---|---|
+| **Platforma işçiləri üçün 2FA** (TOTP, RFC 6238 — Google/Microsoft Authenticator, 1Password): QR ilə qurulma, 10 birdəfəlik ehtiyat kod, hər kod yalnız bir dəfə işləyir (təkrar istifadəyə qarşı qorunma), iki addımlı giriş (parol → 5 dəqiqəlik challenge → kod). `PLATFORM_REQUIRE_MFA` (production-da default açıq): 2FA aktiv edilməyincə konsolun yalnız təhlükəsizlik səhifəsi açılır, API də bunu tələb edir | ✅ | `common/totp.ts`, `/admin/security` |
+| **Email servisi** (outbox, növbə, 5 təkrar cəhd): dəvət, şifrə bərpası, ödəniş qəbzi, dəstək cavabı — 3 dildə. **SMTP qoşulmayıbsa heç nə "göndərildi" kimi göstərilmir**: status "göndərilməyib", dəvət linki UI-də qalır; Super Admin → Sistem-də emaillərin statusu (mətn göstərilmir — bərpa linkləri gizli qalır) | ✅ | `apps/api/src/mail` |
+| **Şifrə bərpası**: birdəfəlik link (60 dəq), yalnız ən yeni link işləyir, naməlum email üçün eyni cavab, bərpadan sonra bütün cihazlarda çıxış | ✅ | `/forgot-password`, `/reset-password/[token]` |
+| **Fayllar bölməsi**: şirkətin ümumi sənədləri + tapşırıq və çat faylları — hər istifadəçi yalnız aça bildiyi faylları görür (çatlar sahib üçün də gizlidir); axtarış, mənbə filtri, yaddaş istifadəsi; ümumi sənədi yükləyən, sahib və admin silə bilər | ✅ | `/files` |
+| **AI köməkçisi (Claude, `claude-opus-5-5`)**: yazışmada cavab qaralaması (müştərinin dilində, heç vaxt avtomatik göndərilmir, daxili qeydlər qaralamaya düşmür) və xülasə. Paket limiti (`Plan.aiCredits`: PRO 100, BUSINESS 500 sorğu/ay), uğursuz sorğu limiti geri qaytarır; müştəri mətni prompt-injection-a qarşı ayrıca etiketlərdədir; server tərəfi fallback (`fallbacks: "default"`) aktivdir. Açar yoxdursa düymələr səbəbi göstərir | ✅ | `apps/api/src/ai` |
+| **Email kanalı**: gələn məktublar provayderin inbound webhook-u ilə (Postmark formatı, hər kanalın gizli tokeni, yalnız yaradılanda bir dəfə göstərilir), cavablar kanal ünvanından `In-Reply-To`/`References` ilə; çatdırılma statusu real göndərişə görə yenilənir. SMTP olmadan real email kanalı yaradılmır (demo mümkündür) | ✅ | `/v1/webhooks/email/:id` |
+| Tamamlanmamış modul ekranı (`[module]`, «Mərhələ N») silindi — bütün modullar artıq işləyir | ✅ | |
+| Şirkət işçiləri üçün 2FA, IMAP ilə email qəbulu, AI ilə CRM xülasələri | ⏳ | sonra |
+
+**Bu mərhələdə tapılıb düzəldilənlər:**
+- Brauzer klienti istənilən 401 cavabında istifadəçini sessiyadan çıxarırdı — yanlış 2FA kodu da girişə atırdı. İndi yalnız `UNAUTHENTICATED` sessiyanı bitirir.
+- Admin proxy bütün `auth/*` sorğularını bağlayırdı (tokenlər brauzerə çıxmasın deyə) və 2FA qurulması işləmirdi → yalnız 2FA idarəetmə sorğuları açıldı; giriş və kod yoxlaması yenə yalnız server formalarından keçir.
+- Demo email kanalının ünvanı unikal açar idi — iki şirkət eyni demo ünvanı yarada bilmirdi → demo kanallar təsadüfi açar alır.
+- Uğursuz email göndərişi eyni keçiddə dərhal təkrarlanırdı → növbəti keçidə (30 san) saxlanılır.
+
+**Testlər:** 131 API e2e (yeni: 2FA, email/şifrə bərpası, Fayllar, AI — saxta model klienti ilə, real API çağırılmır, email kanalı) + 9 web unit + 22 Playwright UI (yeni: 2FA qurulması və girişi, şifrə bərpası, Fayllar, demo email kanalı və AI düymələrinin vəziyyəti).
+
+### UI/UX auditi (2026-10-25, `ui-ux-pro-max` skill-i + axe-core) ✅
+Ölçü: axe-core (WCAG 2.0/2.1/2.2 A+AA), 28 səhifə × açıq/qaranlıq tema + mobil = 56 skan; hədəf ölçüsü, başlıq ardıcıllığı, skip link, kiçik mətn.
+
+| Tapıntı | Əvvəl | Düzəliş |
+|---|---|---|
+| Rəng kontrastı (`fg-subtle`, `success`, `warning`, `danger`, `accent-soft`) | 1020 element, 56 skan | Tokenlər səviyyəsində: hər birinin ≥4.5:1 olduğu hesablandı (öz 10% fonu daxil); brend mavisi dəyişmədi |
+| Dashboard qrafiki: 6–19px enində 30 düymə, yanlış ARIA rolu | 90 + hədəf ölçüsü | Bir fokuslanan qrafik: ← → / Home / End, siçan və toxunma ilə seçim, dəyər canlı oxunur |
+| Skip link yox idi | bütün səhifələr | «Əsas məzmuna keç» (şirkət və platforma konsolu) |
+| Eyni adlı landmark-lar, ARIA xətaları (tasks `aria-pressed` linkdə, rolsuz `aria-label`, zəngin adı) | 46 | Düzəldildi |
+| Boş Kanban lövhəsi klaviatura ilə sürüşdürülə bilmirdi | — | Lövhə fokuslanan region oldu (satışlar, tapşırıqlar) |
+| Kiçik hədəflər (20–21px), 10px mətn | — | 24px+, 10px → 11px |
+| `prefers-reduced-motion` yox idi; sticky başlıq fokusu gizlədə bilərdi | — | Animasiyalar azaldılır; `scroll-padding-top` |
+| Toxunma ekranında 44px | — | `pointer: coarse`-da düymə və sahələr ≥44px |
+
+**Nəticə:** 1156 → **0** avtomatik pozuntu. Davamlılıq üçün `e2e/a11y.spec.ts` (açıq/qaranlıq tema, boş şirkət) UI testlərinə əlavə edildi.
+**Qalan (avtomatik yoxlanmayan):** ekran oxuyucu ilə əl ilə sınaq, 11px meta mətnlərin (WCAG minimum tələb qoymur) gələcəkdə 12px-ə qaldırılması, mobil ikon düymələrinin (32px) 44px-ə çatdırılması.
+
+### Növbəti
+Production-a çıxış: real ödəniş provayderi (Payriff / Epoint — seçim və müqavilə), SMTP provayderi, `ANTHROPIC_API_KEY`, domen (`axis.az`, `admin.axis.az`), monitorinq. Sonra: şirkət işçiləri üçün 2FA, mobil tətbiq.

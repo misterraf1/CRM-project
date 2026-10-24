@@ -85,7 +85,7 @@ test("assigning a task notifies the employee via the bell; team profile shows it
   await expect(page.getByText("Anbarı yoxla")).toBeVisible();
 
   await emp.reload();
-  const bell = emp.getByRole("button", { name: "Bildirişlər (1)" });
+  const bell = emp.getByRole("button", { name: "Bildirişlər 1" });
   await expect(bell).toBeVisible();
   await bell.click();
   await emp.getByText("Elvin Rzayev sizə tapşırıq verdi: Anbarı yoxla").click();

@@ -28,7 +28,7 @@ export function RevenueChart({ months, locale, t }: { months: MoneyMonth[]; loca
       </div>
       <div className="relative mt-3 border-b border-border" style={{ height: HEIGHT }} aria-hidden>
         <div className="absolute inset-x-0 top-0 border-t border-dashed border-border" />
-        <span className="absolute -top-2 right-0 bg-surface pl-1 text-[10px] text-fg-subtle">{money(max)}</span>
+        <span className="absolute -top-2 right-0 bg-surface pl-1 text-[11px] text-fg-subtle">{money(max)}</span>
         <div className="absolute inset-0 grid grid-cols-6 gap-2">
           {months.map((m) => (
             <div key={m.month} className="group relative flex items-end justify-center gap-0.5">

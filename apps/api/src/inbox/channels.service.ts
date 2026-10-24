@@ -7,7 +7,8 @@ import { AppError, notFound } from "../common/errors";
 import { randomToken, sha256 } from "../common/ids";
 import { PrismaService } from "../prisma/prisma.service";
 import { IngestService } from "./ingest.service";
-import { sealCredentials } from "./secrets";
+import { sealCredentials } from "../common/secrets";
+import { MailService } from "../mail/mail.service";
 
 export function widgetKey(c: Pick<Channel, "tenantId" | "id">) {
   return `${c.tenantId}.${c.id}`;
@@ -35,6 +36,7 @@ export class ChannelsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ingest: IngestService,
+    private readonly mail: MailService,
   ) {}
 
   async list(): Promise<ChannelDto[]> {
@@ -50,9 +52,23 @@ export class ChannelsService {
     let externalId: string;
     let credentials: Buffer | null = null;
     let demo = false;
+    let inboundToken: string | null = null;
 
     if (input.type === "WEBCHAT") {
       externalId = `web_${randomToken(9)}`;
+    } else if (input.type === "EMAIL") {
+      if (!authedContext().features?.includes("inbox.omnichannel")) {
+        throw new AppError("FEATURE_NOT_IN_PLAN", "Messaging channels need the PRO plan or higher", { feature: "inbox.omnichannel" });
+      }
+      demo = input.demo;
+      // Demo channels never route real mail, so the address needn't be unique across companies
+      externalId = demo ? `demo_${randomToken(9)}` : input.address;
+      if (!demo) {
+        // A real email channel must be able to answer: no SMTP, no channel
+        if (!this.mail.configured) throw new AppError("CHANNEL_ERROR", "Outgoing email (SMTP_URL) must be configured before an email channel can be connected", { reason: "smtp" });
+        inboundToken = randomToken(24);
+        credentials = sealCredentials({ inboundToken });
+      }
     } else {
       // WhatsApp / Instagram / Messenger (demo channels included): PRO and up
       if (!authedContext().features?.includes("inbox.omnichannel")) {
@@ -83,11 +99,12 @@ export class ChannelsService {
           externalId,
           credentials,
           demo,
-          settings: input.type === "WEBCHAT" && input.greeting ? { greeting: input.greeting } : {},
+          settings: input.type === "WEBCHAT" && input.greeting ? { greeting: input.greeting } : input.type === "EMAIL" ? { address: input.address } : {},
         },
       }),
     );
-    return toChannelDto(channel);
+    // The inbound address carries its secret: shown once, when the channel is created
+    return inboundToken ? { ...toChannelDto(channel), inboundUrl: `${config().PUBLIC_API_URL}/v1/webhooks/email/${channel.id}?token=${inboundToken}` } : toChannelDto(channel);
   }
 
   /** Disconnects: credentials are wiped, history stays. */

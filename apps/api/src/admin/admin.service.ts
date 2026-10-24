@@ -282,6 +282,7 @@ export class AdminService {
       storageMb: p.storageMb,
       extraSeatPrice: p.extraSeatPrice,
       extraStorageGbPrice: p.extraStorageGbPrice,
+      aiCredits: p.aiCredits,
       features: p.features,
       isPublic: p.isPublic,
       tenants,
@@ -372,6 +373,18 @@ export class AdminService {
     if (dbOk) latencyMs = Math.round(performance.now() - started);
     const since = new Date(now.getTime() - days(1));
     const db = this.prisma;
+    const mailWhere = (status: string) => ({ status, createdAt: { gte: since } });
+    const [mailQueued, mailSent, mailFailed, mailNotSent, mailRecent] = dbOk
+      ? await this.sys(() =>
+          Promise.all([
+            db.emailMessage.count({ where: { status: { in: ["queued", "sending"] } } }),
+            db.emailMessage.count({ where: mailWhere("sent") }),
+            db.emailMessage.count({ where: mailWhere("failed") }),
+            db.emailMessage.count({ where: mailWhere("not_sent") }),
+            db.emailMessage.findMany({ orderBy: { createdAt: "desc" }, take: 20, select: { id: true, to: true, subject: true, template: true, status: true, error: true, createdAt: true } }),
+          ]),
+        )
+      : [0, 0, 0, 0, []];
     const [received24h, failed24h, recentErrors, connected, errored] = dbOk
       ? await this.sys(() =>
           Promise.all([
@@ -401,6 +414,14 @@ export class AdminService {
         errors: errored.map((c) => ({ id: c.id, tenant: c.tenant.name, name: c.name, type: c.type })),
       },
       billingProvider: this.provider.name,
+      mail: {
+        configured: !!config().SMTP_URL,
+        queued: mailQueued,
+        sent24h: mailSent,
+        failed24h: mailFailed,
+        notSent24h: mailNotSent,
+        recent: mailRecent.map((m) => ({ ...m, createdAt: m.createdAt.toISOString() })),
+      },
     };
   }
 }

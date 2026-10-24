@@ -24,13 +24,14 @@ async function request<T>(base: string, onExpired: string, path: string, method:
   } catch {
     return { ok: false, code: "INTERNAL" };
   }
-  if (res.status === 401) {
+  const json = res.status === 204 ? undefined : await res.json().catch(() => undefined);
+  const err = (json as ApiError | undefined)?.error;
+  // Only an ended session signs out; other 401s (a wrong 2FA code) are ordinary errors
+  if (res.status === 401 && (!err || err.code === "UNAUTHENTICATED")) {
     window.location.assign(onExpired);
     return { ok: false, code: "UNAUTHENTICATED" };
   }
-  const json = res.status === 204 ? undefined : await res.json().catch(() => undefined);
   if (!res.ok) {
-    const err = (json as ApiError | undefined)?.error;
     return { ok: false, code: err?.code ?? "INTERNAL", details: err?.details };
   }
   return { ok: true, data: json as T };

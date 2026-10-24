@@ -9,7 +9,7 @@ export const PRIORITY_DOT: Record<TaskPriority, string> = {
 };
 
 export function PriorityDot({ priority, label }: { priority: TaskPriority; label: string }) {
-  return <span title={label} aria-label={label} className={clsx("inline-block h-2 w-2 shrink-0 rounded-full", PRIORITY_DOT[priority])} />;
+  return <span role="img" title={label} aria-label={label} className={clsx("inline-block h-2 w-2 shrink-0 rounded-full", PRIORITY_DOT[priority])} />;
 }
 
 /** RRULE values offered in the UI (the API accepts this subset). */

@@ -16,11 +16,43 @@ export interface AdminTokens {
   expiresAt: string;
 }
 
+/** Password was right, a 2FA code is still needed: answer with the challenge and a code. */
+export interface AdminMfaChallenge {
+  mfaRequired: true;
+  /** Short-lived token proving the password step (5 minutes) */
+  challenge: string;
+}
+
+export const adminMfaVerifySchema = z.object({
+  challenge: z.string().min(10).max(2000),
+  /** 6-digit authenticator code or a recovery code */
+  code: z.string().trim().min(6).max(20),
+});
+
+export const mfaCodeSchema = z.object({ code: z.string().trim().min(6).max(20) });
+
+export interface MfaSetupDto {
+  /** Base32 key for manual entry */
+  secret: string;
+  otpauthUri: string;
+  /** QR code of otpauthUri as an SVG document */
+  qrSvg: string;
+}
+
+export interface MfaEnabledDto {
+  /** Shown once; each works one time if the phone is lost */
+  recoveryCodes: string[];
+}
+
 export interface AdminMe {
   id: string;
   fullName: string;
   email: string;
   role: PlatformRole;
+  mfaEnabled: boolean;
+  /** Staff must turn on 2FA before using the console (PLATFORM_REQUIRE_MFA) */
+  mfaRequired: boolean;
+  recoveryCodesLeft: number;
 }
 
 export interface MoneyMonth {
@@ -106,6 +138,7 @@ export const planUpdateSchema = z
     storageMb: z.number().int().min(100).max(10_000_000),
     extraSeatPrice: z.number().int().min(0).max(1_000_000),
     extraStorageGbPrice: z.number().int().min(0).max(1_000_000),
+    aiCredits: z.number().int().min(0).max(1_000_000),
     features: z.array(z.enum(ALL_FEATURES as [string, ...string[]])).max(50),
     isPublic: z.boolean(),
   })
@@ -122,6 +155,7 @@ export interface AdminPlanDto {
   storageMb: number;
   extraSeatPrice: number;
   extraStorageGbPrice: number;
+  aiCredits: number;
   features: string[];
   isPublic: boolean;
   /** Tenants currently on this plan */
@@ -194,6 +228,16 @@ export interface SystemHealthDto {
   webhooks: { received24h: number; failed24h: number; recentErrors: { id: string; provider: string; error: string; receivedAt: string }[] };
   channels: { connected: number; error: number; errors: { id: string; tenant: string; name: string; type: string }[] };
   billingProvider: string;
+  mail: {
+    /** SMTP_URL set; otherwise nothing is delivered */
+    configured: boolean;
+    queued: number;
+    sent24h: number;
+    failed24h: number;
+    notSent24h: number;
+    /** Latest messages — addresses and subjects only, never the body (reset links) */
+    recent: { id: string; to: string; subject: string; template: string; status: string; error: string | null; createdAt: string }[];
+  };
 }
 
 // ─── Support tickets (company ↔ platform) ───────────────────────

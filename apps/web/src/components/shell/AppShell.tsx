@@ -11,6 +11,7 @@ import { useI18n } from "@/lib/i18n/client";
 import { interpolate } from "@/lib/i18n/locales";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { NotificationBell } from "./NotificationBell";
+import { SkipLink } from "@/components/ui/SkipLink";
 import { Sidebar } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -48,6 +49,7 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
 
   return (
     <div className="min-h-screen">
+      <SkipLink label={t.shell.skipToContent} />
       <Sidebar
         session={session}
         summary={summary}
@@ -73,7 +75,7 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
           </div>
         </header>
         <SubscriptionBanner session={session} />
-        <main className="mx-auto max-w-[1400px] px-4 py-6 lg:px-6">{children}</main>
+        <main id="main" tabIndex={-1} className="mx-auto max-w-[1400px] px-4 py-6 outline-none lg:px-6">{children}</main>
       </div>
     </div>
   );

@@ -59,6 +59,33 @@ export default async function AdminSystemPage() {
         </table>
       </section>
 
+      <section className="card relative overflow-x-auto">
+        <div className="px-5 pt-4">
+          <h2 className="text-sm font-semibold">{k.mail}</h2>
+          <p className={clsx("mt-1 text-xs", s.mail.configured ? "text-success" : "text-warning")}>{s.mail.configured ? k.mailConfigured : k.mailNotConfigured}</p>
+          <p className="mt-2 text-sm">
+            {k.mailQueued}: <span className="tabular font-medium">{s.mail.queued}</span> · {k.mailSent}: <span className="tabular font-medium">{s.mail.sent24h}</span> · {k.mailFailed}:{" "}
+            <span className={clsx("tabular font-medium", s.mail.failed24h && "text-danger")}>{s.mail.failed24h}</span> · {k.mailNotSent}: <span className="tabular font-medium">{s.mail.notSent24h}</span>
+          </p>
+          <h3 className="mt-4 text-xs font-medium text-fg-muted">{k.mailRecent}</h3>
+        </div>
+        <table className="mt-1 w-full min-w-[640px] text-sm">
+          <tbody className="divide-y divide-border">
+            {s.mail.recent.map((m) => (
+              <tr key={m.id}>
+                <td className="whitespace-nowrap px-5 py-2 text-xs text-fg-subtle">{formatDateTime(m.createdAt, locale)}</td>
+                <td className="px-3 text-xs">{k.mailTemplates[m.template as keyof typeof k.mailTemplates] ?? m.template}</td>
+                <td className="max-w-[220px] truncate px-3 text-xs">{m.to}</td>
+                <td className="max-w-[260px] truncate px-3 text-xs text-fg-muted">{m.subject}</td>
+                <td className={clsx("px-5 text-right text-xs font-medium", m.status === "sent" ? "text-success" : m.status === "failed" ? "text-danger" : "text-fg-muted")} title={m.error ?? undefined}>
+                  {k.mailStatuses[m.status as keyof typeof k.mailStatuses] ?? m.status}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-2">
         <section className="card p-5">
           <h2 className="text-sm font-semibold">{k.webhooks}</h2>

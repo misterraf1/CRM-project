@@ -17,6 +17,11 @@ export default async function LoginPage({ searchParams }: Props) {
     <>
       <h1 className="text-xl font-semibold tracking-tight">{a.loginTitle}</h1>
       <p className="mt-1 text-sm text-fg-muted">{a.loginSubtitle}</p>
+      {params.reset && (
+        <p role="status" className="mt-4 rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
+          {a.resetDone}
+        </p>
+      )}
       <form action="/auth/login" method="post" className="mt-6 space-y-4">
         <FormError message={errorMessage(t, params.error)} />
         <input type="hidden" name="next" value={safeNext(params.next)} />
@@ -24,6 +29,11 @@ export default async function LoginPage({ searchParams }: Props) {
         <Field label={a.password} name="password" type="password" autoComplete="current-password" required />
         <SubmitButton>{a.login}</SubmitButton>
       </form>
+      <p className="mt-3 text-right text-sm">
+        <Link href="/forgot-password" className="text-fg-muted hover:text-fg">
+          {a.forgotLink}
+        </Link>
+      </p>
       <p className="mt-6 text-center text-sm text-fg-muted">
         {a.noAccount}{" "}
         <Link href="/signup" className="font-medium text-accent hover:underline">

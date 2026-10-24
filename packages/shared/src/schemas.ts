@@ -24,6 +24,10 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 export const refreshSchema = z.object({ refreshToken: z.string().min(20).max(200) });
 
+export const forgotPasswordSchema = z.object({ email });
+
+export const resetPasswordSchema = z.object({ token: z.string().min(20).max(200), password });
+
 export const switchTenantSchema = z.object({ tenantId: z.string().min(1).max(64) });
 
 export const inviteSchema = z.object({

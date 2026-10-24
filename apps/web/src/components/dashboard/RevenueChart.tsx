@@ -25,6 +25,10 @@ export function RevenueChart({ revenue, currency }: { revenue: DashboardCrmDto["
   // Label density: ~7 labels regardless of bucket count
   const labelEvery = Math.max(1, Math.ceil(points.length / 7));
   const current = active !== null ? points[active] : null;
+  const indexAt = (e: React.PointerEvent<HTMLElement>) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    return Math.min(points.length - 1, Math.max(0, Math.floor(((e.clientX - box.left) / box.width) * points.length)));
+  };
 
   return (
     <div className="px-5 pb-4 pt-3">
@@ -53,31 +57,39 @@ export function RevenueChart({ revenue, currency }: { revenue: DashboardCrmDto["
               <div key={v} className="border-t border-dashed border-border" />
             ))}
           </div>
+          {/* One focusable chart instead of a button per bar (bars are a few px wide):
+              arrow keys / pointer pick a day, the live line above reads it out */}
           <div
-            className="relative flex items-end gap-[3px]"
+            className="relative flex touch-none items-end gap-[3px] rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
             style={{ height: HEIGHT }}
-            onMouseLeave={() => setActive(null)}
-            role="list"
-            aria-label={t.dashboard.revenue.title}
+            role="group"
+            tabIndex={0}
+            aria-label={`${t.dashboard.revenue.title}. ${t.dashboard.revenue.keyboardHint}`}
+            onPointerMove={(e) => setActive(indexAt(e))}
+            onPointerDown={(e) => setActive(indexAt(e))}
+            onPointerLeave={(e) => e.pointerType === "mouse" && setActive(null)}
+            onFocus={() => setActive((a) => a ?? points.length - 1)}
+            onBlur={() => setActive(null)}
+            onKeyDown={(e) => {
+              const last = points.length - 1;
+              const next =
+                e.key === "ArrowLeft" ? Math.max(0, (active ?? last) - 1)
+                : e.key === "ArrowRight" ? Math.min(last, (active ?? last) + 1)
+                : e.key === "Home" ? 0
+                : e.key === "End" ? last
+                : null;
+              if (next === null) return;
+              e.preventDefault();
+              setActive(next);
+            }}
           >
             {points.map((p, i) => (
-              <button
-                key={p.date}
-                type="button"
-                role="listitem"
-                onMouseEnter={() => setActive(i)}
-                onFocus={() => setActive(i)}
-                onBlur={() => setActive(null)}
-                aria-label={`${formatDate(p.date, locale)}: ${formatMoney(p.amount, locale, currency)}`}
-                className="group flex h-full min-w-0 flex-1 items-end"
-              >
+              <span key={p.date} aria-hidden className="flex h-full min-w-0 flex-1 items-end">
                 <span
-                  className={`block w-full rounded-t-[3px] transition-colors ${
-                    active === i ? "bg-accent" : "bg-accent/35 group-hover:bg-accent/60"
-                  }`}
+                  className={`block w-full rounded-t-[3px] transition-colors ${active === i ? "bg-accent" : "bg-accent/35"}`}
                   style={{ height: `${Math.max(p.amount > 0 ? 2 : 0, (p.amount / max) * 100)}%` }}
                 />
-              </button>
+              </span>
             ))}
           </div>
           <div className="mt-2 flex gap-[3px] text-[11px] text-fg-subtle">

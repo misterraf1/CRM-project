@@ -30,7 +30,7 @@ export function MembersManager({ me, members, departments }: { me: MeResponse; m
   const [filter, setFilter] = useState<Filter>("ALL");
   const [query, setQuery] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
+  const [link, setLink] = useState<{ url: string; expiresAt: string; emailed: boolean } | null>(null);
   const [error, setError] = useState<string>();
   const [copied, setCopied] = useState(false);
 
@@ -67,7 +67,7 @@ export function MembersManager({ me, members, departments }: { me: MeResponse; m
   }
 
   function showLink(res: InviteCreatedResponse) {
-    setLink({ url: `${window.location.origin}${res.invitePath}`, expiresAt: res.expiresAt });
+    setLink({ url: `${window.location.origin}${res.invitePath}`, expiresAt: res.expiresAt, emailed: res.emailDelivery === "queued" });
     setCopied(false);
   }
 
@@ -217,7 +217,7 @@ export function MembersManager({ me, members, departments }: { me: MeResponse; m
               {copied ? m.copied : m.copy}
             </button>
           </div>
-          <p className="mt-2 text-xs text-fg-muted">{interpolate(m.linkHint, { date: formatDate(link.expiresAt, locale, "long") })}</p>
+          <p className="mt-2 text-xs text-fg-muted">{interpolate(link.emailed ? m.linkHintEmailed : m.linkHint, { date: formatDate(link.expiresAt, locale, "long") })}</p>
         </div>
       )}
 

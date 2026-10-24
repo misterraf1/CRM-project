@@ -41,6 +41,23 @@ const schema = z.object({
    */
   BILLING_PROVIDER: z.enum(["demo"]).default("demo"),
   GRACE_DAYS: z.coerce.number().int().positive().default(7),
+  /** Platform staff must turn on 2FA before using the console. On by default in production. */
+  PLATFORM_REQUIRE_MFA: z
+    .enum(["true", "false"])
+    .default(process.env.NODE_ENV === "production" ? "true" : "false")
+    .transform((v) => v === "true"),
+  /**
+   * Outgoing mail. Without SMTP_URL nothing leaves the server: messages are kept in the
+   * mail log (status "not_sent", visible to platform staff) — never reported as sent.
+   * Example: smtps://user:pass@smtp.example.com:465
+   */
+  SMTP_URL: z.string().url().optional(),
+  MAIL_FROM: z.string().default("Axis <no-reply@axis.az>"),
+  /** Public base URL of this API, for webhook addresses shown to customers */
+  PUBLIC_API_URL: z.string().url().default("http://localhost:4000"),
+  /** AI assistant (Claude). Without a key the AI buttons say it isn't connected. */
+  ANTHROPIC_API_KEY: z.string().min(10).optional(),
+  AI_MODEL: z.string().default("claude-opus-5-5"),
   /** Requests per minute per IP on auth endpoints */
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(10),
 });

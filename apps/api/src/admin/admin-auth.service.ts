@@ -1,19 +1,31 @@
 import { Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import type { AdminMe, AdminTokens, PlatformRole } from "@axis/shared";
+import type { AdminMe, AdminMfaChallenge, AdminTokens, MfaEnabledDto, MfaSetupDto, PlatformRole } from "@axis/shared";
+import type { User } from "@prisma/client";
+import { randomBytes } from "node:crypto";
+import QRCode from "qrcode";
 import { verifyPassword } from "../auth/password";
+import { config } from "../config";
 import { currentContext } from "../common/context";
 import { AppError } from "../common/errors";
+import { sha256 } from "../common/ids";
+import { openCredentials, sealCredentials } from "../common/secrets";
+import { base32Encode, newTotpSecret, otpauthUri, verifyTotp } from "../common/totp";
 import { PrismaService } from "../prisma/prisma.service";
 
 /** Admin tokens use their own issuer, so a tenant token can never pass as one (and vice versa). */
 export const ADMIN_ISSUER = "axis-admin";
+/** Proof that the password step passed; only good for the 2FA step, for 5 minutes. */
+const MFA_ISSUER = "axis-admin-mfa";
 const SESSION_HOURS = 8;
+const RECOVERY_CODES = 10;
 
 export interface AdminPayload {
   sub: string;
   sid: string;
 }
+
+const normaliseRecovery = (code: string) => code.replace(/[\s-]/g, "").toUpperCase();
 
 @Injectable()
 export class AdminAuthService {
@@ -22,24 +34,91 @@ export class AdminAuthService {
     private readonly jwt: JwtService,
   ) {}
 
-  /** Platform staff only; everyone else gets the same answer as a wrong password. */
-  async login(email: string, password: string): Promise<AdminTokens> {
+  private user(id: string) {
+    return this.prisma.system(() => this.prisma.user.findUniqueOrThrow({ where: { id } }));
+  }
+
+  private audit(userId: string, action: string) {
+    const ctx = currentContext();
+    return this.prisma.system(() =>
+      this.prisma.auditLog.create({ data: { tenantId: null, actorId: userId, action, entityType: "user", entityId: userId, ip: ctx.ip } }),
+    );
+  }
+
+  /**
+   * Platform staff only; everyone else gets the same answer as a wrong password.
+   * With 2FA on, a correct password only yields a challenge for the code step.
+   */
+  async login(email: string, password: string): Promise<AdminTokens | AdminMfaChallenge> {
     const user = await this.prisma.system(() => this.prisma.user.findUnique({ where: { email } }));
     const ok = await verifyPassword(user?.passwordHash, password);
     if (!ok || !user || user.platformRole === "NONE") throw new AppError("INVALID_CREDENTIALS", "Email or password is incorrect");
+    if (user.mfaEnabledAt) {
+      const challenge = await this.jwt.signAsync({ sub: user.id }, { issuer: MFA_ISSUER, expiresIn: 300 });
+      return { mfaRequired: true, challenge };
+    }
+    return this.issue(user.id);
+  }
 
+  async verifyMfa(challenge: string, code: string): Promise<AdminTokens> {
+    const { sub } = await this.jwt.verifyAsync<{ sub: string }>(challenge, { issuer: MFA_ISSUER }).catch(() => {
+      throw new AppError("UNAUTHENTICATED", "Sign-in step expired, enter the password again");
+    });
+    const user = await this.user(sub);
+    if (user.platformRole === "NONE" || !user.mfaEnabledAt) throw new AppError("UNAUTHENTICATED", "Sign-in step expired, enter the password again");
+    if (!(await this.consumeCode(user, code, true))) {
+      await this.audit(user.id, "platform.mfa_failed");
+      throw new AppError("MFA_INVALID", "The code is not valid");
+    }
+    return this.issue(user.id);
+  }
+
+  private async issue(userId: string): Promise<AdminTokens> {
     const ctx = currentContext();
     const expiresAt = new Date(Date.now() + SESSION_HOURS * 3_600_000);
     const session = await this.prisma.systemTx(async (tx) => {
-      const s = await tx.adminSession.create({ data: { userId: user.id, expiresAt, ip: ctx.ip, userAgent: ctx.userAgent } });
-      await tx.auditLog.create({ data: { tenantId: null, actorId: user.id, action: "platform.login", entityType: "user", entityId: user.id, ip: ctx.ip } });
+      const s = await tx.adminSession.create({ data: { userId, expiresAt, ip: ctx.ip, userAgent: ctx.userAgent } });
+      await tx.auditLog.create({ data: { tenantId: null, actorId: userId, action: "platform.login", entityType: "user", entityId: userId, ip: ctx.ip } });
       return s;
     });
-    const accessToken = await this.jwt.signAsync({ sub: user.id, sid: session.id } satisfies AdminPayload, {
+    const accessToken = await this.jwt.signAsync({ sub: userId, sid: session.id } satisfies AdminPayload, {
       issuer: ADMIN_ISSUER,
       expiresIn: SESSION_HOURS * 3600,
     });
     return { accessToken, expiresAt: expiresAt.toISOString() };
+  }
+
+  private secretOf(user: User) {
+    return user.mfaSecret ? openCredentials(Buffer.from(user.mfaSecret, "base64")).totp! : null;
+  }
+
+  /**
+   * Accepts an authenticator code (each 30-second code only once) or, when allowed,
+   * a recovery code (each only once). Both are consumed with a conditional update, so
+   * two parallel requests can't use the same code.
+   */
+  private async consumeCode(user: User, code: string, allowRecovery: boolean): Promise<boolean> {
+    const secret = this.secretOf(user);
+    const db = this.prisma;
+    if (secret && /^\d{6}$/.test(code.replace(/\s/g, ""))) {
+      const step = verifyTotp(secret, code);
+      if (step === null) return false;
+      const claimed = await this.prisma.system(() =>
+        db.user.updateMany({ where: { id: user.id, OR: [{ mfaLastStep: null }, { mfaLastStep: { lt: step } }] }, data: { mfaLastStep: step } }),
+      );
+      return claimed.count === 1;
+    }
+    if (!allowRecovery) return false;
+    const hash = sha256(normaliseRecovery(code));
+    if (!user.mfaRecoveryCodes.includes(hash)) return false;
+    const claimed = await this.prisma.system(() =>
+      db.user.updateMany({
+        where: { id: user.id, mfaRecoveryCodes: { has: hash } },
+        data: { mfaRecoveryCodes: user.mfaRecoveryCodes.filter((h) => h !== hash) },
+      }),
+    );
+    if (claimed.count === 1) await this.audit(user.id, "platform.mfa_recovery_used");
+    return claimed.count === 1;
   }
 
   verify(token: string): Promise<AdminPayload> {
@@ -49,12 +128,12 @@ export class AdminAuthService {
   }
 
   /** Session + role re-read on every request: logout and role removal apply immediately. */
-  async resolve(payload: AdminPayload): Promise<{ userId: string; role: PlatformRole; sessionId: string }> {
+  async resolve(payload: AdminPayload): Promise<{ userId: string; role: PlatformRole; sessionId: string; mfaEnabled: boolean }> {
     const session = await this.prisma.system(() => this.prisma.adminSession.findUnique({ where: { id: payload.sid }, include: { user: true } }));
     if (!session || session.revokedAt || session.expiresAt < new Date() || session.userId !== payload.sub || session.user.platformRole === "NONE") {
       throw new AppError("UNAUTHENTICATED", "Admin session is no longer valid");
     }
-    return { userId: session.userId, role: session.user.platformRole, sessionId: session.id };
+    return { userId: session.userId, role: session.user.platformRole, sessionId: session.id, mfaEnabled: !!session.user.mfaEnabledAt };
   }
 
   async logout(sessionId: string) {
@@ -62,7 +141,67 @@ export class AdminAuthService {
   }
 
   async me(userId: string): Promise<AdminMe> {
-    const user = await this.prisma.system(() => this.prisma.user.findUniqueOrThrow({ where: { id: userId } }));
-    return { id: user.id, fullName: user.fullName, email: user.email, role: user.platformRole as PlatformRole };
+    const user = await this.user(userId);
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.platformRole as PlatformRole,
+      mfaEnabled: !!user.mfaEnabledAt,
+      mfaRequired: config().PLATFORM_REQUIRE_MFA,
+      recoveryCodesLeft: user.mfaRecoveryCodes.length,
+    };
+  }
+
+  /** Step 1: a new key (replaces an unconfirmed one). Nothing changes for sign-in yet. */
+  async setupMfa(userId: string): Promise<MfaSetupDto> {
+    const user = await this.user(userId);
+    if (user.mfaEnabledAt) throw new AppError("CONFLICT", "2FA is already on");
+    const secret = newTotpSecret();
+    await this.prisma.system(() =>
+      this.prisma.user.update({ where: { id: userId }, data: { mfaSecret: sealCredentials({ totp: secret }).toString("base64"), mfaLastStep: null } }),
+    );
+    const uri = otpauthUri(secret, user.email, "Axis Platform");
+    return { secret, otpauthUri: uri, qrSvg: await QRCode.toString(uri, { type: "svg", margin: 1, errorCorrectionLevel: "M" }) };
+  }
+
+  /** Step 2: a code from the app proves it was set up; recovery codes are shown once. */
+  async enableMfa(userId: string, code: string): Promise<MfaEnabledDto> {
+    const user = await this.user(userId);
+    if (user.mfaEnabledAt) throw new AppError("CONFLICT", "2FA is already on");
+    if (!user.mfaSecret || !(await this.consumeCode(user, code, false))) throw new AppError("MFA_INVALID", "The code is not valid");
+    const recoveryCodes = this.newRecoveryCodes();
+    await this.prisma.system(() =>
+      this.prisma.user.update({ where: { id: userId }, data: { mfaEnabledAt: new Date(), mfaRecoveryCodes: recoveryCodes.map((c) => sha256(normaliseRecovery(c))) } }),
+    );
+    await this.audit(userId, "platform.mfa_enabled");
+    return { recoveryCodes };
+  }
+
+  async regenerateRecoveryCodes(userId: string, code: string): Promise<MfaEnabledDto> {
+    const user = await this.user(userId);
+    if (!user.mfaEnabledAt || !(await this.consumeCode(user, code, false))) throw new AppError("MFA_INVALID", "The code is not valid");
+    const recoveryCodes = this.newRecoveryCodes();
+    await this.prisma.system(() => this.prisma.user.update({ where: { id: userId }, data: { mfaRecoveryCodes: recoveryCodes.map((c) => sha256(normaliseRecovery(c))) } }));
+    await this.audit(userId, "platform.mfa_recovery_regenerated");
+    return { recoveryCodes };
+  }
+
+  /** Not allowed where 2FA is mandatory; otherwise needs a current code. */
+  async disableMfa(userId: string, code: string) {
+    if (config().PLATFORM_REQUIRE_MFA) throw new AppError("CONFLICT", "2FA is mandatory for platform staff");
+    const user = await this.user(userId);
+    if (!user.mfaEnabledAt || !(await this.consumeCode(user, code, false))) throw new AppError("MFA_INVALID", "The code is not valid");
+    await this.prisma.system(() =>
+      this.prisma.user.update({ where: { id: userId }, data: { mfaSecret: null, mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [] } }),
+    );
+    await this.audit(userId, "platform.mfa_disabled");
+  }
+
+  private newRecoveryCodes() {
+    return Array.from({ length: RECOVERY_CODES }, () => {
+      const raw = base32Encode(randomBytes(5)); // 8 characters
+      return `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+    });
   }
 }

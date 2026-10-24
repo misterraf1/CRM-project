@@ -43,6 +43,7 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
         aria-hidden
       />
       <aside
+        aria-label={t.shell.mainNav}
         className={clsx(
           "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-surface transition-[width,transform] duration-200",
           narrow ? "w-[68px]" : "w-60",
@@ -88,14 +89,14 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
                       <Link
                         href={item.href}
                         onClick={onCloseMobile}
-                        title={narrow ? label : locked ? t.billing.lockedHint : item.phase ? interpolate(t.common.phase, { n: item.phase }) : undefined}
+                        title={narrow ? label : locked ? t.billing.lockedHint : undefined}
                         aria-current={active ? "page" : undefined}
                         className={clsx(
                           "relative flex h-9 items-center gap-3 rounded-lg text-sm",
                           narrow ? "justify-center" : "px-3",
                           active
                             ? "bg-accent-soft font-medium text-accent"
-                            : item.phase || locked
+                            : locked
                               ? "text-fg-subtle hover:bg-muted hover:text-fg"
                               : "text-fg-muted hover:bg-muted hover:text-fg",
                         )}

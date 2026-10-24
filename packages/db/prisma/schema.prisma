@@ -32,22 +32,29 @@ enum PlatformRole {
 }
 
 model User {
-  id            String       @id @default(cuid()) @map("_id")
-  email         String       @unique
-  passwordHash  String?
-  fullName      String
-  avatarUrl     String?
-  locale        Locale       @default(AZ)
-  platformRole  PlatformRole @default(NONE)
-  emailVerified DateTime?
-  mfaSecret     String?
-  lastLoginAt   DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id               String       @id @default(cuid()) @map("_id")
+  email            String       @unique
+  passwordHash     String?
+  fullName         String
+  avatarUrl        String?
+  locale           Locale       @default(AZ)
+  platformRole     PlatformRole @default(NONE)
+  emailVerified    DateTime?
+  // Platform staff 2FA: sealed TOTP key (common/secrets); enabled once a code was confirmed
+  mfaSecret        String?
+  mfaEnabledAt     DateTime?
+  // Last accepted TOTP step — a code can't be used twice
+  mfaLastStep      Int?
+  // sha256 of one-time recovery codes
+  mfaRecoveryCodes String[]
+  lastLoginAt      DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
-  memberships   Membership[]
-  sessions      Session[]
-  adminSessions AdminSession[]
+  memberships    Membership[]
+  sessions       Session[]
+  adminSessions  AdminSession[]
+  passwordResets PasswordReset[]
 }
 
 // Platform staff sign-in (Super Admin). Separate from tenant sessions: different
@@ -582,6 +589,9 @@ model Conversation {
   // Set when a customer message arrives and is not yet answered → SLA metrics
   awaitingSince   DateTime?
   firstResponseMs Int?
+  // Email channel: subject of the thread and the Message-ID to reply to (threading)
+  subject         String?
+  emailReplyTo    String?
   createdAt       DateTime           @default(now())
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -833,4 +843,46 @@ model AutomationRun {
   tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([ruleId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Email: password reset links and the outgoing mail queue
+// ─────────────────────────────────────────────────────────────
+
+model PasswordReset {
+  id        String    @id @default(cuid()) @map("_id")
+  userId    String
+  tokenHash String    @unique // sha256 of the emailed token
+  expiresAt DateTime
+  usedAt    DateTime?
+  ip        String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+/// Outgoing email, queued in the same transaction as the event and sent by the mail job
+model EmailMessage {
+  id             String    @id @default(cuid()) @map("_id")
+  tenantId       String? // null for platform mail (password reset)
+  to             String
+  subject        String
+  text           String
+  html           String
+  template       String // "invite" | "password_reset" | "invoice_paid" | "support_reply" | "inbox_reply"
+  // Email channel replies: the inbox message whose delivery status this decides
+  inboxMessageId String?
+  // Email channel replies: threading headers and the sending address
+  from           String?
+  headers        Json      @default("{}")
+  status         String    @default("queued") // "queued" | "sending" | "sent" | "failed" | "not_sent" (no SMTP)
+  attempts       Int       @default(0)
+  error          String?
+  createdAt      DateTime  @default(now())
+  sentAt         DateTime?
+
+  @@index([status, createdAt])
+  @@index([tenantId, createdAt])
 }

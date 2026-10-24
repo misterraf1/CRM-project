@@ -10,13 +10,14 @@
   --border: 226 232 240;
   --fg: 15 23 42;
   --fg-muted: 71 85 105;
-  --fg-subtle: 120 133 153;
+  --fg-subtle: 95 107 124; /* ≥4.9:1 on every light surface */
   --accent: 37 99 235;
   --accent-fg: 255 255 255;
-  --accent-soft: 219 234 254;
-  --success: 22 163 74;
-  --warning: 217 119 6;
-  --danger: 220 38 38;
+  --accent-soft: 239 246 255; /* accent text on it: 4.75:1 */
+  /* Status colours pass 4.5:1 as text, also on their own 10% tint */
+  --success: 21 122 58;
+  --warning: 156 77 10;
+  --danger: 200 30 30;
   /* Chart series (categorical slots 1–2, validated for CVD and contrast) */
   --series-1: 42 120 214;
   --series-2: 235 104 52;
@@ -30,7 +31,7 @@
   --border: 39 46 62;
   --fg: 236 240 246;
   --fg-muted: 163 173 190;
-  --fg-subtle: 115 126 145;
+  --fg-subtle: 141 151 168; /* ≥5.4:1 on every dark surface */
   --accent: 96 145 255;
   --accent-fg: 9 12 20;
   --accent-soft: 30 45 80;
@@ -46,6 +47,10 @@
   html,
   body {
     @apply bg-bg text-fg antialiased;
+  }
+  /* Keyboard focus never ends up under the sticky 56px header */
+  html {
+    scroll-padding-top: 4.5rem;
   }
   :focus-visible {
     @apply outline-none ring-2 ring-accent/60 ring-offset-1 ring-offset-bg;
@@ -73,5 +78,27 @@
   }
   .btn-danger {
     @apply inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium text-danger hover:bg-danger/10 disabled:opacity-60;
+  }
+}
+
+/* Reduced motion: transitions and animations become instant */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Touch screens: buttons and fields reach the 44px touch target */
+@media (pointer: coarse) {
+  .btn-primary,
+  .btn-ghost,
+  .btn-danger,
+  .input {
+    min-height: 44px;
   }
 }

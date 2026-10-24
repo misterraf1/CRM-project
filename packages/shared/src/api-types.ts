@@ -21,6 +21,12 @@ export type ErrorCode =
   | "INVITE_INVALID"
   | "LAST_OWNER"
   | "RATE_LIMITED"
+  | "MFA_REQUIRED"
+  | "MFA_INVALID"
+  | "MFA_SETUP_REQUIRED"
+  | "TOKEN_INVALID"
+  | "AI_UNAVAILABLE"
+  | "AI_LIMIT"
   | "INTERNAL";
 
 export interface ApiError {
@@ -54,6 +60,8 @@ export interface MeResponse {
     /** Plan features in effect (trial = everything) */
     features: string[];
   };
+  /** AI assistant: whether the server has it connected, and this month's usage against the plan */
+  ai: { available: boolean; used: number; limit: number };
   memberships: { tenantId: string; tenantName: string; slug: string; role: MemberRole }[];
 }
 
@@ -74,8 +82,10 @@ export interface MemberDto {
 
 export interface InviteCreatedResponse {
   member: MemberDto;
-  /** Path the invitee opens; email delivery arrives with the notifications module. */
+  /** Path the invitee opens; also emailed to them when SMTP is configured */
   invitePath: string;
+  /** "queued": the invitation email is on its way; "not_configured": share the link yourself */
+  emailDelivery: "queued" | "not_configured";
   expiresAt: string;
 }
 

@@ -83,7 +83,7 @@ export default async function TasksPage({ searchParams }: Props) {
           </button>
         </form>
         {layout === "list" && (
-          <Link href={href({ done: params.done === "1" ? undefined : "1" })} className="text-xs font-medium text-accent hover:underline" aria-pressed={params.done === "1"}>
+          <Link href={href({ done: params.done === "1" ? undefined : "1" })} className="text-xs font-medium text-accent hover:underline">
             {k.showDone}
           </Link>
         )}

@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ACCESS_COOKIE, ADMIN_COOKIE, API_URL, clearTokens, clientIpHeader, REFRESH_COOKIE, writeTokens } from "./lib/auth/cookies";
 
 // The website chat widget and its API calls are used by anonymous site visitors
-const PUBLIC = [/^\/login$/, /^\/signup$/, /^\/invite\//, /^\/auth\//, /^\/widget\//, /^\/api\/v1\/widget\//];
+const PUBLIC = [/^\/login$/, /^\/signup$/, /^\/forgot-password$/, /^\/reset-password\//, /^\/invite\//, /^\/auth\//, /^\/widget\//, /^\/api\/v1\/widget\//];
 
 function unauthenticated(req: NextRequest) {
   if (req.nextUrl.pathname.startsWith("/api/")) {
@@ -54,7 +54,13 @@ export async function middleware(req: NextRequest) {
 
 function adminGate(req: NextRequest) {
   const path = req.nextUrl.pathname;
-  if (path === "/admin/login" || path.startsWith("/admin/auth/") || req.cookies.get(ADMIN_COOKIE)) return NextResponse.next();
+  if (path === "/admin/login" || path.startsWith("/admin/auth/")) return NextResponse.next();
+  if (req.cookies.get(ADMIN_COOKIE)) {
+    // The console layout needs the path (2FA setup is the only page open before 2FA is on)
+    const headers = new Headers(req.headers);
+    headers.set("x-axis-path", path);
+    return NextResponse.next({ request: { headers } });
+  }
   if (path.startsWith("/api/")) {
     return NextResponse.json({ error: { code: "UNAUTHENTICATED", message: "Sign in required" } }, { status: 401 });
   }

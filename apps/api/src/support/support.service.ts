@@ -2,6 +2,8 @@ import { Injectable } from "@nestjs/common";
 import type { Plan, Prisma, Subscription, SupportTicket, SupportTicketMessage } from "@prisma/client";
 import type { TicketCreateInput, TicketDto, TicketMessageDto, TicketPriority, TicketStatus } from "@axis/shared";
 import { AuditService } from "../audit/audit.service";
+import { config } from "../config";
+import { MailService } from "../mail/mail.service";
 import { EntitlementsService } from "../billing/entitlements.service";
 import { authedContext, currentContext } from "../common/context";
 import { notFound } from "../common/errors";
@@ -22,6 +24,7 @@ export class SupportService {
     private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
     private readonly entitlements: EntitlementsService,
+    private readonly mail: MailService,
   ) {}
 
   /** Plans with "support.priority" are answered first (the trial includes it, like every feature). */
@@ -147,6 +150,16 @@ export class SupportService {
       await tx.supportTicket.update({ where: { id }, data: { status: t.status === "open" ? "in_progress" : t.status } });
       const author = await tx.membership.findFirst({ where: { tenantId: t.tenantId, userId: t.authorId, status: "ACTIVE" }, select: { id: true } });
       await this.notifications.notify(tx, t.tenantId, [author?.id], "support_reply", { ticketId: id, title: t.subject });
+      const user = await tx.user.findUnique({ where: { id: t.authorId }, select: { email: true, locale: true } });
+      if (author && user) {
+        await this.mail.queue(tx, {
+          tenantId: t.tenantId,
+          to: user.email,
+          locale: user.locale,
+          template: "support_reply",
+          vars: { subject: t.subject, link: `${config().WEB_ORIGIN}/support/${id}` },
+        });
+      }
       await this.audit.log(tx, { action: "platform.ticket_replied", entityType: "ticket", entityId: id, tenantId: t.tenantId });
     });
     return this.adminGet(id);

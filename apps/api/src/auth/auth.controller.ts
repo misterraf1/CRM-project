@@ -1,7 +1,9 @@
 import { Body, Controller, Get, HttpCode, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import {
+  forgotPasswordSchema,
   loginSchema,
+  resetPasswordSchema,
   refreshSchema,
   signupSchema,
   switchTenantSchema,
@@ -13,6 +15,7 @@ import { config } from "../config";
 import { AllowInactive, Public } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { AuthService } from "./auth.service";
+import { PasswordResetService } from "./password-reset.service";
 import { TokensService } from "./tokens.service";
 
 const authLimit = { default: { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 } };
@@ -22,6 +25,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly tokens: TokensService,
+    private readonly passwordReset: PasswordResetService,
   ) {}
 
   @Public()
@@ -37,6 +41,23 @@ export class AuthController {
   @Post("login")
   login(@Body(new ZodPipe(loginSchema)) body: LoginInput) {
     return this.auth.login(body);
+  }
+
+  /** Always 204, whether or not the email has an account */
+  @Public()
+  @Throttle(authLimit)
+  @HttpCode(204)
+  @Post("password/forgot")
+  async forgotPassword(@Body(new ZodPipe(forgotPasswordSchema)) body: z.infer<typeof forgotPasswordSchema>) {
+    await this.passwordReset.request(body.email);
+  }
+
+  @Public()
+  @Throttle(authLimit)
+  @HttpCode(204)
+  @Post("password/reset")
+  async resetPassword(@Body(new ZodPipe(resetPasswordSchema)) body: z.infer<typeof resetPasswordSchema>) {
+    await this.passwordReset.reset(body.token, body.password);
   }
 
   @Public()

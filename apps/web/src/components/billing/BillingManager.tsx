@@ -200,6 +200,7 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
                 <p className="mt-1 text-xs text-fg-subtle">
                   {interpolate(b.seatsLimit, { n: p.seatLimit })} · {interpolate(b.storageLimit, { n: formatNumber(p.storageMb / 1024, locale) })}
                 </p>
+                {p.aiCredits > 0 && <p className="mt-0.5 text-xs text-fg-subtle">{interpolate(b.aiCredits, { n: formatNumber(p.aiCredits, locale) })}</p>}
                 <ul className="mt-3 flex-1 space-y-1.5 text-sm">
                   {p.features.map((f) => (
                     <li key={f} className="flex items-start gap-1.5">

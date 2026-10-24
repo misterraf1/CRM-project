@@ -218,7 +218,7 @@ describe("Super Admin (platform)", () => {
   it("system health: database, jobs and billing provider", async () => {
     const s = (await http().get("/v1/admin/system").set(admin.auth).expect(200)).body as SystemHealthDto;
     expect(s.db.ok).toBe(true);
-    expect(s.jobs.map((j) => j.name).sort()).toEqual(["automations", "billing", "overdue-tasks"]);
+    expect(s.jobs.map((j) => j.name).sort()).toEqual(["automations", "billing", "mail", "overdue-tasks"]);
     expect(s.billingProvider).toBe("demo");
     expect(s.uptimeSec).toBeGreaterThanOrEqual(0);
   });

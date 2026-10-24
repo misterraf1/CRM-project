@@ -29,6 +29,13 @@ export const channelCreateSchema = z.discriminatedUnion("type", [
     accountId: z.string().trim().regex(/^\d{5,30}$/).optional(),
     accessToken: z.string().trim().min(20).max(1000).optional(),
   }),
+  z.object({
+    type: z.literal("EMAIL"),
+    name: z.string().trim().min(1).max(80),
+    demo: z.boolean().default(false),
+    /** The support address customers write to; replies are sent from it */
+    address: z.string().trim().toLowerCase().email().max(254),
+  }),
 ]);
 export type ChannelCreateInput = z.infer<typeof channelCreateSchema>;
 

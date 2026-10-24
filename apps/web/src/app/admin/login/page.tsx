@@ -13,6 +13,23 @@ export default async function AdminLoginPage({ searchParams }: Props) {
   const params = await searchParams;
   const { t } = await getI18n();
   const k = t.admin;
+  if (params.step === "code") {
+    return (
+      <AuthFrame badge={k.badge}>
+        <h1 className="text-xl font-semibold tracking-tight">{k.loginCodeTitle}</h1>
+        <p className="mt-1 text-sm text-fg-muted">{k.loginCodeHint}</p>
+        <form action="/admin/auth/mfa" method="post" className="mt-6 space-y-4">
+          <FormError message={errorMessage(t, params.error)} />
+          <input type="hidden" name="next" value={safeNext(params.next, "/admin")} />
+          <Field label={k.security.code} name="code" autoComplete="one-time-code" inputMode="text" required autoFocus />
+          <SubmitButton>{k.loginCodeSubmit}</SubmitButton>
+        </form>
+        <a href="/admin/login" className="mt-6 block text-center text-sm text-fg-muted hover:text-fg">
+          {k.loginRestart}
+        </a>
+      </AuthFrame>
+    );
+  }
   return (
     <AuthFrame badge={k.badge}>
       <h1 className="text-xl font-semibold tracking-tight">{k.loginTitle}</h1>
@@ -24,6 +41,11 @@ export default async function AdminLoginPage({ searchParams }: Props) {
         <Field label={t.auth.password} name="password" type="password" autoComplete="current-password" required />
         <SubmitButton>{t.auth.login}</SubmitButton>
       </form>
+      <p className="mt-3 text-right text-sm">
+        <a href="/forgot-password" className="text-fg-muted hover:text-fg">
+          {t.auth.forgotLink}
+        </a>
+      </p>
       {process.env.NODE_ENV !== "production" && (
         <details className="card mt-8 p-3 text-xs text-fg-muted">
           <summary className="cursor-pointer font-medium">{k.demoAccounts}</summary>

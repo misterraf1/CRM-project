@@ -26,6 +26,7 @@ export function PlanEditor({ plan, canEdit }: { plan: AdminPlanDto; canEdit: boo
     const next: PlanUpdateInput = {
       name: String(f.get("name")).trim(),
       seatLimit: Number(f.get("seatLimit")),
+      aiCredits: Number(f.get("aiCredits")),
       storageMb: Math.round(Number(f.get("storageGb")) * 1024),
       features: ALL_FEATURES.filter((feature) => f.get(`f:${feature}`) === "on"),
       isPublic: f.get("isPublic") === "on",
@@ -73,6 +74,7 @@ export function PlanEditor({ plan, canEdit }: { plan: AdminPlanDto; canEdit: boo
           {num("storageGb", k.storageGb, plan.storageMb / 1024)}
           {num("extraSeatPrice", k.extraSeat, moneyInputValue(plan.extraSeatPrice))}
           {num("extraStorageGbPrice", k.extraStorage, moneyInputValue(plan.extraStorageGbPrice))}
+          {num("aiCredits", k.ai, plan.aiCredits)}
         </div>
         <fieldset>
           <legend className="text-xs font-medium text-fg-muted">{k.features}</legend>

@@ -100,7 +100,7 @@ export function WidgetChat({ widgetKey }: { widgetKey: string }) {
                 m.from === "visitor" ? "rounded-br-md bg-accent text-accent-fg" : "rounded-bl-md border border-border bg-surface",
               )}
             >
-              {m.from === "agent" && m.authorName && <p className="mb-0.5 text-[10px] font-semibold text-fg-subtle">{m.authorName}</p>}
+              {m.from === "agent" && m.authorName && <p className="mb-0.5 text-[11px] font-semibold text-fg-subtle">{m.authorName}</p>}
               {m.body}
             </div>
           </div>
@@ -131,7 +131,7 @@ export function WidgetChat({ widgetKey }: { widgetKey: string }) {
           </button>
         </div>
         {error && <p role="alert" className="text-xs text-danger">{w.error}</p>}
-        <p className="text-center text-[10px] text-fg-subtle">{w.poweredBy}</p>
+        <p className="text-center text-[11px] text-fg-subtle">{w.poweredBy}</p>
       </form>
     </div>
   );

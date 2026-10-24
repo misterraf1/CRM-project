@@ -57,9 +57,9 @@ export function ConversationList({
                     </span>
                   )}
                   {c.channel.demo && <DemoBadge label={t.channels.demoBadge} />}
-                  {!c.assignee && <span className="rounded bg-danger/10 px-1.5 text-[10px] font-medium leading-4 text-danger">{t.inbox.unassigned}</span>}
+                  {!c.assignee && <span className="rounded bg-danger/10 px-1.5 text-[11px] font-medium leading-4 text-danger">{t.inbox.unassigned}</span>}
                   {c.unreadCount > 0 && (
-                    <span className="tabular ml-auto rounded-full bg-accent px-1.5 text-[10px] font-semibold leading-4 text-accent-fg">{c.unreadCount}</span>
+                    <span className="tabular ml-auto rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-4 text-accent-fg">{c.unreadCount}</span>
                   )}
                 </div>
               </div>

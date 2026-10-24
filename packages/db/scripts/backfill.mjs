@@ -9,6 +9,8 @@ export const BACKFILLS = [
   ["Plan", { extraSeatPrice: 900, extraStorageGbPrice: 500 }],
   ["Subscription", { retryCount: 0, demoNextChargeFails: false, paymentMethod: null, nextRetryAt: null, trialReminderSentAt: null }],
   ["Invoice", { kind: "subscription", apply: null }],
+  // Phase 8 — platform staff 2FA
+  ["User", { mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [] }],
 ];
 
 export async function runBackfills(url) {

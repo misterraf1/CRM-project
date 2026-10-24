@@ -7,9 +7,13 @@ import { crossSite, forward, joinPath, proxyError } from "@/lib/api/proxy";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 
+const MFA_MANAGEMENT = new Set(["setup", "enable", "recovery-codes", "disable"]);
+
 async function proxy(req: NextRequest, { params }: Ctx) {
   const { path } = await params;
-  if (path[0] === "auth") return proxyError(404, "NOT_FOUND", "Not found");
+  // Token-issuing calls (login, 2FA verify) only go through the form handlers; the
+  // 2FA management calls of a signed-in staff member may pass
+  if (path[0] === "auth" && !(path[1] === "mfa" && MFA_MANAGEMENT.has(path[2] ?? ""))) return proxyError(404, "NOT_FOUND", "Not found");
   if (crossSite(req)) return proxyError(403, "FORBIDDEN", "Cross-site request");
   return forward(req, `/v1/admin/${joinPath(path)}`, req.cookies.get(ADMIN_COOKIE)?.value ?? "");
 }

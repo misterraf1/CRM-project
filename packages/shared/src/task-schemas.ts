@@ -54,3 +54,10 @@ export const projectSchema = z.object({ name: z.string().trim().min(1).max(100),
 export type ProjectInput = z.infer<typeof projectSchema>;
 
 export const teamStatsQuerySchema = z.object({ period: z.enum(["7d", "30d", "90d"]).default("30d") });
+
+export const fileListQuerySchema = z.object({
+  q: z.string().trim().max(100).optional(),
+  source: z.enum(["library", "task", "chat"]).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+});
+export type FileListQuery = z.infer<typeof fileListQuerySchema>;

@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { MailService } from "../mail/mail.service";
 import type { Membership, User } from "@prisma/client";
 import {
   assignableRoles,
@@ -53,6 +54,7 @@ export class MembersService {
     private readonly audit: AuditService,
     private readonly entitlements: EntitlementsService,
     private readonly tokens: TokensService,
+    private readonly mail: MailService,
   ) {}
 
   async list(): Promise<MemberDto[]> {
@@ -104,6 +106,17 @@ export class MembersService {
         entityId: saved.id,
         diff: { email: input.email, role: input.role },
       });
+      const [tenant, inviter] = await Promise.all([
+        tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { name: true } }),
+        tx.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: { fullName: true } }),
+      ]);
+      await this.mail.queue(tx, {
+        tenantId: ctx.tenantId,
+        to: input.email,
+        locale: user.locale,
+        template: "invite",
+        vars: { company: tenant.name, inviter: inviter.fullName, link: `${config().WEB_ORIGIN}/invite/${ctx.tenantId}.${secret}`, days: config().INVITE_TTL_DAYS },
+      });
       return saved;
     });
 
@@ -111,6 +124,7 @@ export class MembersService {
       member: toDto(member),
       invitePath: `/invite/${ctx.tenantId}.${secret}`,
       expiresAt: inviteExpiry(member.invitedAt!).toISOString(),
+      emailDelivery: this.mail.configured ? "queued" : "not_configured",
     };
   }
 

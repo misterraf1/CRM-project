@@ -1,7 +1,10 @@
 import { LogOut } from "lucide-react";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { AdminNav } from "@/components/admin/AdminNav";
+import { SkipLink } from "@/components/ui/SkipLink";
 import { LocaleSwitcher } from "@/components/shell/LocaleSwitcher";
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
 import { getAdminMe } from "@/lib/api/admin";
@@ -14,12 +17,16 @@ export const metadata: Metadata = { title: { template: "%s · Platform", default
 export default async function ConsoleLayout({ children }: { children: ReactNode }) {
   const [me, { t }] = await Promise.all([getAdminMe(), getI18n()]);
   const k = t.admin;
+  // Where 2FA is mandatory, only the security page works until it is on (the API enforces it too)
+  const lockedUntilMfa = me.mfaRequired && !me.mfaEnabled;
+  const path = (await headers()).get("x-axis-path") ?? "";
   return (
     <div className="min-h-screen">
+      <SkipLink label={t.shell.skipToContent} />
       <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-surface/90 px-4 backdrop-blur lg:px-6">
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-fg text-sm font-bold text-bg">{APP_NAME[0]}</span>
         <span className="text-sm font-semibold">{APP_NAME}</span>
-        <span className="rounded-full bg-fg px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-bg">{k.badge}</span>
+        <span className="rounded-full bg-fg px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-bg">{k.badge}</span>
         <div className="ml-auto flex items-center gap-2">
           <span className="hidden text-right text-xs leading-tight sm:block">
             <span className="block font-medium">{me.fullName}</span>
@@ -38,7 +45,18 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
         <aside className="min-w-0 lg:sticky lg:top-[76px] lg:self-start">
           <AdminNav superAdmin={me.role === "SUPER_ADMIN"} />
         </aside>
-        <main className="min-w-0">{children}</main>
+        <main id="main" tabIndex={-1} className="min-w-0 outline-none">
+          {lockedUntilMfa && path !== "/admin/security" ? (
+            <div className="card max-w-xl space-y-3 p-6">
+              <p className="text-sm">{k.security.required}</p>
+              <Link href="/admin/security" className="btn-primary">
+                {k.security.start}
+              </Link>
+            </div>
+          ) : (
+            children
+          )}
+        </main>
       </div>
     </div>
   );

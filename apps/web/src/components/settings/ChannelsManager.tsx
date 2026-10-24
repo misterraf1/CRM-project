@@ -11,7 +11,7 @@ import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
 import { interpolate } from "@/lib/i18n/locales";
 
-const CONNECTABLE: Exclude<ChannelType, "EMAIL">[] = ["WEBCHAT", "WHATSAPP", "INSTAGRAM", "MESSENGER"];
+const CONNECTABLE: ChannelType[] = ["WEBCHAT", "WHATSAPP", "INSTAGRAM", "MESSENGER", "EMAIL"];
 
 function widgetPreviewUrl(c: ChannelDto) {
   const key = /data-axis-widget="([^"]+)"/.exec(c.embedCode ?? "")?.[1];
@@ -43,6 +43,8 @@ export function ChannelsManager({
   const [demo, setDemo] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
   const [simulated, setSimulated] = useState<string | null>(null);
+  // Email channel: the inbound address (with its secret) is shown once, right after connecting
+  const [inbound, setInbound] = useState<string | null>(null);
 
   const run = (fn: () => Promise<{ ok: boolean; code?: string; details?: unknown }>, onOk?: () => void) =>
     startTransition(async () => {
@@ -59,14 +61,24 @@ export function ChannelsManager({
     const type = adding!;
     const body: Record<string, unknown> = { type, name: String(f.get("name")) };
     if (type === "WEBCHAT") body.greeting = String(f.get("greeting") || "") || undefined;
-    else {
+    else if (type === "EMAIL") {
+      body.demo = demo;
+      body.address = String(f.get("address"));
+    } else {
       body.demo = demo;
       if (!demo) {
         body.accessToken = String(f.get("accessToken"));
         body[type === "WHATSAPP" ? "phoneNumberId" : "accountId"] = String(f.get("providerId"));
       }
     }
-    run(() => api("/inbox/channels", "POST", body), () => setAdding(null));
+    startTransition(async () => {
+      setError(undefined);
+      const res = await api<ChannelDto>("/inbox/channels", "POST", body);
+      if (!res.ok) return setError(errorMessage(t, res.code, res.details));
+      setAdding(null);
+      if (res.data.inboundUrl) setInbound(res.data.inboundUrl);
+      router.refresh();
+    });
   }
 
   async function copy(text: string, id: string) {
@@ -120,7 +132,19 @@ export function ChannelsManager({
               {k.name}
               <input name="name" required maxLength={80} defaultValue={k.types[adding]} className="input" />
             </label>
-            {adding === "WEBCHAT" ? (
+            {adding === "EMAIL" ? (
+              <>
+                <label className="field-label">
+                  {k.emailAddress}
+                  <input name="address" type="email" required maxLength={254} placeholder="satis@sirket.az" className="input" />
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} />
+                  {k.demoMode}
+                </label>
+                {!demo && <p className="text-xs text-fg-subtle">{k.emailSmtpHint}</p>}
+              </>
+            ) : adding === "WEBCHAT" ? (
               <label className="field-label">
                 {k.greeting}
                 <input name="greeting" maxLength={300} placeholder={t.widget.typingHint} className="input" />
@@ -156,6 +180,22 @@ export function ChannelsManager({
               </button>
             </div>
           </form>
+        )}
+
+        {inbound && (
+          <div className="card space-y-2 border-accent/40 p-4" role="status">
+            <p className="text-sm font-semibold">{k.emailInboundTitle}</p>
+            <p className="text-xs text-fg-muted">{k.emailInboundHint}</p>
+            <div className="flex gap-2">
+              <input readOnly value={inbound} aria-label={k.emailInboundTitle} className="input mt-0 font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+              <button type="button" onClick={() => void copy(inbound, "inbound")} className="btn-ghost h-9 shrink-0 border border-border text-xs">
+                {copied === "inbound" ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+              <button type="button" onClick={() => setInbound(null)} className="btn-ghost h-9 shrink-0 text-xs">
+                OK
+              </button>
+            </div>
+          </div>
         )}
 
         {channels.length === 0 && !adding ? (

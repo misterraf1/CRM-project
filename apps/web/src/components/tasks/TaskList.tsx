@@ -71,7 +71,7 @@ export function TaskList({ tasks: initial, compact }: { tasks: TaskDto[]; compac
                 aria-label={`${done ? k.markOpen : k.markDone}: ${task.title}`}
                 onClick={() => setStatus(task, done ? "TODO" : "DONE")}
                 className={clsx(
-                  "grid h-5 w-5 shrink-0 place-items-center rounded-md border",
+                  "grid h-6 w-6 shrink-0 place-items-center rounded-md border",
                   done ? "border-success bg-success text-white" : "border-border hover:border-accent",
                 )}
               >

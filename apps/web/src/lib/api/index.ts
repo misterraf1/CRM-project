@@ -32,6 +32,7 @@ import type {
   AnalyticsPeriod,
   AutomationRuleDto,
   AutomationRunDto,
+  FileListResponse,
 } from "@axis/shared";
 import { cache } from "react";
 import { apiFetch } from "./server";
@@ -113,6 +114,8 @@ export const getTickets = () => apiFetch<TicketDto[]>("/v1/support/tickets");
 export const getAnalyticsBasic = (period: AnalyticsPeriod) => apiFetch<AnalyticsBasicDto>(`/v1/analytics/basic${query({ period })}`);
 
 export const getAnalyticsAdvanced = (period: AnalyticsPeriod) => apiFetch<AnalyticsAdvancedDto>(`/v1/analytics/advanced${query({ period })}`);
+
+export const getFiles = (params: { q?: string; source?: string }) => apiFetch<FileListResponse>(`/v1/files${query(params)}`);
 
 export const getAutomations = () => apiFetch<AutomationRuleDto[]>("/v1/automations");
 

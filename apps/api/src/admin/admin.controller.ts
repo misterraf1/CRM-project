@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Use
 import {
   adminInvoiceQuerySchema,
   adminLoginSchema,
+  adminMfaVerifySchema,
+  mfaCodeSchema,
   adminTenantQuerySchema,
   expenseSchema,
   extendTrialSchema,
@@ -22,7 +24,7 @@ import { Public } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { SupportService } from "../support/support.service";
 import { AdminAuthService } from "./admin-auth.service";
-import { AdminGuard, SuperAdminOnly } from "./admin.guard";
+import { AdminGuard, AllowWithoutMfa, SuperAdminOnly } from "./admin.guard";
 import { AdminService } from "./admin.service";
 
 // Platform staff sign-in. Separate from /v1/auth: other issuer, no tenant.
@@ -38,7 +40,15 @@ export class AdminAuthController {
     return this.auth.login(body.email, body.password);
   }
 
+  @Throttle({ default: { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post("mfa/verify")
+  verifyMfa(@Body(new ZodPipe(adminMfaVerifySchema)) body: z.infer<typeof adminMfaVerifySchema>) {
+    return this.auth.verifyMfa(body.challenge, body.code);
+  }
+
   @UseGuards(AdminGuard)
+  @AllowWithoutMfa()
   @HttpCode(204)
   @Post("logout")
   async logout() {
@@ -46,9 +56,42 @@ export class AdminAuthController {
   }
 
   @UseGuards(AdminGuard)
+  @AllowWithoutMfa()
   @Get("me")
   me() {
     return this.auth.me(currentContext().userId!);
+  }
+
+  @UseGuards(AdminGuard)
+  @AllowWithoutMfa()
+  @Post("mfa/setup")
+  setupMfa() {
+    return this.auth.setupMfa(currentContext().userId!);
+  }
+
+  @UseGuards(AdminGuard)
+  @AllowWithoutMfa()
+  @Throttle({ default: { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post("mfa/enable")
+  enableMfa(@Body(new ZodPipe(mfaCodeSchema)) body: { code: string }) {
+    return this.auth.enableMfa(currentContext().userId!, body.code);
+  }
+
+  @UseGuards(AdminGuard)
+  @Throttle({ default: { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post("mfa/recovery-codes")
+  regenerateRecoveryCodes(@Body(new ZodPipe(mfaCodeSchema)) body: { code: string }) {
+    return this.auth.regenerateRecoveryCodes(currentContext().userId!, body.code);
+  }
+
+  @UseGuards(AdminGuard)
+  @Throttle({ default: { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 } })
+  @HttpCode(204)
+  @Post("mfa/disable")
+  async disableMfa(@Body(new ZodPipe(mfaCodeSchema)) body: { code: string }) {
+    await this.auth.disableMfa(currentContext().userId!, body.code);
   }
 }
 

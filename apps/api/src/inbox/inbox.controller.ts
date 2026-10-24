@@ -21,6 +21,7 @@ import type { z } from "zod";
 import { authedContext } from "../common/context";
 import { RequirePermission } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
+import { InboxAiService } from "../ai/inbox-ai.service";
 import { ChannelsService } from "./channels.service";
 import { InboxEvents } from "./events";
 import { InboxService } from "./inbox.service";
@@ -33,6 +34,7 @@ export class InboxController {
     private readonly inbox: InboxService,
     private readonly channels: ChannelsService,
     private readonly events: InboxEvents,
+    private readonly inboxAi: InboxAiService,
   ) {}
 
   @Get("conversations")
@@ -48,6 +50,18 @@ export class InboxController {
   @Post("conversations/:id/messages")
   send(@Param("id") id: string, @Body(new ZodPipe(sendMessageSchema)) body: SendMessageInput) {
     return this.inbox.send(id, body);
+  }
+
+  /** AI draft of the next reply — filled into the composer, never sent by itself */
+  @RequirePermission("inbox.reply")
+  @Post("conversations/:id/ai/reply")
+  aiReply(@Param("id") id: string) {
+    return this.inboxAi.reply(id);
+  }
+
+  @Post("conversations/:id/ai/summary")
+  aiSummary(@Param("id") id: string) {
+    return this.inboxAi.summary(id);
   }
 
   @Patch("conversations/:id")

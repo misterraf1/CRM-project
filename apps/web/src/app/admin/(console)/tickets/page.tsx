@@ -43,7 +43,7 @@ export default async function AdminTicketsPage({ searchParams }: Props) {
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-2 font-medium">
                       <span className="truncate">{x.subject}</span>
-                      {x.tenant?.prioritySupport && <span className="shrink-0 rounded-full bg-accent px-1.5 text-[10px] font-semibold leading-4 text-accent-fg">{k.priorityPlan}</span>}
+                      {x.tenant?.prioritySupport && <span className="shrink-0 rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-4 text-accent-fg">{k.priorityPlan}</span>}
                     </p>
                     <p className="text-xs text-fg-subtle">
                       {x.tenant?.name} · {x.tenant?.plan} · {x.author}

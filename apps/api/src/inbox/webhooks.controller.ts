@@ -1,11 +1,11 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from "@nestjs/common";
 import { SkipThrottle } from "@nestjs/throttler";
 import type { Request } from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { config } from "../config";
 import { Public } from "../common/decorators";
 import { AppError } from "../common/errors";
-import { WebhooksService } from "./webhooks.service";
+import { WebhooksService, type InboundEmail } from "./webhooks.service";
 
 @Controller("v1/webhooks")
 export class WebhooksController {
@@ -19,6 +19,14 @@ export class WebhooksController {
     const token = config().META_VERIFY_TOKEN;
     if (!token || q["hub.mode"] !== "subscribe" || q["hub.verify_token"] !== token) throw new AppError("FORBIDDEN", "Verification failed");
     return q["hub.challenge"] ?? "";
+  }
+
+  /** Inbound email (provider webhook); authorised by the channel's secret token in the URL. */
+  @Public()
+  @HttpCode(200)
+  @Post("email/:channelId")
+  receiveEmail(@Param("channelId") channelId: string, @Query("token") token: string | undefined, @Body() body: InboundEmail) {
+    return this.webhooks.processEmail(channelId, token ?? "", body ?? {});
   }
 
   /** Deliveries are accepted only with a valid X-Hub-Signature-256 over the raw body. */

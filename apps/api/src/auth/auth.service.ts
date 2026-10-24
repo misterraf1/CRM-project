@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { AuthTokens, LoginInput, MeResponse, SignupInput } from "@axis/shared";
 import { resolvePermissions } from "@axis/shared";
+import { AiService } from "../ai/ai.service";
 import { AuditService } from "../audit/audit.service";
 import { EntitlementsService } from "../billing/entitlements.service";
 import { config } from "../config";
@@ -29,6 +30,7 @@ export class AuthService {
     private readonly tokens: TokensService,
     private readonly audit: AuditService,
     private readonly entitlements: EntitlementsService,
+    private readonly ai: AiService,
   ) {}
 
   /** Creates company + owner account and starts the trial. */
@@ -139,7 +141,7 @@ export class AuthService {
   async me(): Promise<MeResponse> {
     const ctx = authedContext();
     return this.prisma.scoped(async (tx) => {
-      const [user, membership, tenant, subscription, seats, memberships] = await Promise.all([
+      const [user, membership, tenant, subscription, seats, memberships, aiUsage] = await Promise.all([
         tx.user.findUniqueOrThrow({ where: { id: ctx.userId } }),
         tx.membership.findUniqueOrThrow({ where: { id: ctx.membershipId } }),
         tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId } }),
@@ -150,6 +152,7 @@ export class AuthService {
           include: { tenant: { select: { name: true, slug: true } } },
           orderBy: { joinedAt: "asc" },
         }),
+        this.ai.usage(tx, ctx.tenantId),
       ]);
       return {
         user: { id: user.id, fullName: user.fullName, email: user.email, locale: user.locale },
@@ -167,6 +170,7 @@ export class AuthService {
           features: this.entitlements.features(subscription),
         },
         memberships: memberships.map((m) => ({ tenantId: m.tenantId, tenantName: m.tenant.name, slug: m.tenant.slug, role: m.role })),
+        ai: { available: this.ai.available, ...aiUsage },
       };
     });
   }

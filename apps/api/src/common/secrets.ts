@@ -1,8 +1,9 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { config } from "../config";
-import { AppError } from "../common/errors";
+import { AppError } from "./errors";
 
-// AES-256-GCM for provider credentials stored in Channel.credentials.
+// AES-256-GCM for secrets at rest: provider credentials (Channel.credentials) and
+// platform staff 2FA keys (User.mfaSecret). Key: CHANNEL_SECRET_KEY.
 // Layout: 12-byte IV | 16-byte auth tag | ciphertext.
 
 function key() {

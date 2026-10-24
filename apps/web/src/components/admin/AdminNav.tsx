@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { Activity, Building2, LayoutDashboard, LifeBuoy, Package, Receipt, Wallet } from "lucide-react";
+import { Activity, Building2, LayoutDashboard, LifeBuoy, Package, Receipt, ShieldCheck, Wallet } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/client";
@@ -14,6 +14,7 @@ const ITEMS = [
   { key: "expenses", href: "/admin/expenses", icon: Wallet, superOnly: true },
   { key: "tickets", href: "/admin/tickets", icon: LifeBuoy },
   { key: "system", href: "/admin/system", icon: Activity },
+  { key: "security", href: "/admin/security", icon: ShieldCheck },
 ] as const;
 
 export function AdminNav({ superAdmin }: { superAdmin: boolean }) {

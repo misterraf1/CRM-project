@@ -129,7 +129,8 @@ export function Board({ pipeline, deals: initial }: { pipeline: PipelineDto; dea
         </p>
       )}
 
-      <div className="-mx-4 overflow-x-auto px-4 pb-2 lg:-mx-6 lg:px-6">
+      {/* Focusable so the board can be scrolled with the keyboard even when it has no cards */}
+      <div role="region" aria-label={d.title} tabIndex={0} className="-mx-4 overflow-x-auto px-4 pb-2 outline-none focus-visible:ring-2 focus-visible:ring-accent/60 lg:-mx-6 lg:px-6">
         {/* Columns share the width (min 220px each); narrower screens scroll horizontally */}
         <div className="grid auto-cols-[minmax(220px,1fr)] grid-flow-col gap-3">
           {columns.map(({ stage, items, total }) => (

@@ -1,7 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { ChannelType } from "@axis/shared";
+import { timingSafeEqual } from "node:crypto";
+import { AppError } from "../common/errors";
 import { sha256 } from "../common/ids";
+import { openCredentials } from "../common/secrets";
 import { PrismaService } from "../prisma/prisma.service";
 import { IngestService } from "./ingest.service";
 
@@ -21,6 +24,19 @@ interface PageEvent {
 interface MetaPayload {
   object?: string;
   entry?: { id?: string; changes?: { value?: WaValue }[]; messaging?: PageEvent[] }[];
+}
+
+/** Inbound email as posted by the provider (Postmark's inbound webhook format). */
+export interface InboundEmail {
+  From?: string;
+  FromName?: string;
+  FromFull?: { Email?: string; Name?: string };
+  Subject?: string;
+  TextBody?: string;
+  /** The new text without the quoted history, when the provider can tell */
+  StrippedTextReply?: string;
+  MessageID?: string;
+  Headers?: { Name: string; Value: string }[];
 }
 
 /** Parses Meta webhook payloads (WhatsApp Cloud API, Messenger, Instagram) into inbox messages. */
@@ -51,6 +67,39 @@ export class WebhooksService {
       }
     }
     return { duplicate: false, stored };
+  }
+
+  /**
+   * Email channel deliveries: the URL carries the channel id and its secret token
+   * (shown once when the channel was connected).
+   */
+  async processEmail(channelId: string, token: string, mail: InboundEmail) {
+    const channel = await this.prisma.system(() =>
+      this.prisma.channel.findFirst({ where: { id: channelId, type: "EMAIL", demo: false, status: { not: "disconnected" } } }),
+    );
+    const expected = channel?.credentials ? Buffer.from(openCredentials(channel.credentials).inboundToken ?? "") : Buffer.alloc(0);
+    const given = Buffer.from(token);
+    if (!channel || !expected.length || given.length !== expected.length || !timingSafeEqual(given, expected)) {
+      throw new AppError("FORBIDDEN", "Invalid inbound address");
+    }
+    const from = (mail.FromFull?.Email ?? mail.From ?? "").trim().toLowerCase();
+    const body = (mail.StrippedTextReply?.trim() || mail.TextBody?.trim() || "").slice(0, 20_000);
+    if (!from || !body) return { stored: 0 };
+    const messageId = mail.MessageID || mail.Headers?.find((h) => h.Name.toLowerCase() === "message-id")?.Value || null;
+    const res = await this.prisma.scoped(
+      (tx) =>
+        this.ingest.inbound(tx, channel, {
+          externalThread: from,
+          externalMessageId: messageId ?? undefined,
+          body,
+          displayName: mail.FromFull?.Name || mail.FromName || null,
+          handle: from,
+          subject: mail.Subject ?? null,
+          emailMessageId: messageId,
+        }),
+      { tenantId: channel.tenantId },
+    );
+    return { stored: res ? 1 : 0 };
   }
 
   private async resolve(type: ChannelType, externalId: string) {

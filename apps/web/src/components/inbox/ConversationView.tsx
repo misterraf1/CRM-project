@@ -1,8 +1,8 @@
 "use client";
 
-import type { CannedResponseDto, ConversationDetailDto, MessageDto } from "@axis/shared";
+import type { AiTextDto, CannedResponseDto, ConversationDetailDto, MeResponse, MessageDto } from "@axis/shared";
 import clsx from "clsx";
-import { AlertTriangle, ArrowLeft, Check, MessageSquareQuote, RotateCcw, StickyNote } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, MessageSquareQuote, RotateCcw, Sparkles, StickyNote, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
@@ -16,7 +16,17 @@ import { interpolate } from "@/lib/i18n/locales";
 
 type Mode = "reply" | "note";
 
-export function ConversationView({ conversation: c, templates, backHref }: { conversation: ConversationDetailDto; templates: CannedResponseDto[]; backHref: string }) {
+export function ConversationView({
+  conversation: c,
+  templates,
+  backHref,
+  ai: initialAi,
+}: {
+  conversation: ConversationDetailDto;
+  templates: CannedResponseDto[];
+  backHref: string;
+  ai: MeResponse["ai"];
+}) {
   const { t, locale } = useI18n();
   const k = t.inbox;
   const router = useRouter();
@@ -24,6 +34,28 @@ export function ConversationView({ conversation: c, templates, backHref }: { con
   const [body, setBody] = useState("");
   const [error, setError] = useState<string>();
   const [showTemplates, setShowTemplates] = useState(false);
+  const [ai, setAi] = useState(initialAi);
+  const [aiBusy, setAiBusy] = useState<"reply" | "summary" | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [draftFromAi, setDraftFromAi] = useState(false);
+  // Why the AI buttons can't be used right now (they stay visible, with the reason)
+  const aiBlocked = !ai.available ? t.errors.AI_UNAVAILABLE : ai.limit === 0 ? k.aiNoPlan : ai.used >= ai.limit ? k.aiLimit : null;
+
+  async function askAi(kind: "reply" | "summary") {
+    if (kind === "reply" && body.trim() && !window.confirm(k.aiReplace)) return;
+    setAiBusy(kind);
+    setError(undefined);
+    const res = await api<AiTextDto>(`/inbox/conversations/${c.id}/ai/${kind}`, "POST");
+    setAiBusy(null);
+    if (!res.ok) return setError(errorMessage(t, res.code, res.details));
+    setAi((x) => ({ ...x, ...res.data.usage }));
+    if (kind === "summary") setSummary(res.data.text);
+    else {
+      setMode("reply");
+      setBody(res.data.text);
+      setDraftFromAi(true);
+    }
+  }
   const [pending, startTransition] = useTransition();
   const bottom = useRef<HTMLDivElement>(null);
   const windowClosed = !!c.replyWindowEndsAt && new Date(c.replyWindowEndsAt).getTime() < Date.now();
@@ -49,6 +81,7 @@ export function ConversationView({ conversation: c, templates, backHref }: { con
       // The live stream may refresh the page before this response arrives and the agent
       // may already be typing the next message — clear only what was actually sent
       setBody((current) => (current === sent ? "" : current));
+      setDraftFromAi(false);
       router.refresh();
     });
   }
@@ -106,6 +139,18 @@ export function ConversationView({ conversation: c, templates, backHref }: { con
           ))}
       </header>
 
+      {summary && (
+        <section className="border-b border-border bg-accent-soft/40 px-4 py-3" aria-label={k.aiSummaryTitle}>
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden />
+            <h3 className="flex-1 text-xs font-semibold">{k.aiSummaryTitle}</h3>
+            <button type="button" onClick={() => setSummary(null)} className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-muted" aria-label={k.close}>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <p className="mt-1 whitespace-pre-wrap text-sm">{summary}</p>
+        </section>
+      )}
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-muted/30 px-4 py-4" role="log" aria-live="polite">
         {c.messages.map((m) =>
           m.direction === "INTERNAL_NOTE" ? (
@@ -115,7 +160,7 @@ export function ConversationView({ conversation: c, templates, backHref }: { con
                 {interpolate(k.noteLabel, { name: m.author?.name ?? "" })}
               </p>
               <p className="mt-0.5 whitespace-pre-wrap text-sm">{m.body}</p>
-              <p className="mt-0.5 text-[10px] text-fg-subtle">{formatDateTime(m.createdAt, locale)}</p>
+              <p className="mt-0.5 text-[11px] text-fg-subtle">{formatDateTime(m.createdAt, locale)}</p>
             </div>
           ) : (
             <div key={m.id} className={clsx("flex", m.direction === "OUTBOUND" ? "justify-end" : "justify-start")}>
@@ -126,7 +171,7 @@ export function ConversationView({ conversation: c, templates, backHref }: { con
                 )}
               >
                 <p className="whitespace-pre-wrap text-sm">{m.body}</p>
-                <p className={clsx("mt-0.5 flex items-center justify-end gap-1 text-[10px]", m.direction === "OUTBOUND" ? "text-accent-fg/75" : "text-fg-subtle")}>
+                <p className={clsx("mt-0.5 flex items-center justify-end gap-1 text-[11px]", m.direction === "OUTBOUND" ? "text-accent-fg/75" : "text-fg-subtle")}>
                   {m.direction === "OUTBOUND" && m.author && <span>{m.author.name} ·</span>}
                   {formatDateTime(m.createdAt, locale)}
                   {m.deliveryStatus && m.deliveryStatus !== "sent" && (
@@ -160,7 +205,30 @@ export function ConversationView({ conversation: c, templates, backHref }: { con
                 {m === "reply" ? k.reply : k.note}
               </button>
             ))}
-            <div className="relative ml-auto">
+            <div className="ml-auto flex items-center gap-1">
+              <span className="hidden text-[11px] text-fg-subtle sm:inline">{ai.limit > 0 && interpolate(k.aiUsage, { used: ai.used, limit: ai.limit })}</span>
+              <button
+                type="button"
+                onClick={() => void askAi("summary")}
+                disabled={!!aiBlocked || !!aiBusy}
+                title={aiBlocked ?? undefined}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-muted disabled:opacity-50"
+              >
+                <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                {aiBusy === "summary" ? k.aiWorking : k.aiSummary}
+              </button>
+              <button
+                type="button"
+                onClick={() => void askAi("reply")}
+                disabled={!!aiBlocked || !!aiBusy}
+                title={aiBlocked ?? undefined}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-accent hover:bg-accent-soft disabled:opacity-50"
+              >
+                <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                {aiBusy === "reply" ? k.aiWorking : k.aiReply}
+              </button>
+            </div>
+            <div className="relative">
               <button type="button" onClick={() => setShowTemplates((v) => !v)} aria-expanded={showTemplates} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-muted">
                 <MessageSquareQuote className="h-3.5 w-3.5" aria-hidden />
                 {k.templates}
@@ -190,6 +258,12 @@ export function ConversationView({ conversation: c, templates, backHref }: { con
             <p className="mb-2 flex items-start gap-1.5 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
               {k.windowClosed}
+            </p>
+          )}
+          {draftFromAi && mode === "reply" && body && (
+            <p className="mb-2 flex items-center gap-1.5 text-[11px] text-accent">
+              <Sparkles className="h-3 w-3" aria-hidden />
+              {k.aiDraftHint}
             </p>
           )}
           <label className="sr-only" htmlFor="composer">

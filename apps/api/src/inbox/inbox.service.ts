@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { MailService } from "../mail/mail.service";
 import type { Channel, Conversation, Message, Prisma } from "@prisma/client";
 import type {
   CannedResponseDto,
@@ -20,7 +21,7 @@ import { memberRefs, ownerScope } from "../crm/scope";
 import { PrismaService, type Tx } from "../prisma/prisma.service";
 import { InboxEvents } from "./events";
 import { MetaClient } from "./meta.client";
-import { openCredentials } from "./secrets";
+import { openCredentials } from "../common/secrets";
 
 const WHATSAPP_WINDOW_MS = 24 * 3600_000;
 const PERIOD_DAYS = { "7d": 7, "30d": 30, "90d": 90 } as const;
@@ -62,6 +63,7 @@ export class InboxService {
     private readonly events: InboxEvents,
     private readonly meta: MetaClient,
     private readonly activity: ActivityService,
+    private readonly mail: MailService,
   ) {}
 
   async list(query: ConversationListQuery): Promise<ConversationListItemDto[]> {
@@ -151,10 +153,14 @@ export class InboxService {
           direction: input.internal ? "INTERNAL_NOTE" : "OUTBOUND",
           authorId: ctx.membershipId,
           body: input.body,
-          deliveryStatus: input.internal ? null : c.channel.demo ? "demo" : c.channel.type === "WEBCHAT" ? "sent" : "pending",
+          // Email replies wait in the mail queue; the sender updates the status
+          deliveryStatus: input.internal ? null : c.channel.demo ? "demo" : c.channel.type === "WEBCHAT" ? "sent" : c.channel.type === "EMAIL" ? "queued" : "pending",
           createdAt: now,
         },
       });
+      if (!input.internal && c.channel.type === "EMAIL" && !c.channel.demo && c.handle) {
+        await this.queueEmailReply(tx, c, input.body, message.id);
+      }
       if (!input.internal) {
         await tx.conversation.update({
           where: { id },
@@ -296,6 +302,27 @@ export class InboxService {
       const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { timezone: true } });
       const start = addDays(startOfDay(new Date(), tenant.timezone), -(PERIOD_DAYS[period] - 1), tenant.timezone);
       return computeInboxMetrics(tx, ctx, start);
+    });
+  }
+
+  /** Email channel: the reply leaves from the channel's address, threaded under the customer's email. */
+  private async queueEmailReply(tx: Tx, c: ConversationRow, body: string, messageId: string) {
+    const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: c.tenantId }, select: { name: true } });
+    const address = ((c.channel.settings ?? {}) as { address?: string }).address ?? c.channel.externalId;
+    const base = c.subject?.trim() || tenant.name;
+    const subject = /^re:/i.test(base) ? base : `Re: ${base}`;
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    await this.mail.queue(tx, {
+      tenantId: c.tenantId,
+      to: c.handle!,
+      from: `"${tenant.name.replace(/"/g, "")}" <${address}>`,
+      headers: c.emailReplyTo ? { "In-Reply-To": c.emailReplyTo, References: c.emailReplyTo } : {},
+      raw: {
+        subject,
+        text: body,
+        html: `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:15px;line-height:1.5;white-space:pre-wrap">${esc(body)}</div>`,
+      },
+      inboxMessageId: messageId,
     });
   }
 

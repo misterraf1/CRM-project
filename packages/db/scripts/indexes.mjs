@@ -64,6 +64,11 @@ export const INDEXES = [
   ["AutomationRule", { tenantId: 1, trigger: 1, enabled: 1 }],
   ["AutomationEvent", { status: 1, createdAt: 1 }],
   ["AutomationRun", { ruleId: 1, createdAt: -1 }],
+  // Email
+  ["PasswordReset", { tokenHash: 1 }, { unique: true }],
+  ["PasswordReset", { userId: 1, createdAt: -1 }],
+  ["EmailMessage", { status: 1, createdAt: 1 }],
+  ["EmailMessage", { tenantId: 1, createdAt: -1 }],
   // Inbox
   ["Channel", { type: 1, externalId: 1 }, { unique: true }],
   ["Conversation", { channelId: 1, externalThread: 1 }, { unique: true }],

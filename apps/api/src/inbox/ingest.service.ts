@@ -13,6 +13,9 @@ export interface InboundMessage {
   displayName?: string | null;
   handle?: string | null;
   at?: Date;
+  /** Email: thread subject and the Message-ID a reply should reference */
+  subject?: string | null;
+  emailMessageId?: string | null;
 }
 
 /**
@@ -75,6 +78,8 @@ export class IngestService {
         status: "OPEN",
         displayName: conversation.displayName ?? msg.displayName ?? null,
         handle: conversation.handle ?? msg.handle ?? null,
+        ...(msg.subject && !conversation.subject ? { subject: msg.subject.slice(0, 300) } : {}),
+        ...(msg.emailMessageId ? { emailReplyTo: msg.emailMessageId.slice(0, 500) } : {}),
       },
     });
     this.events.publish(channel.tenantId, { type: "message", conversationId: conversation.id, direction: "INBOUND" });

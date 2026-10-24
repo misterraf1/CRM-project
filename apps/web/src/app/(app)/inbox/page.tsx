@@ -7,7 +7,7 @@ import { ConversationList } from "@/components/inbox/ConversationList";
 import { ConversationView } from "@/components/inbox/ConversationView";
 import { CustomerPanel } from "@/components/inbox/CustomerPanel";
 import { LiveRefresh } from "@/components/shell/LiveRefresh";
-import { getChannels, getConversation, getConversations, getDepartments, getInboxMetrics, getMembers, getTemplates } from "@/lib/api";
+import { getChannels, getConversation, getConversations, getDepartments, getInboxMetrics, getMembers, getSession, getTemplates } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatDuration } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
@@ -23,11 +23,12 @@ export default async function InboxPage({ searchParams }: Props) {
   const params = await searchParams;
   const status = (CONVERSATION_STATUSES as readonly string[]).includes(params.status ?? "") ? params.status! : "OPEN";
   const assignee = (ASSIGNEES as readonly string[]).includes(params.assignee ?? "") ? params.assignee! : "all";
-  const [{ t, locale }, list, channels, metrics] = await Promise.all([
+  const [{ t, locale }, list, channels, metrics, me] = await Promise.all([
     getI18n(),
     getConversations({ status, assignee, q: params.q }),
     getChannels(),
     getInboxMetrics(),
+    getSession(),
   ]);
   const selected = params.c
     ? await getConversation(params.c).catch((e) => {
@@ -47,7 +48,7 @@ export default async function InboxPage({ searchParams }: Props) {
     <div className="-my-6 -mx-4 lg:-mx-6">
       <div className="grid h-[calc(100dvh-3.5rem)] grid-cols-[minmax(0,1fr)] lg:grid-cols-[340px_minmax(0,1fr)_280px]">
         {/* Conversation list — hidden on mobile while a conversation is open */}
-        <aside className={clsx("flex min-h-0 flex-col border-r border-border bg-surface", selected && "hidden lg:flex")}>
+        <aside aria-label={k.back} className={clsx("flex min-h-0 flex-col border-r border-border bg-surface", selected && "hidden lg:flex")}>
           <div className="space-y-2 border-b border-border p-3">
             <div className="flex items-center justify-between gap-2">
               <h1 className="text-base font-semibold">{k.title}</h1>
@@ -82,7 +83,7 @@ export default async function InboxPage({ searchParams }: Props) {
                   key={a}
                   href={href({ assignee: a, c: undefined })}
                   aria-current={assignee === a ? "true" : undefined}
-                  className={clsx("rounded-full px-2.5 py-0.5 text-[11px] font-medium", assignee === a ? "bg-accent-soft text-accent" : "text-fg-muted hover:bg-muted")}
+                  className={clsx("rounded-full px-2.5 py-1 text-[11px] font-medium", assignee === a ? "bg-accent-soft text-accent" : "text-fg-muted hover:bg-muted")}
                 >
                   {k.assignees[a]}
                 </Link>
@@ -118,7 +119,7 @@ export default async function InboxPage({ searchParams }: Props) {
                 <CustomerPanel conversation={selected} members={members} departments={departments} />
               </details>
               <div className="min-h-0 flex-1">
-                <ConversationView key={selected.id} conversation={selected} templates={templates} backHref={href({ c: undefined })} />
+                <ConversationView key={selected.id} conversation={selected} templates={templates} backHref={href({ c: undefined })} ai={me.ai} />
               </div>
             </div>
           ) : (
@@ -126,7 +127,7 @@ export default async function InboxPage({ searchParams }: Props) {
           )}
         </section>
 
-        <aside className="hidden min-h-0 overflow-y-auto border-l border-border bg-surface lg:block">
+        <aside aria-label={k.customer} className="hidden min-h-0 overflow-y-auto border-l border-border bg-surface lg:block">
           {selected && <CustomerPanel key={selected.id} conversation={selected} members={members} departments={departments} />}
         </aside>
       </div>

@@ -8,7 +8,7 @@ export function Card({ className, children }: { className?: string; children: Re
 
 export function DemoBadge({ label, hint }: { label: string; hint?: string }) {
   return (
-    <span title={hint} className="rounded-full border border-warning/30 bg-warning/10 px-1.5 text-[10px] font-semibold leading-4 text-warning">
+    <span title={hint} className="rounded-full border border-warning/30 bg-warning/10 px-1.5 text-[11px] font-semibold leading-4 text-warning">
       {label}
     </span>
   );

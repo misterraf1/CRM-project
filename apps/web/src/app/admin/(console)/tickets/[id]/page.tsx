@@ -37,7 +37,7 @@ export default async function AdminTicketPage({ params }: Props) {
               {ticket.tenant.name}
             </Link>{" "}
             · {ticket.tenant.plan}
-            {ticket.tenant.prioritySupport && <span className="ml-1 rounded-full bg-accent px-1.5 text-[10px] font-semibold leading-4 text-accent-fg">{k.priorityPlan}</span>} · {ticket.author}
+            {ticket.tenant.prioritySupport && <span className="ml-1 rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-4 text-accent-fg">{k.priorityPlan}</span>} · {ticket.author}
           </p>
         )}
       </div>

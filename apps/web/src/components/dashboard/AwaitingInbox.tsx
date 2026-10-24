@@ -44,7 +44,7 @@ export function AwaitingInbox({ inbox, now, t, locale }: { inbox: DashboardCrmDt
                           <Avatar name={c.assignee.name} size="sm" />
                         </span>
                       ) : (
-                        <span className="shrink-0 rounded bg-danger/10 px-1.5 text-[10px] font-medium leading-4 text-danger">
+                        <span className="shrink-0 rounded bg-danger/10 px-1.5 text-[11px] font-medium leading-4 text-danger">
                           {d.unassigned}
                         </span>
                       )}

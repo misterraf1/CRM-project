@@ -30,7 +30,7 @@ export function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md"
       aria-hidden
       className={clsx(
         "inline-grid shrink-0 place-items-center rounded-full font-semibold",
-        size === "sm" ? "h-6 w-6 text-[10px]" : "h-8 w-8 text-xs",
+        size === "sm" ? "h-6 w-6 text-[11px]" : "h-8 w-8 text-xs",
         PALETTE[hash(name) % PALETTE.length],
       )}
     >

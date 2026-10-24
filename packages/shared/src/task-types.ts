@@ -42,6 +42,21 @@ export interface FileDto {
   createdAt: string;
 }
 
+export const FILE_SOURCES = ["library", "task", "chat"] as const;
+export type FileSource = (typeof FILE_SOURCES)[number];
+
+/** A file in the Files section, with where it lives */
+export interface FileListItemDto extends FileDto {
+  source: { type: FileSource; id: string | null; title: string | null };
+  canDelete: boolean;
+}
+
+export interface FileListResponse {
+  items: FileListItemDto[];
+  total: number;
+  storage: { usedMb: number; limitMb: number };
+}
+
 export interface TaskDetailDto extends TaskDto {
   subtaskItems: TaskDto[];
   commentItems: CommentDto[];

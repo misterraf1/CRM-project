@@ -52,6 +52,8 @@ export interface PlanDto {
   features: string[];
   extraSeatPrice: number;
   extraStorageGbPrice: number;
+  /** AI assistant requests per month */
+  aiCredits: number;
 }
 
 export type InvoiceKind = "subscription" | "upgrade" | "renewal" | "addons";

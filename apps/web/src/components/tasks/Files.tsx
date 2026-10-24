@@ -5,16 +5,12 @@ import { Download, Paperclip, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { api } from "@/lib/api/client";
-import { formatNumber } from "@/lib/format";
+import { formatBytes } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
 import { interpolate } from "@/lib/i18n/locales";
 
 const MAX_BYTES = 10 * 1024 * 1024;
-
-function size(bytes: number, locale: "az" | "en" | "ru") {
-  return bytes < 1024 * 1024 ? `${formatNumber(Math.max(1, Math.round(bytes / 1024)), locale)} KB` : `${formatNumber(bytes / 1048576, locale, 1)} MB`;
-}
 
 export function Files({ taskId, items, canEdit, selfMemberId }: { taskId: string; items: FileDto[]; canEdit: boolean; selfMemberId: string }) {
   const { t, locale } = useI18n();
@@ -67,7 +63,7 @@ export function Files({ taskId, items, canEdit, selfMemberId }: { taskId: string
                 <Download className="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden />
                 <span className="truncate">{f.name}</span>
               </a>
-              <span className="tabular shrink-0 text-xs text-fg-subtle">{size(f.sizeBytes, locale)}</span>
+              <span className="tabular shrink-0 text-xs text-fg-subtle">{formatBytes(f.sizeBytes, locale)}</span>
               {(canEdit || f.uploader?.id === selfMemberId) && (
                 <button type="button" onClick={() => remove(f)} aria-label={`${k.deleteFile}: ${f.name}`} title={k.deleteFile} className="grid h-7 w-7 place-items-center rounded-md text-fg-subtle hover:bg-danger/10 hover:text-danger">
                   <Trash2 className="h-3.5 w-3.5" />

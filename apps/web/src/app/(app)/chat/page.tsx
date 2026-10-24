@@ -40,7 +40,7 @@ export default async function ChatPage({ searchParams }: Props) {
   return (
     <div className="-my-6 -mx-4 lg:-mx-6">
       <div className="grid h-[calc(100dvh-3.5rem)] grid-cols-[minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className={clsx("flex min-h-0 flex-col border-r border-border bg-surface", room && "hidden lg:flex")}>
+        <aside aria-label={t.nav.chat} className={clsx("flex min-h-0 flex-col border-r border-border bg-surface", room && "hidden lg:flex")}>
           <div className="space-y-2 border-b border-border p-3">
             <div className="flex items-center justify-between gap-2">
               <h1 className="text-base font-semibold">{k.title}</h1>
@@ -106,7 +106,7 @@ export default async function ChatPage({ searchParams }: Props) {
                             <p className="min-w-0 flex-1 truncate text-xs text-fg-muted">
                               {x.lastMessage ? `${x.lastMessage.mine ? k.you : (x.lastMessage.author ?? "")}: ${x.lastMessage.body}` : k.kinds[x.kind]}
                             </p>
-                            {x.unread > 0 && <span className="tabular rounded-full bg-success px-1.5 text-[10px] font-semibold leading-4 text-white">{x.unread}</span>}
+                            {x.unread > 0 && <span className="tabular rounded-full bg-success px-1.5 text-[11px] font-semibold leading-4 text-white">{x.unread}</span>}
                           </div>
                         </div>
                       </Link>

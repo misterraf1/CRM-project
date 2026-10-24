@@ -73,13 +73,14 @@ export function NotificationBell({ unread: initialUnread }: { unread: number }) 
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-label={unread ? `${n.title} (${unread})` : n.title}
+        aria-label={unread ? `${n.title} ${unread}` : n.title}
         title={n.title}
         className="relative grid h-8 w-8 place-items-center rounded-lg text-fg-muted hover:bg-muted hover:text-fg"
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="h-4 w-4" aria-hidden />
+        {/* The count is already in the button's name */}
         {unread > 0 && (
-          <span className="tabular absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-danger px-1 text-center text-[10px] font-semibold leading-4 text-white">
+          <span aria-hidden className="tabular absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-danger px-1 text-center text-[11px] font-semibold leading-4 text-white">
             {unread > 99 ? "99+" : unread}
           </span>
         )}

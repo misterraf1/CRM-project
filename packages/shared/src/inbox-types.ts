@@ -13,6 +13,8 @@ export interface ChannelDto {
   /** Website chat: snippet to paste into the site */
   embedCode: string | null;
   greeting: string | null;
+  /** Email channel: the inbound webhook URL with its secret — returned only when the channel is created */
+  inboundUrl?: string;
   createdAt: string;
 }
 
@@ -89,3 +91,9 @@ export interface WidgetSendResponse {
 export type InboxEvent =
   | { type: "message"; conversationId: string; direction: MessageDirection }
   | { type: "conversation"; conversationId: string };
+
+/** AI assistant output for a conversation (never sent automatically) */
+export interface AiTextDto {
+  text: string;
+  usage: { used: number; limit: number };
+}

@@ -3,6 +3,7 @@ import type { Invoice, Plan, Prisma, Subscription } from "@prisma/client";
 import type { AddonsInput, BillingInterval, BillingOverviewDto, CheckoutInput, CheckoutResponse, InvoiceDto, InvoiceLineDto, PlanDto } from "@axis/shared";
 import { AuditService } from "../audit/audit.service";
 import { config } from "../config";
+import { MailService } from "../mail/mail.service";
 import { authedContext } from "../common/context";
 import { AppError, notFound } from "../common/errors";
 import { randomToken } from "../common/ids";
@@ -27,6 +28,7 @@ export function toPlanDto(p: Plan): PlanDto {
     features: p.features,
     extraSeatPrice: p.extraSeatPrice,
     extraStorageGbPrice: p.extraStorageGbPrice,
+    aiCredits: p.aiCredits,
   };
 }
 
@@ -42,6 +44,7 @@ export class BillingService {
     private readonly entitlements: EntitlementsService,
     private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
+    private readonly mail: MailService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
@@ -319,6 +322,25 @@ export class BillingService {
     await tx.tenant.update({ where: { id: invoice.tenantId }, data: { status: "ACTIVE" } });
     await this.audit.log(tx, { action: "billing.paid", entityType: "invoice", entityId: invoice.id, diff: { amount: invoice.amount, kind: invoice.kind }, tenantId: invoice.tenantId });
     await this.notifications.notify(tx, invoice.tenantId, await ownerIds(tx, invoice.tenantId), "billing_paid", { invoiceId: invoice.id, number: invoice.number, amount: invoice.amount });
+    // Receipt by email to the owners
+    const [tenant, owners] = await Promise.all([
+      tx.tenant.findUniqueOrThrow({ where: { id: invoice.tenantId }, select: { name: true } }),
+      tx.membership.findMany({ where: { tenantId: invoice.tenantId, role: "OWNER", status: "ACTIVE" }, select: { user: { select: { email: true, locale: true } } } }),
+    ]);
+    for (const o of owners) {
+      await this.mail.queue(tx, {
+        tenantId: invoice.tenantId,
+        to: o.user.email,
+        locale: o.user.locale,
+        template: "invoice_paid",
+        vars: {
+          company: tenant.name,
+          number: invoice.number,
+          amount: `${(invoice.amount / 100).toFixed(2)} ${invoice.currency}`,
+          link: `${config().WEB_ORIGIN}/settings/billing/invoices/${invoice.id}`,
+        },
+      });
+    }
     return paid;
   }
 

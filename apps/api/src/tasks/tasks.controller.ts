@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
+  fileListQuerySchema,
+  type FileListQuery,
   commentSchema,
   projectSchema,
   taskCreateSchema,
@@ -62,6 +64,19 @@ export class TasksController {
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: config().MAX_UPLOAD_MB * 1024 * 1024, files: 1 } }))
   upload(@Param("id") id: string, @UploadedFile() file: Upload | undefined) {
     return this.files.uploadToTask(id, file);
+  }
+
+  /** The Files section: everything the caller may open, plus storage usage */
+  @Get("files")
+  fileList(@Query(new ZodPipe(fileListQuerySchema)) q: FileListQuery) {
+    return this.files.list(q);
+  }
+
+  /** Company library: shared documents not tied to a task or chat */
+  @Post("files")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: config().MAX_UPLOAD_MB * 1024 * 1024, files: 1 } }))
+  uploadLibrary(@UploadedFile() file: Upload | undefined) {
+    return this.files.uploadToLibrary(file);
   }
 
   @Get("files/:id")
