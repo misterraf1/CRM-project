@@ -15,6 +15,9 @@
     "test": "npm run build -w @axis/shared && npm run test -w @axis/web && npm run test -w @axis/api",
     "db:indexes": "npm run indexes -w @axis/db"
   },
+  "overrides": {
+    "zod": "3.25.76"
+  },
   "engines": {
     "node": ">=20.11"
   },
