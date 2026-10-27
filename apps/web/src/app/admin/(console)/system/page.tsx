@@ -59,6 +59,32 @@ export default async function AdminSystemPage() {
         </table>
       </section>
 
+      <section className="card p-5">
+        <h2 className="text-sm font-semibold">
+          {k.ai} <span className="font-normal text-fg-subtle">· {s.ai.provider}</span>
+        </h2>
+        {!s.ai.configured ? (
+          <p className="mt-1 text-xs text-warning">{k.aiNotConfigured}</p>
+        ) : (
+          <>
+            <p className="mt-1 text-xs text-fg-subtle">{k.aiChainHint}</p>
+            <ol className="mt-3 space-y-1.5 text-sm">
+              {s.ai.models.map((m, i) => (
+                <li key={m.model} className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                  <span className="tabular w-4 text-xs text-fg-subtle">{i + 1}.</span>
+                  <span className="font-mono text-xs">{m.model}</span>
+                  <span className={clsx("text-xs", m.coolingUntil ? "text-warning" : "text-success")}>
+                    {m.coolingUntil ? interpolate(k.aiCooling, { time: formatDateTime(m.coolingUntil, locale) }) : k.aiReady}
+                  </span>
+                  {m.lastError && <span className="text-xs text-fg-muted">{m.lastError}</span>}
+                  {m.lastOkAt && <span className="text-xs text-fg-subtle">{interpolate(k.aiLastOk, { time: formatDateTime(m.lastOkAt, locale) })}</span>}
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
+      </section>
+
       <section className="card relative overflow-x-auto">
         <div className="px-5 pt-4">
           <h2 className="text-sm font-semibold">{k.mail}</h2>

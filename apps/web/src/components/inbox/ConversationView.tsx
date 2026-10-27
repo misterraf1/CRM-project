@@ -37,6 +37,7 @@ export function ConversationView({
   const [ai, setAi] = useState(initialAi);
   const [aiBusy, setAiBusy] = useState<"reply" | "summary" | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [aiModel, setAiModel] = useState<string | null>(null);
   const [draftFromAi, setDraftFromAi] = useState(false);
   // Why the AI buttons can't be used right now (they stay visible, with the reason)
   const aiBlocked = !ai.available ? t.errors.AI_UNAVAILABLE : ai.limit === 0 ? k.aiNoPlan : ai.used >= ai.limit ? k.aiLimit : null;
@@ -49,6 +50,7 @@ export function ConversationView({
     setAiBusy(null);
     if (!res.ok) return setError(errorMessage(t, res.code, res.details));
     setAi((x) => ({ ...x, ...res.data.usage }));
+    setAiModel(res.data.model);
     if (kind === "summary") setSummary(res.data.text);
     else {
       setMode("reply");
@@ -143,7 +145,10 @@ export function ConversationView({
         <section className="border-b border-border bg-accent-soft/40 px-4 py-3" aria-label={k.aiSummaryTitle}>
           <div className="flex items-center gap-2">
             <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden />
-            <h3 className="flex-1 text-xs font-semibold">{k.aiSummaryTitle}</h3>
+            <h3 className="flex-1 text-xs font-semibold">
+              {k.aiSummaryTitle}
+              {aiModel && <span className="ml-2 font-normal text-fg-subtle">{aiModel}</span>}
+            </h3>
             <button type="button" onClick={() => setSummary(null)} className="grid h-6 w-6 place-items-center rounded-md text-fg-muted hover:bg-muted" aria-label={k.close}>
               <X className="h-3.5 w-3.5" />
             </button>
@@ -264,6 +269,7 @@ export function ConversationView({
             <p className="mb-2 flex items-center gap-1.5 text-[11px] text-accent">
               <Sparkles className="h-3 w-3" aria-hidden />
               {k.aiDraftHint}
+              {aiModel && <span className="text-fg-subtle">· {aiModel}</span>}
             </p>
           )}
           <label className="sr-only" htmlFor="composer">

@@ -491,5 +491,16 @@ Səbəb: bu funksiyalar paketlərdə satılırdı (PRO: əsas analitika; BUSINES
 **Nəticə:** 1156 → **0** avtomatik pozuntu. Davamlılıq üçün `e2e/a11y.spec.ts` (açıq/qaranlıq tema, boş şirkət) UI testlərinə əlavə edildi.
 **Qalan (avtomatik yoxlanmayan):** ekran oxuyucu ilə əl ilə sınaq, 11px meta mətnlərin (WCAG minimum tələb qoymur) gələcəkdə 12px-ə qaldırılması, mobil ikon düymələrinin (32px) 44px-ə çatdırılması.
 
+### AI provayderləri: OpenRouter və pulsuz modellər üzrə avtomatik keçid ✅ (2026-10-25)
+| Hissə | Vəziyyət |
+|---|---|
+| `AI_PROVIDER=anthropic` (birbaşa) və ya `openrouter` — hər ikisi rəsmi Anthropic SDK ilə (OpenRouter-in Anthropic-uyğun Messages API-si) | ✅ |
+| Model zənciri (`AI_MODELS`, vergüllə): biri limitə dirənsə (429 → `retry-after` qədər), krediti bitsə (402 → 10 dəq), əlçatmaz olsa (403/404 → 1 saat), xəta versə (5xx/timeout → 30 san) — növbəti model cavab verir; açar yanlışdırsa (401) dərhal dayanır | ✅ |
+| OpenRouter default zənciri yalnız **pulsuz** modellərdir (gözlənilməz xərc yoxdur): Nemotron 3 Ultra, Gemma 4 31B, Gemma 4 26B, Nemotron 3.5 Lightning. Pullu Claude istənərsə `AI_MODELS`-ə əlavə olunur | ✅ |
+| Cavabda hansı modelin yazdığı göstərilir; Super Admin → Sistem-də hər modelin vəziyyəti (hazır / gözləmədə, son xəta, son uğur) | ✅ |
+| Testlər: saxta OpenRouter serveri ilə zəncir (429/404/500/402/401) + real yoxlama (pulsuz Nemotron Ultra Azərbaycan dilində qaralama və xülasə yazdı) | ✅ |
+
+Qeyd: pulsuz modellər OpenRouter-də gün/dəqiqə limitlidir və keyfiyyət Claude-dan aşağıdır (arabir rus sözü qarışa bilər); qaralamalar onsuz da göndərilməzdən əvvəl işçi tərəfindən yoxlanır.
+
 ### Növbəti
 Production-a çıxış: real ödəniş provayderi (Payriff / Epoint — seçim və müqavilə), SMTP provayderi, `ANTHROPIC_API_KEY`, domen (`axis.az`, `admin.axis.az`), monitorinq. Sonra: şirkət işçiləri üçün 2FA, mobil tətbiq.

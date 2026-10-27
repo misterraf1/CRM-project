@@ -55,9 +55,20 @@ const schema = z.object({
   MAIL_FROM: z.string().default("Axis <no-reply@axis.az>"),
   /** Public base URL of this API, for webhook addresses shown to customers */
   PUBLIC_API_URL: z.string().url().default("http://localhost:4000"),
-  /** AI assistant (Claude). Without a key the AI buttons say it isn't connected. */
+  /**
+   * AI assistant (Claude), directly from Anthropic or through OpenRouter. Without a
+   * key the AI buttons say it isn't connected.
+   */
+  AI_PROVIDER: z.enum(["anthropic", "openrouter"]).default("anthropic"),
   ANTHROPIC_API_KEY: z.string().min(10).optional(),
-  AI_MODEL: z.string().default("claude-opus-5-5"),
+  OPENROUTER_API_KEY: z.string().min(10).optional(),
+  /**
+   * Models tried in order; the next one answers when a model hits a limit or fails.
+   * Default: claude-opus-5-5 (Anthropic) / free models (OpenRouter, see ai.service.ts).
+   */
+  AI_MODELS: z.string().optional(),
+  /** Single-model shorthand for AI_MODELS */
+  AI_MODEL: z.string().optional(),
   /** Requests per minute per IP on auth endpoints */
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(10),
 });

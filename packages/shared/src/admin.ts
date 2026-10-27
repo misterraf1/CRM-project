@@ -228,6 +228,8 @@ export interface SystemHealthDto {
   webhooks: { received24h: number; failed24h: number; recentErrors: { id: string; provider: string; error: string; receivedAt: string }[] };
   channels: { connected: number; error: number; errors: { id: string; tenant: string; name: string; type: string }[] };
   billingProvider: string;
+  /** AI models in fallback order, with their current state */
+  ai: { provider: string; configured: boolean; models: { model: string; coolingUntil: string | null; lastError: string | null; lastOkAt: string | null }[] };
   mail: {
     /** SMTP_URL set; otherwise nothing is delivered */
     configured: boolean;

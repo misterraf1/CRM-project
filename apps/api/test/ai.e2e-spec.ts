@@ -13,7 +13,7 @@ describe("AI assistant (fake model client)", () => {
     async complete(system, user) {
       calls.push({ system, user });
       if (fail) throw new Error("network down");
-      return "Salam! Sifarişiniz sabah çatdırılacaq.";
+      return { text: "Salam! Sifarişiniz sabah çatdırılacaq.", model: "test-model" };
     },
   };
 
@@ -49,7 +49,7 @@ describe("AI assistant (fake model client)", () => {
     const id = await conversation(owner);
 
     const draft = (await http().post(`/v1/inbox/conversations/${id}/ai/reply`).set(owner.auth).expect(201)).body as AiTextDto;
-    expect(draft).toEqual({ text: "Salam! Sifarişiniz sabah çatdırılacaq.", usage: { used: 1, limit: 500 } });
+    expect(draft).toEqual({ text: "Salam! Sifarişiniz sabah çatdırılacaq.", model: "test-model", usage: { used: 1, limit: 500 } });
     expect(calls[0]!.user).toContain("<conversation>");
     expect(calls[0]!.user).toContain("Customer: Sifarişim nə vaxt gələcək?");
     expect(calls[0]!.user).not.toContain("anbarda gecikmə");

@@ -95,5 +95,7 @@ export type InboxEvent =
 /** AI assistant output for a conversation (never sent automatically) */
 export interface AiTextDto {
   text: string;
+  /** The model that answered (the next one takes over when a model is busy or out of quota) */
+  model: string;
   usage: { used: number; limit: number };
 }

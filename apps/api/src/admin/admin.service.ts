@@ -15,6 +15,7 @@ import type {
   SubscriptionStatus,
   SystemHealthDto,
 } from "@axis/shared";
+import { AiService } from "../ai/ai.service";
 import { AuditService } from "../audit/audit.service";
 import { addonsPrice, days, planPrice } from "../billing/pricing";
 import { toInvoiceDto } from "../billing/invoices";
@@ -51,6 +52,7 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly jobs: JobsMonitor,
+    private readonly ai: AiService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
@@ -414,6 +416,7 @@ export class AdminService {
         errors: errored.map((c) => ({ id: c.id, tenant: c.tenant.name, name: c.name, type: c.type })),
       },
       billingProvider: this.provider.name,
+      ai: { provider: config().AI_PROVIDER, configured: this.ai.available, models: this.ai.client?.status?.() ?? [] },
       mail: {
         configured: !!config().SMTP_URL,
         queued: mailQueued,
