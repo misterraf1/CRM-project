@@ -55,5 +55,7 @@ function adminGate(req: NextRequest) {
 }
 
 export const config = {
+  // Vercel services don't run Edge Functions
+  runtime: "nodejs",
   matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.[a-z0-9]+$).*)"],
 };
