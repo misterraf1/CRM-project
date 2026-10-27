@@ -57,10 +57,28 @@ const key = <M extends string>(m: M) => (m[0]!.toLowerCase() + m.slice(1)) as Ke
  * models (`User`, `Contact`, …) with string ids in `_id`.
  */
 export class Database {
-  readonly client: MongoClient;
+  private conn: MongoClient;
+  private closed = false;
 
-  constructor(url: string) {
-    this.client = new MongoClient(url);
+  constructor(private readonly url: string) {
+    this.conn = this.connect();
+  }
+
+  /**
+   * A failed initial connect closes the driver's topology for good, and this instance
+   * lives on globalThis — so without a fresh client one network blip would fail every
+   * request until the server (or serverless instance) is recycled.
+   */
+  private connect(): MongoClient {
+    const client = new MongoClient(this.url);
+    client.once("topologyClosed", () => {
+      if (!this.closed && this.conn === client) this.conn = this.connect();
+    });
+    return client;
+  }
+
+  get client(): MongoClient {
+    return this.conn;
   }
 
   private tx(scope: DbScope, session?: ClientSession): Tx {
@@ -135,6 +153,7 @@ export class Database {
   }
 
   close() {
-    return this.client.close();
+    this.closed = true;
+    return this.conn.close();
   }
 }
