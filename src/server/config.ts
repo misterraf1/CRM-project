@@ -6,22 +6,19 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
-  API_PORT: z.coerce.number().int().default(4000),
+  /** Public origin of the app: links in emails, checkout redirects, webhook addresses */
   WEB_ORIGIN: z.string().url().default("http://localhost:3000"),
   ACCESS_TOKEN_TTL_SEC: z.coerce.number().int().positive().default(900),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
   INVITE_TTL_DAYS: z.coerce.number().int().positive().default(7),
   TRIAL_DAYS: z.coerce.number().int().positive().default(14),
-  /**
-   * Which hops may set X-Forwarded-For (Express "trust proxy"). The web BFF calls the
-   * API from the same host/private network and forwards the browser's IP, so rate
-   * limits apply per real client. Never trust arbitrary internet hops.
-   */
-  TRUST_PROXY: z.string().default("loopback, linklocal, uniquelocal"),
   /** Where the local storage driver keeps uploads (S3 driver: Phase 7 deployment) */
-  FILE_STORAGE_DIR: z.string().default(resolve(__dirname, "../../../.data/files")),
+  FILE_STORAGE_DIR: z.string().default(resolve(process.cwd(), ".data/files")),
   MAX_UPLOAD_MB: z.coerce.number().positive().default(10),
-  /** Background jobs (overdue notices). Off in tests, which trigger jobs explicitly. */
+  /**
+   * In-process background jobs (overdue notices, billing, mail, automations) on a long-running
+   * server. Off in tests, which trigger jobs explicitly. Serverless hosts use /api/cron instead.
+   */
   JOBS_ENABLED: z
     .enum(["true", "false"])
     .default(process.env.NODE_ENV === "test" ? "false" : "true")
@@ -53,8 +50,10 @@ const schema = z.object({
    */
   SMTP_URL: z.string().url().optional(),
   MAIL_FROM: z.string().default("Axis <no-reply@axis.az>"),
-  /** Public base URL of this API, for webhook addresses shown to customers */
-  PUBLIC_API_URL: z.string().url().default("http://localhost:4000"),
+  /** Public base URL for webhook addresses shown to customers (default: WEB_ORIGIN, same app) */
+  PUBLIC_API_URL: z.string().url().optional(),
+  /** Bearer secret for /api/cron (Vercel Cron sends it as `Authorization: Bearer <CRON_SECRET>`) */
+  CRON_SECRET: z.string().min(16).optional(),
   /**
    * AI assistant (Claude), directly from Anthropic or through OpenRouter. Without a
    * key the AI buttons say it isn't connected.
@@ -77,10 +76,10 @@ export type Config = z.infer<typeof schema>;
 
 let cached: Config | undefined;
 
-/** Validated env, read once. Loads the monorepo root .env in development. */
+/** Validated env, read once. Next.js loads .env itself; scripts and tests outside Next get the root .env here. */
 export function config(): Config {
   if (cached) return cached;
-  const rootEnv = resolve(__dirname, "../../../.env");
+  const rootEnv = resolve(process.cwd(), ".env");
   if (process.env.NODE_ENV !== "production" && existsSync(rootEnv)) {
     const real = { ...process.env };
     process.loadEnvFile(rootEnv);

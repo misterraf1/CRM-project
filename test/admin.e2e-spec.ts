@@ -1,12 +1,11 @@
-import type { INestApplication } from "@nestjs/common";
-import type { AdminOverviewDto, AdminTenantDetail, AdminTenantListResponse, CheckoutResponse, SystemHealthDto, TicketDto } from "@axis/shared";
+import type { AdminOverviewDto, AdminTenantDetail, AdminTenantListResponse, CheckoutResponse, SystemHealthDto, TicketDto } from "@/shared";
 import request from "supertest";
-import { addMember, createApp, platformStaff, signup, withRawDb, type Company } from "./helpers";
+import { addMember, createApp, platformStaff, signup, withRawDb, type Company, type TestApp } from "./helpers";
 
 const DAY = 86_400_000;
 
 describe("Super Admin (platform)", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
   let admin: Awaited<ReturnType<typeof platformStaff>>;
   let support: Awaited<ReturnType<typeof platformStaff>>;
@@ -43,7 +42,7 @@ describe("Super Admin (platform)", () => {
 
     const temp = await platformStaff(app, "SUPPORT");
     await http().get("/v1/admin/overview").set(temp.auth).expect(200);
-    await withRawDb((db) => db.user.update({ where: { id: temp.userId }, data: { platformRole: "NONE" } }));
+    await withRawDb((db) => db.user.update({ id: temp.userId }, { $set: { platformRole: "NONE" } }));
     await http().get("/v1/admin/overview").set(temp.auth).expect(401);
 
     const again = await platformStaff(app, "SUPPORT");

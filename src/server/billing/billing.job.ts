@@ -1,15 +1,15 @@
-import { Inject, Injectable, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
-import type { Plan, Prisma, Subscription } from "@prisma/client";
-import type { BillingInterval, InvoiceLineDto } from "@axis/shared";
+import type { Invoice, Plan, Subscription } from "../db/models";
+import type { BillingInterval, InvoiceLineDto } from "@/shared";
 import { config } from "../config";
 import { JobsMonitor } from "../common/jobs-monitor";
 import { randomToken } from "../common/ids";
 import { NotificationsService } from "../notifications/notifications.service";
-import { PrismaService, type Tx } from "../prisma/prisma.service";
+import type { Database, Tx } from "../db/database";
 import { BillingService, ownerIds } from "./billing.service";
+import { subscriptionOf } from "./entitlements.service";
 import { nextInvoiceNumber, type InvoiceApply } from "./invoices";
 import { addInterval, addonsPrice, days, planPrice, storageGb } from "./pricing";
-import { PAYMENT_PROVIDER, type PaymentProvider } from "./provider";
+import type { PaymentProvider } from "./provider";
 
 const EVERY_MS = 10 * 60_000;
 const TRIAL_REMINDER_DAYS = 3;
@@ -27,19 +27,18 @@ type Sub = Subscription & { plan: Plan };
  *   ACTIVE + cancelAtPeriodEnd ─ period ends ─▶ CANCELED (read-only)
  * Scheduled downgrades switch the plan right before the renewal charge.
  */
-@Injectable()
-export class BillingJob implements OnApplicationBootstrap, OnModuleDestroy {
+export class BillingJob {
   private timer?: NodeJS.Timeout;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly monitor: JobsMonitor,
     private readonly billing: BillingService,
     private readonly notifications: NotificationsService,
-    @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
+    private readonly provider: PaymentProvider,
   ) {}
 
-  onApplicationBootstrap() {
+  start() {
     this.monitor.register("billing");
     if (!config().JOBS_ENABLED) return;
     const tick = () => this.monitor.track("billing", () => this.run());
@@ -47,34 +46,31 @@ export class BillingJob implements OnApplicationBootstrap, OnModuleDestroy {
     void tick();
   }
 
-  onModuleDestroy() {
+  stop() {
     clearInterval(this.timer);
   }
 
   /** Processes every subscription with something due. Returns how many were handled. */
   async run(now = new Date()): Promise<number> {
     const soon = new Date(now.getTime() + days(TRIAL_REMINDER_DAYS));
-    const due = await this.prisma.system(() =>
-      this.prisma.subscription.findMany({
-        where: {
-          OR: [
-            { status: "TRIALING", trialEndsAt: { lte: soon, not: null } },
-            { status: "ACTIVE", currentPeriodEnd: { lte: now } },
-            { status: "PAST_DUE", OR: [{ graceEndsAt: { lte: now, not: null } }, { nextRetryAt: { lte: now, not: null } }] },
-          ],
-        },
-        select: { tenantId: true },
-        take: 500,
-      }),
+    const due = await this.db.system.subscription.find(
+      {
+        $or: [
+          { status: "TRIALING", trialEndsAt: { $lte: soon, $ne: null } },
+          { status: "ACTIVE", currentPeriodEnd: { $lte: now } },
+          { status: "PAST_DUE", $or: [{ graceEndsAt: { $lte: now, $ne: null } }, { nextRetryAt: { $lte: now, $ne: null } }] },
+        ],
+      },
+      { projection: { tenantId: 1 }, limit: 500 },
     );
     for (const { tenantId } of due) await this.processTenant(tenantId, now);
     return due.length;
   }
 
   async processTenant(tenantId: string, now = new Date()) {
-    await this.prisma.scoped(
+    await this.db.scoped(
       async (tx) => {
-        const sub = await tx.subscription.findUniqueOrThrow({ where: { tenantId }, include: { plan: true } });
+        const sub = await subscriptionOf(tx, tenantId);
         if (sub.status === "TRIALING") await this.trial(tx, sub, now);
         else if (sub.status === "ACTIVE" && sub.currentPeriodEnd <= now) await this.periodEnd(tx, sub, now);
         else if (sub.status === "PAST_DUE") await this.dunning(tx, sub, now);
@@ -89,7 +85,7 @@ export class BillingJob implements OnApplicationBootstrap, OnModuleDestroy {
       await this.setStatus(tx, sub, "SUSPENDED");
       await this.notifications.notify(tx, sub.tenantId, await ownerIds(tx, sub.tenantId), "billing_suspended", { reason: "trial_ended" });
     } else if (!sub.trialReminderSentAt) {
-      await tx.subscription.update({ where: { id: sub.id }, data: { trialReminderSentAt: now } });
+      await tx.subscription.update({ id: sub.id }, { $set: { trialReminderSentAt: now } });
       await this.notifications.notify(tx, sub.tenantId, await ownerIds(tx, sub.tenantId), "billing_trial_ending", { trialEndsAt: sub.trialEndsAt.toISOString() });
     }
   }
@@ -101,8 +97,8 @@ export class BillingJob implements OnApplicationBootstrap, OnModuleDestroy {
     }
     let plan = sub.plan;
     if (sub.scheduledPlanId) {
-      plan = await tx.plan.findUniqueOrThrow({ where: { id: sub.scheduledPlanId } });
-      await tx.subscription.update({ where: { id: sub.id }, data: { planId: plan.id, scheduledPlanId: null } });
+      plan = await tx.plan.get({ id: sub.scheduledPlanId });
+      await tx.subscription.update({ id: sub.id }, { $set: { planId: plan.id, scheduledPlanId: null } });
     }
     const interval = sub.interval as BillingInterval;
     const periodStart = sub.currentPeriodEnd;
@@ -111,27 +107,25 @@ export class BillingJob implements OnApplicationBootstrap, OnModuleDestroy {
     const lines: InvoiceLineDto[] = [{ code: "plan", plan: plan.code, interval, quantity: 1, unitAmount: planPrice(plan, interval), amount: planPrice(plan, interval) }];
     const addons = addonsPrice(plan, sub.extraSeats, gb, interval);
     if (addons) lines.push({ code: "addons", interval, quantity: 1, unitAmount: addons, amount: addons });
-    const invoice = await tx.invoice.create({
-      data: {
-        tenantId: sub.tenantId,
-        number: await nextInvoiceNumber(tx, now),
-        kind: "renewal",
-        status: "OPEN",
-        amount: lines.reduce((a, l) => a + l.amount, 0),
-        currency: plan.currency,
-        periodStart,
-        periodEnd,
-        lines: lines as unknown as Prisma.InputJsonArray,
-        apply: { periodStart: periodStart.toISOString(), periodEnd: periodEnd.toISOString() } satisfies InvoiceApply as Prisma.InputJsonObject,
-      },
+    const invoice = await tx.invoice.insertOne({
+      tenantId: sub.tenantId,
+      number: await nextInvoiceNumber(tx, now),
+      kind: "renewal",
+      status: "OPEN",
+      amount: lines.reduce((a, l) => a + l.amount, 0),
+      currency: plan.currency,
+      periodStart,
+      periodEnd,
+      lines: lines as unknown as Invoice["lines"],
+      apply: { periodStart: periodStart.toISOString(), periodEnd: periodEnd.toISOString() } satisfies InvoiceApply as Invoice["apply"],
     });
     const charged = await this.charge(tx, { ...sub, plan }, invoice.id);
     if (!charged) {
-      await tx.subscription.update({
-        where: { id: sub.id },
-        data: { status: "PAST_DUE", graceEndsAt: new Date(now.getTime() + days(config().GRACE_DAYS)), retryCount: 0, nextRetryAt: new Date(now.getTime() + days(RETRY_DAYS[0]!)) },
-      });
-      await tx.tenant.update({ where: { id: sub.tenantId }, data: { status: "PAST_DUE" } });
+      await tx.subscription.update(
+        { id: sub.id },
+        { $set: { status: "PAST_DUE", graceEndsAt: new Date(now.getTime() + days(config().GRACE_DAYS)), retryCount: 0, nextRetryAt: new Date(now.getTime() + days(RETRY_DAYS[0]!)) } },
+      );
+      await tx.tenant.update({ id: sub.tenantId }, { $set: { status: "PAST_DUE" } });
       await this.notifications.notify(tx, sub.tenantId, await ownerIds(tx, sub.tenantId), "billing_payment_failed", { invoiceId: invoice.id, number: invoice.number, amount: invoice.amount });
     }
   }
@@ -143,36 +137,39 @@ export class BillingJob implements OnApplicationBootstrap, OnModuleDestroy {
       return;
     }
     if (!sub.nextRetryAt || sub.nextRetryAt > now) return;
-    const invoice = await tx.invoice.findFirst({ where: { tenantId: sub.tenantId, kind: "renewal", status: { in: ["OPEN", "FAILED"] } }, orderBy: { createdAt: "desc" } });
+    const invoice = await tx.invoice.findOne({ tenantId: sub.tenantId, kind: "renewal", status: { $in: ["OPEN", "FAILED"] } }, { sort: { createdAt: -1 } });
     if (!invoice) return;
     if (await this.charge(tx, sub, invoice.id)) return;
     const attempt = sub.retryCount + 1;
     const failedAt = sub.graceEndsAt ? new Date(sub.graceEndsAt.getTime() - days(config().GRACE_DAYS)) : now;
     const next = RETRY_DAYS[attempt];
-    await tx.subscription.update({
-      where: { id: sub.id },
-      data: { retryCount: attempt, nextRetryAt: next === undefined ? null : new Date(failedAt.getTime() + days(next)) },
-    });
+    await tx.subscription.update({ id: sub.id }, { $set: { retryCount: attempt, nextRetryAt: next === undefined ? null : new Date(failedAt.getTime() + days(next)) } });
   }
 
   /** Charges the saved payment method for an invoice; true when paid. */
   private async charge(tx: Tx, sub: Sub, invoiceId: string) {
-    const invoice = await tx.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
+    const invoice = await tx.invoice.get({ id: invoiceId });
     const result = await this.provider.chargeSaved(sub, invoice);
     if (result.ok) {
       await this.billing.markPaid(tx, sub, invoice, this.provider.name, result.providerRef);
       return true;
     }
-    await tx.payment.create({
-      data: { tenantId: sub.tenantId, invoiceId, provider: this.provider.name, providerRef: result.providerRef || `fail_${randomToken(6)}`, amount: invoice.amount, status: "failed", failureCode: result.failureCode ?? "declined" },
+    await tx.payment.insertOne({
+      tenantId: sub.tenantId,
+      invoiceId,
+      provider: this.provider.name,
+      providerRef: result.providerRef || `fail_${randomToken(6)}`,
+      amount: invoice.amount,
+      status: "failed",
+      failureCode: result.failureCode ?? "declined",
     });
-    await tx.invoice.update({ where: { id: invoiceId }, data: { status: "FAILED" } });
+    await tx.invoice.update({ id: invoiceId }, { $set: { status: "FAILED" } });
     return false;
   }
 
   private async setStatus(tx: Tx, sub: Sub, status: "SUSPENDED" | "CANCELED") {
-    await tx.subscription.update({ where: { id: sub.id }, data: { status, nextRetryAt: null } });
-    await tx.tenant.update({ where: { id: sub.tenantId }, data: { status } });
+    await tx.subscription.update({ id: sub.id }, { $set: { status, nextRetryAt: null } });
+    await tx.tenant.update({ id: sub.tenantId }, { $set: { status } });
   }
 
   /**
@@ -183,10 +180,10 @@ export class BillingJob implements OnApplicationBootstrap, OnModuleDestroy {
     if (this.provider.name !== "demo") return;
     const now = new Date();
     const past = new Date(now.getTime() - 1000);
-    await this.prisma.scoped(
+    await this.db.scoped(
       async (tx) => {
-        const sub = await tx.subscription.findUniqueOrThrow({ where: { tenantId } });
-        const data: Prisma.SubscriptionUpdateInput =
+        const sub = await tx.subscription.get({ tenantId });
+        const data: Partial<Subscription> =
           sub.status === "TRIALING"
             ? { trialEndsAt: past }
             : sub.status === "ACTIVE"
@@ -196,7 +193,7 @@ export class BillingJob implements OnApplicationBootstrap, OnModuleDestroy {
                   ? { nextRetryAt: past }
                   : { graceEndsAt: past }
                 : {};
-        await tx.subscription.update({ where: { id: sub.id }, data });
+        await tx.subscription.update({ id: sub.id }, { $set: data });
       },
       { tenantId },
     );

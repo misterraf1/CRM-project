@@ -1,8 +1,9 @@
 import "server-only";
-import type { ApiError, ErrorCode } from "@axis/shared";
+import type { ApiError, ErrorCode } from "@/shared";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { ACCESS_COOKIE, ADMIN_COOKIE, apiUrl, clientIpHeader } from "../auth/cookies";
+import { ACCESS_COOKIE, ADMIN_COOKIE } from "../auth/cookies";
+import { callApi } from "./internal";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -22,16 +23,18 @@ export const adminFetch = <T>(path: string, init: RequestInit = {}) => authedFet
 
 async function authedFetch<T>(cookie: string, expired: string, path: string, init: RequestInit): Promise<T> {
   const token = (await cookies()).get(cookie)?.value;
-  const res = await fetch(apiUrl(path), {
-    ...init,
-    cache: "no-store",
-    headers: {
-      ...clientIpHeader(await headers()),
-      ...(init.body ? { "content-type": "application/json" } : {}),
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
+  const res = await callApi(
+    path,
+    {
+      ...init,
+      headers: {
+        ...(init.body ? { "content-type": "application/json" } : {}),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...init.headers,
+      },
     },
-  });
+    await headers(),
+  );
   if (res.status === 401) redirect(expired);
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as ApiError | null;
@@ -42,19 +45,7 @@ async function authedFetch<T>(cookie: string, expired: string, path: string, ini
 
 /** Public endpoints (login, signup, invites): returns the error instead of redirecting. */
 export async function apiPublic<T>(path: string, init: RequestInit = {}) {
-  const url = apiUrl(path);
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      ...init,
-      cache: "no-store",
-      headers: { ...clientIpHeader(await headers()), ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },
-    });
-  } catch (e) {
-    // API unreachable (wrong API_URL, service down): show the form error instead of a bare 500
-    console.error(`API unreachable at ${new URL(url).origin}`, e);
-    return { ok: false as const, status: 503, code: "INTERNAL" as ErrorCode, details: undefined };
-  }
+  const res = await callApi(path, { ...init, headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers } }, await headers());
   const body = res.status === 204 ? undefined : await res.json().catch(() => null);
   if (!res.ok) {
     const err = (body as ApiError | null)?.error;

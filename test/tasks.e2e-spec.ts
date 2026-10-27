@@ -1,14 +1,13 @@
-import type { INestApplication } from "@nestjs/common";
-import type { TaskDetailDto, TaskDto } from "@axis/shared";
+import type { TaskDetailDto, TaskDto } from "@/shared";
 import request from "supertest";
-import { OverdueJob } from "../src/tasks/overdue.job";
-import { nextOccurrence } from "../src/tasks/tasks.service";
-import { addMember, createApp, setPlan, signup, withRawDb, type Company } from "./helpers";
+import { OverdueJob } from "@/server/tasks/overdue.job";
+import { nextOccurrence } from "@/server/tasks/tasks.service";
+import { addMember, createApp, setPlan, signup, withRawDb, type Company, type TestApp } from "./helpers";
 
 type Who = { auth: Record<string, string> };
 
 describe("Tasks, files, notifications, team", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {
@@ -227,9 +226,7 @@ describe("Tasks, files, notifications, team", () => {
       // START plan = 2 048 MB; fill it up to 8 bytes below the limit
       await setPlan(me.tenant.id, "START");
       await withRawDb((db) =>
-        db.fileObject.create({
-          data: { tenantId: me.tenant.id, uploaderId: "x", key: `quota/${me.tenant.id}`, name: "filler", mimeType: "x", sizeBytes: 2048 * 1024 * 1024 - 8 },
-        }),
+        db.fileObject.insertOne({ tenantId: me.tenant.id, uploaderId: "x", key: `quota/${me.tenant.id}`, name: "filler", mimeType: "x", sizeBytes: 2048 * 1024 * 1024 - 8 }),
       );
       const over = await http().post(`/v1/tasks/${t.id}/files`).set(owner.auth).attach("file", Buffer.from("hello world"), "a.txt");
       expect(over.status).toBe(402);

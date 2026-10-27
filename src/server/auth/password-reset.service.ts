@@ -1,10 +1,9 @@
-import { Injectable } from "@nestjs/common";
 import { config } from "../config";
 import { currentContext } from "../common/context";
 import { AppError } from "../common/errors";
 import { randomToken, sha256 } from "../common/ids";
 import { MailService } from "../mail/mail.service";
-import { PrismaService } from "../prisma/prisma.service";
+import type { Database } from "../db/database";
 import { hashPassword } from "./password";
 
 const VALID_MINUTES = 60;
@@ -14,25 +13,21 @@ const VALID_MINUTES = 60;
  * is the same whether the email exists or not, so the form can't be used to find
  * accounts. A reset signs the user out everywhere (company and platform sessions).
  */
-@Injectable()
 export class PasswordResetService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly mail: MailService,
   ) {}
 
   async request(email: string) {
-    const db = this.prisma;
-    const user = await this.prisma.system(() => db.user.findUnique({ where: { email } }));
+    const user = await this.db.system.user.findOne({ email });
     // Invited people who never set a password accept their invitation instead
     if (!user?.passwordHash) return;
     const token = randomToken(32);
-    await this.prisma.systemTx(async (tx) => {
+    await this.db.systemTx(async (tx) => {
       // Only the newest link works
-      await tx.passwordReset.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } });
-      await tx.passwordReset.create({
-        data: { userId: user.id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + VALID_MINUTES * 60_000), ip: currentContext().ip },
-      });
+      await tx.passwordReset.updateMany({ userId: user.id, usedAt: null }, { $set: { usedAt: new Date() } });
+      await tx.passwordReset.insertOne({ userId: user.id, tokenHash: sha256(token), expiresAt: new Date(Date.now() + VALID_MINUTES * 60_000), ip: currentContext().ip ?? null });
       await this.mail.queue(tx, {
         to: user.email,
         locale: user.locale,
@@ -44,16 +39,16 @@ export class PasswordResetService {
 
   async reset(token: string, password: string) {
     const passwordHash = await hashPassword(password);
-    await this.prisma.systemTx(async (tx) => {
-      const row = await tx.passwordReset.findUnique({ where: { tokenHash: sha256(token) } });
+    await this.db.systemTx(async (tx) => {
+      const row = await tx.passwordReset.findOne({ tokenHash: sha256(token) });
       if (!row || row.usedAt || row.expiresAt < new Date()) throw new AppError("TOKEN_INVALID", "The link is invalid or has expired");
-      const claimed = await tx.passwordReset.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: new Date() } });
+      const claimed = await tx.passwordReset.updateMany({ id: row.id, usedAt: null }, { $set: { usedAt: new Date() } });
       if (!claimed.count) throw new AppError("TOKEN_INVALID", "The link is invalid or has expired");
-      await tx.user.update({ where: { id: row.userId }, data: { passwordHash } });
+      await tx.user.update({ id: row.userId }, { $set: { passwordHash } });
       const now = new Date();
-      await tx.session.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: now } });
-      await tx.adminSession.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: now } });
-      await tx.auditLog.create({ data: { tenantId: null, actorId: row.userId, action: "auth.password_reset", entityType: "user", entityId: row.userId, ip: currentContext().ip } });
+      await tx.session.updateMany({ userId: row.userId, revokedAt: null }, { $set: { revokedAt: now } });
+      await tx.adminSession.updateMany({ userId: row.userId, revokedAt: null }, { $set: { revokedAt: now } });
+      await tx.auditLog.insertOne({ tenantId: null, actorId: row.userId, action: "auth.password_reset", entityType: "user", entityId: row.userId, ip: currentContext().ip ?? null });
     });
   }
 }

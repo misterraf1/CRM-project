@@ -1,6 +1,6 @@
 "use client";
 
-import type { DepartmentDto } from "@axis/shared";
+import type { DepartmentDto } from "@/shared";
 import { Lock, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

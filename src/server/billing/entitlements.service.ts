@@ -1,34 +1,37 @@
-import { Injectable } from "@nestjs/common";
-import { ALL_FEATURES } from "@axis/shared";
-import type { Plan, Subscription } from "@prisma/client";
+import { ALL_FEATURES } from "@/shared";
 import { AppError } from "../common/errors";
-import type { Tx } from "../prisma/prisma.service";
+import type { Tx } from "../db/database";
+import type { Plan, Subscription } from "../db/models";
 
 /** Statuses in which the workspace is read-only (writes answer SUBSCRIPTION_INACTIVE). */
 export const INACTIVE_STATUSES = new Set(["SUSPENDED", "CANCELED"]);
 
+export type SubscriptionWithPlan = Subscription & { plan: Plan };
+
+/** The tenant's subscription with its plan (404 if missing). */
+export async function subscriptionOf(tx: Tx, tenantId: string): Promise<SubscriptionWithPlan> {
+  const sub = await tx.subscription.get({ tenantId });
+  return { ...sub, plan: await tx.plan.get({ id: sub.planId }) };
+}
+
 /** Plan limits and features. The trial unlocks every feature so all of it can be tried. */
-@Injectable()
 export class EntitlementsService {
-  features(sub: Subscription & { plan: Plan }): string[] {
+  features(sub: SubscriptionWithPlan): string[] {
     return sub.status === "TRIALING" ? [...ALL_FEATURES] : sub.plan.features;
   }
 
   async seats(tx: Tx, tenantId: string) {
     const [subscription, used] = await Promise.all([
-      tx.subscription.findUniqueOrThrow({ where: { tenantId }, include: { plan: true } }),
+      subscriptionOf(tx, tenantId),
       // Pending invites hold a seat so the limit can't be bypassed by mass-inviting
-      tx.membership.count({ where: { tenantId, status: { in: ["ACTIVE", "INVITED"] } } }),
+      tx.membership.count({ tenantId, status: { $in: ["ACTIVE", "INVITED"] } }),
     ]);
     return { used, limit: subscription.plan.seatLimit + subscription.extraSeats };
   }
 
   async storage(tx: Tx, tenantId: string) {
-    const [subscription, files] = await Promise.all([
-      tx.subscription.findUniqueOrThrow({ where: { tenantId }, include: { plan: true } }),
-      tx.fileObject.aggregate({ where: { tenantId }, _sum: { sizeBytes: true } }),
-    ]);
-    return { used: Math.ceil((files._sum.sizeBytes ?? 0) / 1048576), limit: subscription.plan.storageMb + subscription.extraStorageMb };
+    const [subscription, usedBytes] = await Promise.all([subscriptionOf(tx, tenantId), storageUsed(tx, tenantId)]);
+    return { used: Math.ceil(usedBytes / 1048576), limit: subscription.plan.storageMb + subscription.extraStorageMb };
   }
 
   async assertSeatAvailable(tx: Tx, tenantId: string) {
@@ -37,4 +40,10 @@ export class EntitlementsService {
       throw new AppError("SEAT_LIMIT", `Seat limit reached (${used}/${limit})`, { used, limit });
     }
   }
+}
+
+/** Bytes of all stored files of a tenant. */
+export async function storageUsed(tx: Tx, tenantId: string): Promise<number> {
+  const [row] = await tx.fileObject.aggregate<{ total: number }>([{ $match: { tenantId } }, { $group: { _id: null, total: { $sum: "$sizeBytes" } } }]);
+  return row?.total ?? 0;
 }

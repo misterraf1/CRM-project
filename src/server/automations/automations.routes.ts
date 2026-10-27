@@ -1,38 +1,19 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from "@nestjs/common";
-import { automationRuleSchema, automationRuleUpdateSchema, type AutomationRuleInput } from "@axis/shared";
-import { RequireFeature, RequirePermission } from "../common/decorators";
-import { ZodPipe } from "../common/zod.pipe";
-import { AutomationsService } from "./automations.service";
+import { automationRuleSchema, automationRuleUpdateSchema } from "@/shared";
+import type { Services } from "../container";
+import type { Router } from "../http/router";
 
-@RequireFeature("automations")
-@RequirePermission("automations.manage")
-@Controller("v1/automations")
-export class AutomationsController {
-  constructor(private readonly automations: AutomationsService) {}
+export function automationsRoutes(router: Router, s: Services) {
+  router.group("/v1/automations", { feature: "automations", permission: "automations.manage" }, (r) => {
+    r.get("", () => s.automations.list());
 
-  @Get()
-  list() {
-    return this.automations.list();
-  }
+    r.post("", { body: automationRuleSchema }, ({ body }) => s.automations.create(body));
 
-  @Post()
-  create(@Body(new ZodPipe(automationRuleSchema)) body: AutomationRuleInput) {
-    return this.automations.create(body);
-  }
+    r.patch(":id", { body: automationRuleUpdateSchema }, ({ params, body }) => s.automations.update(params.id!, body));
 
-  @Patch(":id")
-  update(@Param("id") id: string, @Body(new ZodPipe(automationRuleUpdateSchema)) body: Partial<AutomationRuleInput>) {
-    return this.automations.update(id, body);
-  }
+    r.delete(":id", { status: 204 }, async ({ params }) => {
+      await s.automations.remove(params.id!);
+    });
 
-  @HttpCode(204)
-  @Delete(":id")
-  async remove(@Param("id") id: string) {
-    await this.automations.remove(id);
-  }
-
-  @Get(":id/runs")
-  runs(@Param("id") id: string) {
-    return this.automations.runs(id);
-  }
+    r.get(":id/runs", ({ params }) => s.automations.runs(params.id!));
+  });
 }

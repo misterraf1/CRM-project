@@ -1,6 +1,6 @@
 "use client";
 
-import type { ChatMessageDto, ChatRoomDetailDto, MemberDto, TaskDto } from "@axis/shared";
+import type { ChatMessageDto, ChatRoomDetailDto, MemberDto, TaskDto } from "@/shared";
 import clsx from "clsx";
 import { ArrowLeft, CheckSquare, Download, ListPlus, Paperclip, Pencil, Send, Trash2 } from "lucide-react";
 import Link from "next/link";

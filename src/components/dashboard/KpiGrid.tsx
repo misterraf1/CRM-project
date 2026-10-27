@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import type { DashboardCrmDto } from "@axis/shared";
+import type { DashboardCrmDto } from "@/shared";
 import { ArrowDownRight, ArrowUpRight, CheckSquare, Handshake, MessageSquareText, UserPlus, Wallet, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { formatDuration, formatMoney, formatNumber, percentChange } from "@/lib/format";

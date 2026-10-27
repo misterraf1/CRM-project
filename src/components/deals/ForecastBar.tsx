@@ -1,4 +1,4 @@
-import type { ForecastDto } from "@axis/shared";
+import type { ForecastDto } from "@/shared";
 import { formatMoney } from "@/lib/format";
 import type { Dictionary } from "@/lib/i18n/dictionaries/az";
 import { interpolate, type Locale } from "@/lib/i18n/locales";

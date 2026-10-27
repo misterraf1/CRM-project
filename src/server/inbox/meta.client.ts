@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Logger } from "../common/logger";
 import { config } from "../config";
 import { AppError } from "../common/errors";
 
@@ -8,7 +8,6 @@ import { AppError } from "../common/errors";
  * - Messenger / Instagram: POST /me/messages with the page/account token
  * Tests point META_GRAPH_URL at a local fake; production uses graph.facebook.com.
  */
-@Injectable()
 export class MetaClient {
   private readonly logger = new Logger("MetaClient");
 

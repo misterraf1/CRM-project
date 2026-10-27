@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { MemberRole, Permission } from "@axis/shared";
+import type { MemberRole, Permission } from "@/shared";
 
 /**
  * Per-request identity. Filled by AuthGuard from the verified token and the

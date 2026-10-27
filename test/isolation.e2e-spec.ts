@@ -1,14 +1,15 @@
-import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { Prisma } from "@prisma/client";
-import { PrismaService } from "../src/prisma/prisma.service";
-import { TENANT_MODELS, TenantGuardError } from "../src/prisma/tenant-guard";
-import { addMember, createApp, signup } from "./helpers";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { Database } from "@/server/db/database";
+import { TENANT_MODELS, type ModelName } from "@/server/db/models";
+import { TenantGuardError } from "@/server/db/repo";
+import { addMember, createApp, signup, type TestApp } from "./helpers";
 
 // The core SaaS guarantee: one company can never see or touch another's data.
 
 describe("Tenant isolation", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {
@@ -76,22 +77,24 @@ describe("Tenant isolation", () => {
   describe("tenant guard (below the API)", () => {
     // The same guard every API query passes through, exercised directly with
     // deliberately unfiltered queries — what a bug in a service would look like.
-    const guarded = () => app.get(PrismaService);
+    const db = () => app.get(Database);
+    const unscoped = () => db().current;
 
     it("every model with tenantId is guarded (except Session)", () => {
-      const withTenant = Prisma.dmmf.datamodel.models.filter((m) => m.fields.some((f) => f.name === "tenantId")).map((m) => m.name);
+      const source = readFileSync(join(__dirname, "../src/server/db/models.ts"), "utf8");
+      const withTenant = [...source.matchAll(/export interface (\w+) \{([^}]*)\}/g)].filter((m) => /\btenantId:/.test(m[2]!)).map((m) => m[1]!);
       expect(withTenant.length).toBeGreaterThan(20);
-      expect(withTenant.filter((m) => m !== "Session" && !TENANT_MODELS.has(m))).toEqual([]);
+      expect(withTenant.filter((m) => m !== "Session" && !TENANT_MODELS.has(m as ModelName))).toEqual([]);
     });
 
     it("without tenant context nothing is visible and nothing can be written", async () => {
       await signup(app, "Görünməz");
-      const db = guarded();
-      expect(await db.tenant.count()).toBe(0);
-      expect(await db.membership.count()).toBe(0);
-      expect(await db.subscription.count()).toBe(0);
-      expect(await db.auditLog.count()).toBe(0);
-      await expect(db.department.create({ data: { tenantId: "anything", name: "x" } })).rejects.toThrow(TenantGuardError);
+      const tx = unscoped();
+      expect(await tx.tenant.count()).toBe(0);
+      expect(await tx.membership.count()).toBe(0);
+      expect(await tx.subscription.count()).toBe(0);
+      expect(await tx.auditLog.count()).toBe(0);
+      await expect(tx.department.insertOne({ tenantId: "anything", name: "x" })).rejects.toThrow(TenantGuardError);
     });
 
     it("with tenant A's context, B's data is invisible and can't be changed or created", async () => {
@@ -102,42 +105,47 @@ describe("Tenant isolation", () => {
       const B = meB.body.tenant.id as string;
       const bMembership = meB.body.membership.id as string;
 
-      await guarded().scoped(
-        async (tx) => {
-          // Queries that "forgot" their tenant filter still only see A
-          expect((await tx.tenant.findMany({ select: { id: true } })).map((t) => t.id)).toEqual([A]);
-          expect(await tx.membership.count({ where: { tenantId: B } })).toBe(0);
-          expect(await tx.membership.findUnique({ where: { id: bMembership } })).toBeNull();
-          // Writes against B affect nothing
-          expect((await tx.tenant.updateMany({ where: { id: B }, data: { name: "pwned" } })).count).toBe(0);
-          expect((await tx.membership.updateMany({ where: { id: bMembership }, data: { role: "EMPLOYEE" } })).count).toBe(0);
-          await expect(tx.membership.update({ where: { id: bMembership }, data: { role: "EMPLOYEE" } })).rejects.toThrow();
-          // Creating rows for B, or moving a row to B, is rejected
-          await expect(tx.department.create({ data: { tenantId: B, name: "evil" } })).rejects.toThrow(TenantGuardError);
-          await expect(tx.contact.createMany({ data: [{ tenantId: A, name: "ok" }, { tenantId: B, name: "evil" }] })).rejects.toThrow(TenantGuardError);
-          const own = await tx.contact.create({ data: { tenantId: A, name: "Mine" } });
-          await expect(tx.contact.update({ where: { id: own.id }, data: { tenantId: B } })).rejects.toThrow(TenantGuardError);
-          throw new Error("rollback");
-        },
-        { tenantId: A },
-      ).catch((e) => {
-        if (e.message !== "rollback") throw e;
-      });
+      await db()
+        .scoped(
+          async (tx) => {
+            // Queries that "forgot" their tenant filter still only see A
+            expect((await tx.tenant.find({}, { projection: { id: 1 } })).map((t) => t.id)).toEqual([A]);
+            expect(await tx.membership.count({ tenantId: B })).toBe(0);
+            expect(await tx.membership.findOne({ id: bMembership })).toBeNull();
+            // Writes against B affect nothing
+            expect((await tx.tenant.updateMany({ id: B }, { $set: { name: "pwned" } })).count).toBe(0);
+            expect((await tx.membership.updateMany({ id: bMembership }, { $set: { role: "EMPLOYEE" } })).count).toBe(0);
+            await expect(tx.membership.update({ id: bMembership }, { $set: { role: "EMPLOYEE" } })).rejects.toThrow();
+            // Creating rows for B, or moving a row to B, is rejected
+            await expect(tx.department.insertOne({ tenantId: B, name: "evil" })).rejects.toThrow(TenantGuardError);
+            await expect(tx.contact.insertMany([{ tenantId: A, name: "ok" }, { tenantId: B, name: "evil" }])).rejects.toThrow(TenantGuardError);
+            const own = await tx.contact.insertOne({ tenantId: A, name: "Mine" });
+            await expect(tx.contact.update({ id: own.id }, { $set: { tenantId: B } })).rejects.toThrow(TenantGuardError);
+            // Aggregations are narrowed too, and lookups into other collections are refused
+            expect(await tx.membership.aggregate([{ $match: { tenantId: B } }])).toEqual([]);
+            await expect(tx.contact.aggregate([{ $lookup: { from: "Membership", localField: "ownerId", foreignField: "_id", as: "m" } }])).rejects.toThrow(TenantGuardError);
+            throw new Error("rollback");
+          },
+          { tenantId: A },
+        )
+        .catch((e: Error) => {
+          if (e.message !== "rollback") throw e;
+        });
 
       // Platform tables: finance is off-limits, plans are read-only
-      await expect(guarded().platformExpense.findMany()).rejects.toThrow(TenantGuardError);
-      await expect(guarded().plan.updateMany({ data: { priceMonthly: 0 } })).rejects.toThrow(TenantGuardError);
-      expect(await guarded().plan.count()).toBe(3);
+      await expect(unscoped().platformExpense.find()).rejects.toThrow(TenantGuardError);
+      await expect(unscoped().plan.updateMany({}, { $set: { priceMonthly: 0 } })).rejects.toThrow(TenantGuardError);
+      expect(await unscoped().plan.count()).toBe(3);
 
       const stillB = await http().get("/v1/me").set(b.auth).expect(200);
       expect(stillB.body.tenant.name).toBe("Guard B");
       expect(stillB.body.membership.role).toBe("OWNER");
     });
 
-    it("system() is the only way across tenants", async () => {
+    it("db.system is the only way across tenants", async () => {
       await signup(app, "Sistem");
-      expect(await guarded().tenant.count()).toBe(0);
-      expect(await guarded().system(() => guarded().tenant.count())).toBeGreaterThan(0);
+      expect(await unscoped().tenant.count()).toBe(0);
+      expect(await db().system.tenant.count()).toBeGreaterThan(0);
     });
   });
 });

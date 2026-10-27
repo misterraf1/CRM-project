@@ -1,5 +1,4 @@
-import { Injectable } from "@nestjs/common";
-import type { Invoice, Subscription } from "@prisma/client";
+import type { Invoice, Subscription } from "../db/models";
 import { config } from "../config";
 import { randomToken } from "../common/ids";
 
@@ -25,7 +24,6 @@ export interface PaymentProvider {
  * "DEMO", where the user chooses success or a declined card; renewals succeed unless
  * the "next charge fails" switch is on (to try the dunning flow).
  */
-@Injectable()
 export class DemoPaymentProvider implements PaymentProvider {
   readonly name = "demo" as const;
 
@@ -39,5 +37,3 @@ export class DemoPaymentProvider implements PaymentProvider {
     return { ok: true, providerRef: `demo_${randomToken(8)}` };
   }
 }
-
-export const PAYMENT_PROVIDER = Symbol("PAYMENT_PROVIDER");

@@ -1,6 +1,6 @@
 "use client";
 
-import { assignableRoles, MEMBER_ROLES, type DepartmentDto, type InviteCreatedResponse, type MeResponse, type MemberDto, type MemberRole, type MemberStatus } from "@axis/shared";
+import { assignableRoles, MEMBER_ROLES, type DepartmentDto, type InviteCreatedResponse, type MeResponse, type MemberDto, type MemberRole, type MemberStatus } from "@/shared";
 import clsx from "clsx";
 import { Check, Copy, Search, UserPlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";

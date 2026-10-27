@@ -1,117 +1,50 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
-import {
-  fileListQuerySchema,
-  type FileListQuery,
-  commentSchema,
-  projectSchema,
-  taskCreateSchema,
-  taskListQuerySchema,
-  taskUpdateSchema,
-  type ProjectInput,
-  type TaskCreateInput,
-  type TaskListQuery,
-  type TaskUpdateInput,
-} from "@axis/shared";
-import type { Response } from "express";
-import type { z } from "zod";
-import { config } from "../config";
-import { ZodPipe } from "../common/zod.pipe";
-import { FilesService, type UploadedFile as Upload } from "./files.service";
-import { ProjectsService } from "./projects.service";
-import { TasksService } from "./tasks.service";
+import { commentSchema, fileListQuerySchema, projectSchema, taskCreateSchema, taskListQuerySchema, taskUpdateSchema } from "@/shared";
+import { Readable } from "node:stream";
+import type { Services } from "../container";
+import type { Router } from "../http/router";
 
-@Controller("v1")
-export class TasksController {
-  constructor(
-    private readonly tasks: TasksService,
-    private readonly files: FilesService,
-    private readonly projects: ProjectsService,
-  ) {}
+export function tasksRoutes(router: Router, s: Services) {
+  router.group("/v1", {}, (r) => {
+    r.get("tasks", { query: taskListQuerySchema }, ({ query }) => s.tasks.list(query));
 
-  @Get("tasks")
-  list(@Query(new ZodPipe(taskListQuerySchema)) query: TaskListQuery) {
-    return this.tasks.list(query);
-  }
+    r.post("tasks", { body: taskCreateSchema }, ({ body }) => s.tasks.create(body));
 
-  @Post("tasks")
-  create(@Body(new ZodPipe(taskCreateSchema)) body: TaskCreateInput) {
-    return this.tasks.create(body);
-  }
+    r.get("tasks/:id", ({ params }) => s.tasks.get(params.id!));
 
-  @Get("tasks/:id")
-  get(@Param("id") id: string) {
-    return this.tasks.get(id);
-  }
+    r.patch("tasks/:id", { body: taskUpdateSchema }, ({ params, body }) => s.tasks.update(params.id!, body));
 
-  @Patch("tasks/:id")
-  update(@Param("id") id: string, @Body(new ZodPipe(taskUpdateSchema)) body: TaskUpdateInput) {
-    return this.tasks.update(id, body);
-  }
+    r.delete("tasks/:id", { status: 204 }, ({ params }) => s.tasks.remove(params.id!));
 
-  @HttpCode(204)
-  @Delete("tasks/:id")
-  remove(@Param("id") id: string) {
-    return this.tasks.remove(id);
-  }
+    r.post("tasks/:id/comments", { body: commentSchema }, ({ params, body }) => s.tasks.addComment(params.id!, body.body));
 
-  @Post("tasks/:id/comments")
-  comment(@Param("id") id: string, @Body(new ZodPipe(commentSchema)) body: z.infer<typeof commentSchema>) {
-    return this.tasks.addComment(id, body.body);
-  }
+    r.post("tasks/:id/files", { upload: true }, ({ params, file }) => s.files.uploadToTask(params.id!, file));
 
-  @Post("tasks/:id/files")
-  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: config().MAX_UPLOAD_MB * 1024 * 1024, files: 1 } }))
-  upload(@Param("id") id: string, @UploadedFile() file: Upload | undefined) {
-    return this.files.uploadToTask(id, file);
-  }
+    /** The Files section: everything the caller may open, plus storage usage */
+    r.get("files", { query: fileListQuerySchema }, ({ query }) => s.files.list(query));
 
-  /** The Files section: everything the caller may open, plus storage usage */
-  @Get("files")
-  fileList(@Query(new ZodPipe(fileListQuerySchema)) q: FileListQuery) {
-    return this.files.list(q);
-  }
+    /** Company library: shared documents not tied to a task or chat */
+    r.post("files", { upload: true }, ({ file }) => s.files.uploadToLibrary(file));
 
-  /** Company library: shared documents not tied to a task or chat */
-  @Post("files")
-  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: config().MAX_UPLOAD_MB * 1024 * 1024, files: 1 } }))
-  uploadLibrary(@UploadedFile() file: Upload | undefined) {
-    return this.files.uploadToLibrary(file);
-  }
-
-  @Get("files/:id")
-  async download(@Param("id") id: string, @Res() res: Response) {
-    const { file, stream } = await this.files.open(id);
-    res.set({
-      // Always a download, never rendered in our origin (uploaded HTML/SVG can't run)
-      "content-type": "application/octet-stream",
-      "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
-      "content-length": String(file.sizeBytes),
-      "x-content-type-options": "nosniff",
-      "content-security-policy": "sandbox",
+    r.get("files/:id", async ({ params }) => {
+      const { file, stream } = await s.files.open(params.id!);
+      return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
+        headers: {
+          // Always a download, never rendered in our origin (uploaded HTML/SVG can't run)
+          "content-type": "application/octet-stream",
+          "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+          "content-length": String(file.sizeBytes),
+          "x-content-type-options": "nosniff",
+          "content-security-policy": "sandbox",
+        },
+      });
     });
-    stream.on("error", () => res.destroy());
-    stream.pipe(res);
-  }
 
-  @HttpCode(204)
-  @Delete("files/:id")
-  removeFile(@Param("id") id: string) {
-    return this.files.remove(id);
-  }
+    r.delete("files/:id", { status: 204 }, ({ params }) => s.files.remove(params.id!));
 
-  @Get("projects")
-  projectList() {
-    return this.projects.list();
-  }
+    r.get("projects", () => s.projects.list());
 
-  @Post("projects")
-  projectCreate(@Body(new ZodPipe(projectSchema)) body: ProjectInput) {
-    return this.projects.create(body);
-  }
+    r.post("projects", { body: projectSchema }, ({ body }) => s.projects.create(body));
 
-  @Patch("projects/:id")
-  projectUpdate(@Param("id") id: string, @Body(new ZodPipe(projectSchema.partial())) body: Partial<ProjectInput>) {
-    return this.projects.update(id, body);
-  }
+    r.patch("projects/:id", { body: projectSchema.partial() }, ({ params, body }) => s.projects.update(params.id!, body));
+  });
 }

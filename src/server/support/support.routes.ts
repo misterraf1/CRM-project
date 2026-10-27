@@ -1,32 +1,16 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
-import { ticketCreateSchema, ticketMessageSchema, type TicketCreateInput } from "@axis/shared";
-import { AllowInactive } from "../common/decorators";
-import { ZodPipe } from "../common/zod.pipe";
-import { SupportService } from "./support.service";
+import { ticketCreateSchema, ticketMessageSchema } from "@/shared";
+import type { Services } from "../container";
+import type { Router } from "../http/router";
 
 // Open to every member, and usable while suspended — that's when companies need help most.
-@AllowInactive()
-@Controller("v1/support/tickets")
-export class SupportController {
-  constructor(private readonly support: SupportService) {}
+export function supportRoutes(router: Router, s: Services) {
+  router.group("/v1/support/tickets", { allowInactive: true }, (r) => {
+    r.get("", () => s.support.list());
 
-  @Get()
-  list() {
-    return this.support.list();
-  }
+    r.post("", { body: ticketCreateSchema }, ({ body }) => s.support.create(body));
 
-  @Post()
-  create(@Body(new ZodPipe(ticketCreateSchema)) body: TicketCreateInput) {
-    return this.support.create(body);
-  }
+    r.get(":id", ({ params }) => s.support.get(params.id!));
 
-  @Get(":id")
-  get(@Param("id") id: string) {
-    return this.support.get(id);
-  }
-
-  @Post(":id/messages")
-  reply(@Param("id") id: string, @Body(new ZodPipe(ticketMessageSchema)) body: { body: string }) {
-    return this.support.reply(id, body.body);
-  }
+    r.post(":id/messages", { body: ticketMessageSchema }, ({ params, body }) => s.support.reply(params.id!, body.body));
+  });
 }

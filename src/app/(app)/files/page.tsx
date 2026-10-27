@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { Search } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FILE_SOURCES, type FileSource } from "@axis/shared";
+import { FILE_SOURCES, type FileSource } from "@/shared";
 import { FileBrowser } from "@/components/files/FileBrowser";
 import { getFiles } from "@/lib/api";
 import { getI18n } from "@/lib/i18n/server";

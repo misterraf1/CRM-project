@@ -1,7 +1,7 @@
-import type { AdminTokens, AuthTokens } from "@axis/shared";
+import type { AdminTokens, AuthTokens } from "@/shared";
 
 // Tokens live in httpOnly cookies on the web origin (BFF pattern): browser JS never
-// sees them; server components and route handlers attach them to API calls.
+// sees them; server components and route handlers attach them to API calls (src/lib/api/internal.ts).
 
 export const ACCESS_COOKIE = "axis_at";
 export const REFRESH_COOKIE = "axis_rt";
@@ -9,14 +9,6 @@ export const REFRESH_COOKIE = "axis_rt";
 export const ADMIN_COOKIE = "axis_adm";
 /** Between the password and the 2FA code step (5 minutes, platform sign-in only). */
 export const ADMIN_MFA_COOKIE = "axis_adm_mfa";
-
-/**
- * Absolute URL of an API path. On Vercel, API_URL is injected by the web → api service
- * binding at request time (not at build time), so it's read per call, never cached.
- */
-export function apiUrl(path: string) {
-  return (process.env.API_URL ?? "http://localhost:4000").replace(/\/+$/, "") + path;
-}
 
 const base = { httpOnly: true, sameSite: "lax" as const, path: "/", secure: process.env.NODE_ENV === "production" };
 
@@ -50,13 +42,4 @@ export function safeNext(value: unknown, fallback = "/dashboard") {
   return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\")
     ? value
     : fallback;
-}
-
-/**
- * Client IP to forward to the API, so its per-IP rate limits see real users instead
- * of this server. Next.js sets x-forwarded-for from the socket when there is no proxy.
- */
-export function clientIpHeader(headers: Headers): Record<string, string> {
-  const ip = headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip");
-  return ip ? { "x-forwarded-for": ip } : {};
 }

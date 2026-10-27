@@ -33,7 +33,7 @@ import type {
   AutomationRuleDto,
   AutomationRunDto,
   FileListResponse,
-} from "@axis/shared";
+} from "@/shared";
 import { cache } from "react";
 import { apiFetch } from "./server";
 import { PERIODS, type Period, type ShellSummary } from "./types";

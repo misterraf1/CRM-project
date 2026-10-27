@@ -1,4 +1,4 @@
-import type { LifecycleStage } from "@axis/shared";
+import type { LifecycleStage } from "@/shared";
 import clsx from "clsx";
 
 const STYLE: Record<LifecycleStage, string> = {

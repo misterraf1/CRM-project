@@ -1,4 +1,4 @@
-import type { SubscriptionStatus } from "@axis/shared";
+import type { SubscriptionStatus } from "@/shared";
 import clsx from "clsx";
 import { SUBSCRIPTION_STATUS_STYLE } from "@/lib/billing";
 

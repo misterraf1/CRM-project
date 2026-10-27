@@ -1,6 +1,6 @@
 "use client";
 
-import type { CannedResponseDto, ChannelDto, ChannelType } from "@axis/shared";
+import type { CannedResponseDto, ChannelDto, ChannelType } from "@/shared";
 import { Check, Copy, ExternalLink, Lock, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";

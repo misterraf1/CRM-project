@@ -1,37 +1,17 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from "@nestjs/common";
-import { departmentSchema, type DepartmentInput } from "@axis/shared";
-import { RequireFeature, RequirePermission } from "../common/decorators";
-import { ZodPipe } from "../common/zod.pipe";
-import { DepartmentsService } from "./departments.service";
+import { departmentSchema } from "@/shared";
+import type { Services } from "../container";
+import type { Router } from "../http/router";
 
-@Controller("v1/departments")
-export class DepartmentsController {
-  constructor(private readonly departments: DepartmentsService) {}
+export function departmentsRoutes(router: Router, s: Services) {
+  router.group("/v1/departments", {}, (r) => {
+    r.get("", { permission: "members.view" }, () => s.departments.list());
 
-  @RequirePermission("members.view")
-  @Get()
-  list() {
-    return this.departments.list();
-  }
+    r.post("", { feature: "departments", permission: "departments.manage", body: departmentSchema }, ({ body }) => s.departments.create(body));
 
-  @RequireFeature("departments")
-  @RequirePermission("departments.manage")
-  @Post()
-  create(@Body(new ZodPipe(departmentSchema)) body: DepartmentInput) {
-    return this.departments.create(body);
-  }
+    r.patch(":id", { feature: "departments", permission: "departments.manage", body: departmentSchema }, ({ params, body }) =>
+      s.departments.update(params.id!, body),
+    );
 
-  @RequireFeature("departments")
-  @RequirePermission("departments.manage")
-  @Patch(":id")
-  update(@Param("id") id: string, @Body(new ZodPipe(departmentSchema)) body: DepartmentInput) {
-    return this.departments.update(id, body);
-  }
-
-  @RequirePermission("departments.manage")
-  @HttpCode(204)
-  @Delete(":id")
-  remove(@Param("id") id: string) {
-    return this.departments.remove(id);
-  }
+    r.delete(":id", { permission: "departments.manage", status: 204 }, ({ params }) => s.departments.remove(params.id!));
+  });
 }

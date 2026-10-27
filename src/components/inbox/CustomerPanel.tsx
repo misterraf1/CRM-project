@@ -1,6 +1,6 @@
 "use client";
 
-import type { ConversationDetailDto, DepartmentDto, MemberDto } from "@axis/shared";
+import type { ConversationDetailDto, DepartmentDto, MemberDto } from "@/shared";
 import { UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

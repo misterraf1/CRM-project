@@ -13,7 +13,7 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-import type { Permission } from "@axis/shared";
+import type { Permission } from "@/shared";
 import type { Dictionary } from "./i18n/dictionaries/az";
 
 export type ModuleKey = Exclude<keyof Dictionary["nav"], "groupWork" | "groupManage">;

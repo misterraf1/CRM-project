@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { ChainAiClient } from "../src/ai/ai.service";
+import { ChainAiClient } from "@/server/ai/ai.service";
 
 /** Stand-in for OpenRouter's Messages API: each model answers the way the test says. */
 describe("AI model fallback chain", () => {

@@ -1,6 +1,6 @@
 import { Lock } from "lucide-react";
 import Link from "next/link";
-import type { MeResponse } from "@axis/shared";
+import type { MeResponse } from "@/shared";
 import { getSession } from "@/lib/api";
 import { FEATURE_PLAN, hasFeature } from "@/lib/billing";
 import type { Dictionary } from "@/lib/i18n/dictionaries/az";

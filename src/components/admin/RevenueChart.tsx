@@ -1,4 +1,4 @@
-import type { MoneyMonth } from "@axis/shared";
+import type { MoneyMonth } from "@/shared";
 import type { Dictionary } from "@/lib/i18n/dictionaries/az";
 import { formatMoney, formatMonth } from "@/lib/format";
 import type { Locale } from "@/lib/i18n/locales";

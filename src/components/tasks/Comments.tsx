@@ -1,6 +1,6 @@
 "use client";
 
-import type { CommentDto } from "@axis/shared";
+import type { CommentDto } from "@/shared";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { Avatar } from "@/components/ui/Avatar";

@@ -1,4 +1,4 @@
-import type { ChatRoomDto } from "@axis/shared";
+import type { ChatRoomDto } from "@/shared";
 import clsx from "clsx";
 import { Hash, Search, User, Users, X } from "lucide-react";
 import type { Metadata } from "next";

@@ -1,6 +1,6 @@
 # Axis — B2B SaaS CRM & Biznes İdarəetmə Platforması
 
-> "Axis" işçi adıdır. Brend adı bir yerdə dəyişir: `apps/web/src/lib/config.ts → APP_NAME`.
+> "Axis" işçi adıdır. Brend adı bir yerdə dəyişir: `src/lib/config.ts → APP_NAME`.
 
 Sənəd bu suallara cavab verir: **nə qururuq, necə qururuq, hansı ardıcıllıqla qururuq.**
 Hər mərhələ bitəndə sonuncu bölmədəki "Status" cədvəli yenilənir.
@@ -65,8 +65,8 @@ Hər mərhələ bitəndə sonuncu bölmədəki "Status" cədvəli yenilənir.
 | Frontend | **Next.js 15 (App Router) + React 19 + TypeScript** | SSR/RSC ilə sürətli ilk yüklənmə, bir kod bazasında landing + app; ən geniş ekosistem |
 | UI | **Tailwind CSS** + öz kiçik komponent dəsti, `lucide-react` ikonlar | Dizayn tokenləri (CSS dəyişənləri) ilə light/dark; ağır UI kitabxanası yoxdur |
 | Server state | TanStack Query (Mərhələ 1-dən) | Cache, optimistic update, refetch |
-| Backend | **NestJS** (modul əsaslı) | Domen modulları (crm, inbox, tasks, billing…) aydın sərhədlərlə; DI, guard, interceptor — RBAC və tenant konteksti üçün ideal |
-| ORM | **Prisma 5** (MongoDB konnektoru) | Tip təhlükəsiz sorğular. Sxem: `packages/db/prisma/schema.prisma`; indekslər `packages/db/scripts/indexes.mjs` |
+| Backend | **Next.js route handler-ləri** (`src/server`, eyni prosesdə) | Ayrıca API servisi yoxdur: servislər + route cədvəli (`*.routes.ts`), guard-lar route seçimləri ilə (`permission`, `feature`, `admin`) |
+| DB qatı | **Rəsmi `mongodb` driver** (ORM yoxdur) | Model tipləri `src/server/db/models.ts`, tenant qoruyucusu `src/server/db/repo.ts`; indekslər `scripts/db/indexes.mjs` |
 | DB | **MongoDB 7** (replica set) | Sahibin qərarı ilə (2026-10-23) PostgreSQL-dən köçürüldü. Tranzaksiyalar üçün replica set məcburidir. Tenant izolyasiyası bazada deyil, API-dəki tenant qoruyucusundadır (§4) |
 | Cache/Queue | **Redis + BullMQ** | Webhook emalı, bildirişlər, təkrarlanan tapşırıqlar, billing cron, rate limit sayğacları |
 | Real-time | **Socket.IO** (NestJS gateway) + Redis adapter | Inbox və komanda çatı; çox instance-da işləyir. Otaq: `tenant:<id>`, `member:<id>`, `room:<id>` |
@@ -113,7 +113,7 @@ Hər modul: `controller` (REST, DTO validasiya zod/class-validator) → `service
 İzolyasiya 3 qatda:
 1. **Routing:** `<slug>.axis.az` → API sorğusunda `tenantId` yalnız **token-dən** götürülür (URL/body-dən heç vaxt). İstifadəçinin bu tenant-da aktiv `Membership`-i yoxlanılır.
 2. **Tətbiq qatı:** `TenantContext` (AsyncLocalStorage) + Prisma extension hər sorğuya avtomatik `where: { tenantId }` əlavə edir; yaradılan obyektlərə `tenantId` yazır.
-3. **Tenant qoruyucusu (MongoDB-də RLS yoxdur):** bütün Prisma sorğuları `apps/api/src/prisma/tenant-guard.ts`-dən keçir. `tenantId` sahəsi olan hər modeldə oxuma cari şirkətə daraldılır, update/delete yalnız cari şirkətdə işləyir, başqa şirkətə create və `tenantId`-nin dəyişdirilməsi rədd edilir, kontekst olmadıqda heç nə qaytarılmır. Modellər siyahısı sxemdən avtomatik çıxarılır (yeni model unudula bilməz — testlə yoxlanır). Şirkətlərarası platforma əməliyyatları (webhook, fon prosesləri, slug yoxlaması) yalnız açıq `PrismaService.system()` ilə.
+3. **Tenant qoruyucusu (MongoDB-də RLS yoxdur):** bütün sorğular `src/server/db/repo.ts`-dəki Repo qatından keçir. `tenantId` sahəsi olan hər modeldə oxuma cari şirkətə daraldılır, update/delete yalnız cari şirkətdə işləyir, başqa şirkətə create və `tenantId`-nin dəyişdirilməsi rədd edilir, kontekst olmadıqda heç nə qaytarılmır. Modellər siyahısı sxemdən avtomatik çıxarılır (yeni model unudula bilməz — testlə yoxlanır). Şirkətlərarası platforma əməliyyatları (webhook, fon prosesləri, slug yoxlaması) yalnız açıq `db.system` ilə.
    **PostgreSQL RLS-dən fərqi:** qoruma bazada deyil, prosesdədir — bazaya başqa yoldan (məs. `mongosh`, BI aləti) qoşulan bu qorumanı keçmir. Ona görə production-da baza istifadəçisinin hüquqları minimal saxlanılmalı və bazaya birbaşa giriş məhdudlaşdırılmalıdır.
 
 Əlavə: S3 açarları tenant prefiksli, presigned URL-lər yalnız yoxlamadan sonra verilir; WebSocket otaqları tenant ID ilə; Redis açarları `t:<tenantId>:…`; audit log-da hər impersonate qeyd olunur. **Avtomatik test:** iki tenant yaradıb hər endpoint üçün çarpaz giriş cəhdi (403/404 gözlənilir) — CI-da məcburi.
@@ -124,7 +124,7 @@ Hər modul: `controller` (REST, DTO validasiya zod/class-validator) → `service
 
 > **MongoDB qeydləri:** (1) Prisma boş buraxılan optional sahəni sənədə yazmır və `{ sahə: null }` filtri yazılmamış sahəni tapmır — `@axis/db/null-fill` middleware-i hər create-də boş sahələri açıq `null` yazır (API və seed eyni kodu istifadə edir). (2) Null ola bilən unikal sahələr (`inviteToken`, `directKey`, `Message.externalId`…) partial unique index-dir. (3) "NULLS LAST" yoxdur — lazım olan siyahılar yaddaşda sıralanır. (4) **Prisma-nın MongoDB müqayisələrində `null` hər tarixdən kiçikdir:** nullable tarixdə `lt`/`lte` filtri `null`-ları da tutur — həmişə `not: null` ilə birlikdə yazılmalıdır (məs. gecikmiş tapşırıqlar). `gt`/`gte` təhlükəsizdir. (5) **Yazılar `w=majority&journal=true` ilə** (bağlantı ünvanında): əks halda tranzaksiyalar "çoxluq snapshot"-ından oxuduğu üçün yenicə təsdiqlənmiş yazını (məs. qeydiyyatdan sonrakı ilk sorğuda sessiyanı) görməyə bilər. (6) Sətir kilidi yoxdur — eyni anda icrası təhlükəli əməliyyatlar (sahibin endirilməsi) tenant sənədinə yazaraq seriallaşdırılır; MongoDB toqquşan tranzaksiyalardan birini dayandırır, `scoped()` onu təkrarlayır.
 
-Tam sxem: [`packages/db/prisma/schema.prisma`](../packages/db/prisma/schema.prisma). Əsas qruplar:
+Tam sxem: [`prisma/schema.prisma`](../prisma/schema.prisma). Əsas qruplar:
 
 | Qrup | Cədvəllər |
 |---|---|
@@ -166,7 +166,7 @@ Qərarlar:
 
 Platforma rolları (`User.platformRole`): `SUPER_ADMIN` (hər şey), `SUPPORT` (oxumaq + impersonate, billing redaktə yox).
 
-İcra: NestJS `@RequirePermission('deals.update')` guard + **data scope** (`all | department | own`) servis qatında sorğuya filtr kimi tətbiq olunur. Frontend eyni kataloqdan (`packages/shared/permissions.ts`) menyunu və düymələri gizlədir — amma qərarı həmişə backend verir.
+İcra: NestJS `@RequirePermission('deals.update')` guard + **data scope** (`all | department | own`) servis qatında sorğuya filtr kimi tətbiq olunur. Frontend eyni kataloqdan (`src/shared/permissions.ts`) menyunu və düymələri gizlədir — amma qərarı həmişə backend verir.
 
 ---
 
@@ -271,18 +271,18 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 | Hissə | Vəziyyət | Qeyd |
 |---|---|---|
 | Arxitektura sənədi, DB sxemi | ✅ | |
-| Web shell (sidebar, tema, AZ/EN/RU), Dashboard | ✅ | Dashboard rəqəmləri **demo** (`apps/web/src/lib/api/demo-data.ts`) |
+| Web shell (sidebar, tema, AZ/EN/RU), Dashboard | ✅ | Dashboard rəqəmləri **demo** (`src/lib/api/demo-data.ts`) |
 
 ### Mərhələ 1 — Core backend ✅
 | Hissə | Vəziyyət | Harada |
 |---|---|---|
-| Lokal PostgreSQL 17 (Docker-siz) + migrasiya + seed | ✅ | `npm run db:start` → `packages/db/scripts/dev-db.mjs`; alternativ `docker-compose.yml` |
+| Lokal PostgreSQL 17 (Docker-siz) + migrasiya + seed | ✅ | `npm run db:start` → `scripts/db/dev-db.mjs`; alternativ `docker-compose.yml` |
 | RLS (tenant izolyasiyası DB səviyyəsində) | ✅ | `packages/db/prisma/migrations/*_rls`; tətbiq `axis_app` rolu ilə qoşulur (owner deyil, BYPASSRLS yoxdur) |
-| Auth: qeydiyyat (şirkət + sahib + 14 gün PRO trial + default pipeline), login, refresh rotasiyası + oğurluq aşkarlanması, logout, şirkət dəyişmə | ✅ | `apps/api/src/auth` |
+| Auth: qeydiyyat (şirkət + sahib + 14 gün PRO trial + default pipeline), login, refresh rotasiyası + oğurluq aşkarlanması, logout, şirkət dəyişmə | ✅ | `src/server/auth` |
 | Şifrələr argon2id; access JWT 15 dəq; refresh 30 gün (DB-də sha256) | ✅ | |
-| Rol + icazə kataloqu (API və web eyni mənbədən) | ✅ | `packages/shared/src/permissions.ts` |
-| İşçilər: siyahı, dəvət (link), rol/şöbə/status dəyişmə, owner qorumaları, yer limiti | ✅ | `apps/api/src/members` |
-| Şöbələr CRUD | ✅ | `apps/api/src/departments` (UI: əlavə et/sil; adını dəyişmə UI-si sonra) |
+| Rol + icazə kataloqu (API və web eyni mənbədən) | ✅ | `src/shared/permissions.ts` |
+| İşçilər: siyahı, dəvət (link), rol/şöbə/status dəyişmə, owner qorumaları, yer limiti | ✅ | `src/server/members` |
+| Şöbələr CRUD | ✅ | `src/server/departments` (UI: əlavə et/sil; adını dəyişmə UI-si sonra) |
 | Audit log (yazılır + API) | ✅ | `GET /v1/audit-logs`; UI hələ yoxdur |
 | Rate limit (auth endpoint-ləri, IP üzrə) | ✅ | yaddaşda; çox instance üçün Redis-ə keçəcək |
 | Web: login, qeydiyyat, dəvət qəbulu, avtomatik token yenilənməsi, BFF proxy (CSRF yoxlaması), İşçilər səhifəsi | ✅ | tokenlər httpOnly cookie-də, brauzer JS-i onları görmür |
@@ -295,12 +295,12 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 ### Mərhələ 2 — CRM + Satışlar ✅
 | Hissə | Vəziyyət | Harada |
 |---|---|---|
-| Müştərilər: siyahı (axtarış ad/email/telefon/şirkət, status və məsul filtri, səhifələmə), yaratma, redaktə, soft delete | ✅ | `apps/api/src/crm/contacts.*`, `/crm`, `/crm/new`, `/crm/[id]` |
+| Müştərilər: siyahı (axtarış ad/email/telefon/şirkət, status və məsul filtri, səhifələmə), yaratma, redaktə, soft delete | ✅ | `src/server/crm/contacts.*`, `/crm`, `/crm/new`, `/crm/[id]` |
 | Lead → Kvalifikasiya → Müştəri → İtirilmiş; satış qazanılanda müştəri avtomatik "Müştəri" olur | ✅ | |
 | Qeydlər və vahid zaman xətti (müştəri, satış, Dashboard eyni mənbədən) | ✅ | `Activity` cədvəli; adlar yazılma anında saxlanılır |
 | Satış pipeline-ı: Kanban (sürüşdür-burax + hər kartda mərhələ seçimi — klaviatura/mobil), itirmə səbəbi məcburi, bağlanmış satışlar 30 gün lövhədə | ✅ | `/deals`, `/deals/[id]` |
 | Proqnoz: açıq məbləğ, ehtimalla çəkili proqnoz, bu ay qazanılan/itirilən + səbəblər | ✅ | `GET /v1/deals/forecast` |
-| Görünmə sahəsi: Sahib/Admin hamısı · Rəhbər öz şöbəsi + təyin olunmamışlar · İşçi yalnız özününkü; başqasına təyin etmək yalnız Rəhbər+ | ✅ | `apps/api/src/crm/scope.ts` |
+| Görünmə sahəsi: Sahib/Admin hamısı · Rəhbər öz şöbəsi + təyin olunmamışlar · İşçi yalnız özününkü; başqasına təyin etmək yalnız Rəhbər+ | ✅ | `src/server/crm/scope.ts` |
 | Dashboard real API-də (yeni müştərilər, aktiv satışlar, satış məbləği, dinamika, işçi performansı, fəaliyyət) | ✅ | `GET /v1/dashboard`; tarixlər şirkətin saat qurşağında |
 | Mesajlar və tapşırıqlar panelləri (Dashboard) | 🟡 **Demo** | ayrıca "Demo" nişanı ilə; Mərhələ 3–4 |
 | Xatırlatmalar | ⏳ | Tapşırıqlar modulu ilə (Mərhələ 3) |
@@ -318,12 +318,12 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 ### Mərhələ 3 — Tapşırıqlar + Komanda ✅
 | Hissə | Vəziyyət | Harada |
 |---|---|---|
-| Tapşırıqlar: məsul, son tarix (şirkətin saat qurşağında), prioritet, status, təsvir, layihə, siyahı və lövhə (sürüşdürmə + seçim), bir kliklə tamamlama, axtarış, "Mənim / Yaratdığım / Hamısı / Gecikmiş" | ✅ | `apps/api/src/tasks`, `/tasks`, `/tasks/[id]` |
+| Tapşırıqlar: məsul, son tarix (şirkətin saat qurşağında), prioritet, status, təsvir, layihə, siyahı və lövhə (sürüşdürmə + seçim), bir kliklə tamamlama, axtarış, "Mənim / Yaratdığım / Hamısı / Gecikmiş" | ✅ | `src/server/tasks`, `/tasks`, `/tasks/[id]` |
 | Alt tapşırıqlar (1 səviyyə), şərhlər, təkrarlanan tapşırıqlar (gündəlik / həftəlik / 2 həftə / aylıq — tamamlananda növbəti yaranır) | ✅ | |
 | Müştəri/satışa bağlı tapşırıq = xatırlatma; müştəri kartında "Tapşırıqlar və xatırlatmalar" | ✅ | |
 | Görünmə: Sahib/Admin hamısı · Rəhbər öz şöbəsinin (məsul və ya yaradan) · İşçi özününkü; təyin etmə: Rəhbər+ hər kəsə, İşçi özünə və şöbə həmkarına | ✅ | `taskScope()`; yeni icazə `tasks.view_all` |
-| Fayllar: yükləmə (10 MB), endirmə (həmişə "attachment", `nosniff`, `sandbox`), silmə, paket yaddaş limiti | ✅ lokal disk | `apps/api/src/storage` — **S3 adapteri yazılmayıb** (interfeys hazırdır; deploy mərhələsində) |
-| Bildirişlər: təyin olunma, şərh, tamamlanma, gecikmə; zəng ikonu, oxundu/hamısını oxu | ✅ | `apps/api/src/notifications` |
+| Fayllar: yükləmə (10 MB), endirmə (həmişə "attachment", `nosniff`, `sandbox`), silmə, paket yaddaş limiti | ✅ lokal disk | `src/server/storage` — **S3 adapteri yazılmayıb** (interfeys hazırdır; deploy mərhələsində) |
+| Bildirişlər: təyin olunma, şərh, tamamlanma, gecikmə; zəng ikonu, oxundu/hamısını oxu | ✅ | `src/server/notifications` |
 | Gecikmə bildirişi fon prosesi (5 dəq): hər tapşırıq üçün bir dəfə, bir neçə API instansında da təkrarlanmır; son tarix dəyişəndə yenidən aktivləşir | ✅ | `tasks/overdue.job.ts` + DB funksiyası `tasks_due_for_overdue_notice` (yalnız id qaytarır) |
 | Komanda: işçi kartları (açıq/gecikən/tamamlanan tapşırıq, satış, məbləğ, açıq satış, dövr filtri), işçi profili (cari tapşırıqlar, fəaliyyət) | ✅ | `/team`, `/team/[id]` |
 | Dashboard: tapşırıq KPI və gecikmiş tapşırıqlar paneli real; işçi cədvəlində tamamlanan/gecikən | ✅ | demo yalnız Mesajlar üçün qalır |
@@ -339,7 +339,7 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 ### Mərhələ 4 — Vahid mesaj mərkəzi ✅
 | Hissə | Vəziyyət | Harada |
 |---|---|---|
-| Sayt çatı: `<script src=".../widget.js">` ilə istənilən sayta qoşulur, iframe-də işləyir (sahib saytı yazışmanı və cookie-ləri görmür), ziyarətçi tokeni yalnız hash kimi saxlanılır | ✅ **real** | `public/widget.js`, `/widget/[key]`, `apps/api/src/inbox/widget.controller.ts` |
+| Sayt çatı: `<script src=".../widget.js">` ilə istənilən sayta qoşulur, iframe-də işləyir (sahib saytı yazışmanı və cookie-ləri görmür), ziyarətçi tokeni yalnız hash kimi saxlanılır | ✅ **real** | `public/widget.js`, `/widget/[key]`, `src/server/inbox/widget.routes.ts` |
 | WhatsApp Cloud API, Messenger, Instagram: rəsmi Graph endpoint-ləri, `X-Hub-Signature-256` yoxlaması, idempotent webhook, çatdırılma statusları, WhatsApp 24 saat pəncərəsi | ✅ kod + testlər | **Real Meta-ya qarşı yoxlanmayıb** — testlər lokal saxta Graph serverinə qarşıdır. Real qoşulma üçün Meta tətbiqi, `META_APP_SECRET`, `META_VERIFY_TOKEN` və ictimai HTTPS API ünvanı lazımdır |
 | Access token-lər AES-256-GCM ilə şifrəli (`CHANNEL_SECRET_KEY`), API heç vaxt qaytarmır | ✅ | `inbox/secrets.ts` |
 | Demo kanallar: açarsız, "Demo" nişanlı, heç nə göndərilmir, gələn mesaj simulyatoru | ✅ | Parametrlər → Kanallar |
@@ -362,7 +362,7 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 ### Mərhələ 5 — Komanda çatı ✅
 | Hissə | Vəziyyət | Harada |
 |---|---|---|
-| Şəxsi çat (cütlük üçün tək otaq), şöbə qrupu (avtomatik, üzvlər şöbə ilə sinxron — şöbədən çıxan tarixçəyə girişi itirir), adlı qruplar (üzv əlavə et, çıx) | ✅ | `apps/api/src/chat`, `/chat` |
+| Şəxsi çat (cütlük üçün tək otaq), şöbə qrupu (avtomatik, üzvlər şöbə ilə sinxron — şöbədən çıxan tarixçəyə girişi itirir), adlı qruplar (üzv əlavə et, çıx) | ✅ | `src/server/chat`, `/chat` |
 | Mesajlar: mətn, fayl (tapşırıq faylları ilə eyni kvota və saxlama), tapşırığa bağlantı (yalnız tapşırığı görə bilənlərə göstərilir), öz mesajını redaktə/silmək, mesajı tapşırığa çevirmək, əvvəlki mesajları yükləmək | ✅ | |
 | Real vaxt: SSE hadisələri **yalnız otağın üzvlərinə** çatır; oxunmamış sayğaclar (otaq və sidebar) | ✅ | tək instans; çoxlu instansda Redis pub/sub |
 | Axtarış yalnız üzv olduğunuz otaqlarda | ✅ | |
@@ -379,7 +379,7 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 ### PostgreSQL → MongoDB köçürməsi ✅ (2026-10-23, sahibin qərarı)
 | Hissə | Vəziyyət | Qeyd |
 |---|---|---|
-| Sxem MongoDB konnektoruna, ID-lər `_id`, öz-özünə istinad edən əlaqələr `NoAction` (alt tapşırıq/şöbə uşaqları servis tərəfindən təmizlənir) | ✅ | `packages/db/prisma/schema.prisma` |
+| Sxem MongoDB konnektoruna, ID-lər `_id`, öz-özünə istinad edən əlaqələr `NoAction` (alt tapşırıq/şöbə uşaqları servis tərəfindən təmizlənir) | ✅ | `prisma/schema.prisma` |
 | RLS → tenant qoruyucusu (oxuma daraldılır, yazı yoxlanılır, kontekstsiz heç nə; `system()` açıq keçid) | ✅ | **Qoruma bazada deyil, koddadır** — §4 |
 | Lokal baza: `mongodb-memory-server` replica set (`.data/mongo`), testlərdə müvəqqəti replica set; Docker: `mongo:7.0 --replSet` | ✅ | |
 | SQL-ə bağlı yerlər əvəz edildi: `FOR UPDATE` → tenant sənədi ilə seriallaşdırma + təkrar; SECURITY DEFINER funksiyaları → `system()` ilə yalnız-id sorğular; `NULLS LAST` → yaddaşda sıralama; `skipDuplicates` → əvvəlcədən filtr | ✅ | |
@@ -391,12 +391,12 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 ### Mərhələ 6 — Abunəlik və ödəniş ✅ (DEMO provayder)
 | Hissə | Vəziyyət | Harada |
 |---|---|---|
-| Paketlər, aylıq/illik (illik = 10 ay), əlavə işçi yeri və yaddaş | ✅ | `apps/api/src/billing`, `/settings/billing` |
+| Paketlər, aylıq/illik (illik = 10 ay), əlavə işçi yeri və yaddaş | ✅ | `src/server/billing`, `/settings/billing` |
 | Checkout: yeni dövr; eyni intervalda yüksəltmə — qalan günlər üçün proporsional; interval dəyişəndə — istifadə olunmamış hissə kredit kimi çıxılır; 0 məbləğ avtomatik ödənir; köhnə açıq fakturalar ləğv olunur | ✅ | |
 | Ucuz pakete keçid dövrün sonunda (işçi sayı yeni limitdən çoxdursa rədd edilir), keçidi geri almaq | ✅ | |
 | Fon prosesi: trial xəbərdarlığı və bitməsi, yenilənmə, uğursuz ödəniş → PAST_DUE + 7 gün güzəşt, 1/3/5-ci gün təkrar cəhd, sonra SUSPENDED, dövrün sonunda ləğv | ✅ | `billing.job.ts`, 10 dəqiqədən bir |
 | SUSPENDED/CANCELED: yalnız oxumaq (GET), abunəlik və bildirişlər açıq qalır; ödənişdən sonra dərhal aktiv | ✅ | `AuthGuard` |
-| Feature gating: API (402 `FEATURE_NOT_IN_PLAN`) + UI (sidebar-da kilid, "Paketi yüksəlt" ekranı, Meta kanalları və şöbə yaratma bağlı) | ✅ | `@RequireFeature`, `UpgradeGate` |
+| Feature gating: API (402 `FEATURE_NOT_IN_PLAN`) + UI (sidebar-da kilid, "Paketi yüksəlt" ekranı, Meta kanalları və şöbə yaratma bağlı) | ✅ | route `feature` seçimi, `UpgradeGate` |
 | Faktura nömrələri ardıcıl (`AX-2026-000001`), çap üçün faktura səhifəsi, bildirişlər (ödəniş alındı / alınmadı / trial bitir / dayandırıldı), hər səhifədə xəbərdarlıq zolağı | ✅ | |
 | **DEMO ödəniş provayderi** — ödəniş səhifəsi aydın "DEMO" işarəlidir, real kart yoxdur; "Uğurlu ödəniş" / "Kart rədd edilsin"; demo alətləri: növbəti avtomatik ödəniş uğursuz olsun, növbəti tarixi indi işlət | ✅ | `DemoPaymentProvider`, `BILLING_PROVIDER=demo` |
 | Real provayder (Payriff / Epoint) | ⏳ | `PaymentProvider` interfeysi hazırdır: `checkoutUrl` + `chargeSaved` + webhook; müqavilə və açarlar lazımdır |
@@ -412,12 +412,12 @@ Hər mərhələnin sonunda: tiplər yoxlanır, unit + e2e testlər (Playwright),
 ### Mərhələ 7 — Super Admin ✅
 | Hissə | Vəziyyət | Harada |
 |---|---|---|
-| Platforma girişi: yalnız `platformRole` olan istifadəçilər; ayrıca issuer, cookie və `AdminSession`; çıxış və rolun götürülməsi dərhal təsir edir; rollar SUPER_ADMIN (hər şey) və SUPPORT (baxış + müraciətlər) | ✅ | `apps/api/src/admin`, `/admin/login` |
+| Platforma girişi: yalnız `platformRole` olan istifadəçilər; ayrıca issuer, cookie və `AdminSession`; çıxış və rolun götürülməsi dərhal təsir edir; rollar SUPER_ADMIN (hər şey) və SUPPORT (baxış + müraciətlər) | ✅ | `src/server/admin`, `/admin/login` |
 | Ümumi baxış: MRR/ARR (illik = 1/12), statuslar üzrə şirkətlər, 30 günlük qeydiyyat/ləğv, gəlir/xərc/mənfəət, son 6 ayın qrafiki + cədvəl, uğursuz ödənişlər, açıq müraciətlər | ✅ | `/admin` |
 | Şirkətlər: axtarış, status filtri, səhifələmə; detal (abunə, istifadə, işçilər, fakturalar, audit); sınağı uzatmaq, dayandırmaq (səbəblə), ödənilmiş dövr ərzində bərpa | ✅ | `/admin/tenants` |
 | Paket redaktoru: qiymət, limit, əlavələrin qiyməti, funksiyalar; yeni qiymət növbəti fakturadan | ✅ | `/admin/plans` |
 | Ödənişlər (bütün şirkətlər, status filtri, cəmlər), xərclər (əlavə et / sil) | ✅ | `/admin/billing`, `/admin/expenses` |
-| Dəstək müraciətləri: şirkət yazır (`/support`), platforma cavab verir; müəllifə bildiriş; şirkət cavabı «Axis dəstək» adı ilə görür; bağlı müraciətə yazanda yenidən açılır; dayandırılmış şirkət də yaza bilir | ✅ | `apps/api/src/support`, `/support`, `/admin/tickets` |
+| Dəstək müraciətləri: şirkət yazır (`/support`), platforma cavab verir; müəllifə bildiriş; şirkət cavabı «Axis dəstək» adı ilə görür; bağlı müraciətə yazanda yenidən açılır; dayandırılmış şirkət də yaza bilir | ✅ | `src/server/support`, `/support`, `/admin/tickets` |
 | Sistem: baza (gecikmə), iş müddəti, yaddaş, fon proseslərinin son icrası və xətası, webhook və kanal xətaları, ödəniş provayderi | ✅ | `/admin/system` |
 | Platforma əməliyyatları şirkətin öz audit jurnalında da görünür (`platform.*`) | ✅ | |
 | Platforma hesabları üçün 2FA | ✅ | Mərhələ 8-in 2-ci hissəsində |
@@ -438,10 +438,10 @@ Səbəb: bu funksiyalar paketlərdə satılırdı (PRO: əsas analitika; BUSINES
 
 | Hissə | Vəziyyət | Harada |
 |---|---|---|
-| **Əsas analitika (PRO):** sövdələşmələrin nəticəsi, qazanma faizi, orta sövdələşmə və satış müddəti, satış hunisi, itirmə səbəbləri, müştəri mənbələri (alıcıya çevrilmə, gətirdiyi gəlir), kanallar üzrə ilk cavab, tapşırıqların vaxtında icrası; 30 gün / 90 gün / 1 il | ✅ | `apps/api/src/analytics`, `/analytics` |
+| **Əsas analitika (PRO):** sövdələşmələrin nəticəsi, qazanma faizi, orta sövdələşmə və satış müddəti, satış hunisi, itirmə səbəbləri, müştəri mənbələri (alıcıya çevrilmə, gətirdiyi gəlir), kanallar üzrə ilk cavab, tapşırıqların vaxtında icrası; 30 gün / 90 gün / 1 il | ✅ | `src/server/analytics`, `/analytics` |
 | **Geniş analitika (BUSINESS):** işçilər üzrə nəticələr (qazanma faizi, gəlir, müddət, tapşırıqlar, cavab müddəti), 12 aylıq dinamika, sövdələşmələrin CSV ixracı (`deals.export` icazəsi, Excel üçün BOM, formula hücumuna qarşı qorunma) | ✅ | |
 | Görünürlük CRM ilə eynidir: sahib/admin — bütün şirkət, rəhbər — şöbə, işçi — giriş yoxdur (`analytics.view`) | ✅ | |
-| **Avtomatlaşdırma (BUSINESS):** «belə olanda — bunu et» qaydaları. Hadisələr: yeni sövdələşmə, mərhələ dəyişməsi, yeni müştəri, yeni yazışma, gecikən tapşırıq. Şərtlər: mərhələ, minimum məbləğ, mənbə, kanal. Əməliyyatlar: tapşırıq yarat, bildiriş göndər, məsul təyin et (bir nəfərə və ya növbə ilə). 4 hazır nümunə, icra tarixçəsi, son xəta | ✅ | `apps/api/src/automations`, `/automations` |
+| **Avtomatlaşdırma (BUSINESS):** «belə olanda — bunu et» qaydaları. Hadisələr: yeni sövdələşmə, mərhələ dəyişməsi, yeni müştəri, yeni yazışma, gecikən tapşırıq. Şərtlər: mərhələ, minimum məbləğ, mənbə, kanal. Əməliyyatlar: tapşırıq yarat, bildiriş göndər, məsul təyin et (bir nəfərə və ya növbə ilə). 4 hazır nümunə, icra tarixçəsi, son xəta | ✅ | `src/server/automations`, `/automations` |
 | Etibarlılıq: hadisə dəyişikliklə eyni tranzaksiyada yazılır (outbox), commit-dən dərhal sonra və 30 saniyədən bir işlənir; bir neçə instansda təkrar icra olunmur; xətalı qayda digərlərini dayandırmır; avtomatlaşdırmanın etdiyi dəyişiklik yeni hadisə yaratmır (sonsuz dövr yoxdur); paket endiriləndə qaydalar qalır, amma işləmir | ✅ | `automation.runner.ts` |
 | **Prioritet dəstək (BUSINESS):** belə şirkətlərin müraciətləri platforma növbəsində birinci gəlir, «Prioritet» nişanı ilə | ✅ | `/admin/tickets` |
 | Yeni icazə `automations.manage` (sahib və admin); icazə matrisi testi yeniləndi | ✅ | |
@@ -458,10 +458,10 @@ Səbəb: bu funksiyalar paketlərdə satılırdı (PRO: əsas analitika; BUSINES
 | Hissə | Vəziyyət | Harada |
 |---|---|---|
 | **Platforma işçiləri üçün 2FA** (TOTP, RFC 6238 — Google/Microsoft Authenticator, 1Password): QR ilə qurulma, 10 birdəfəlik ehtiyat kod, hər kod yalnız bir dəfə işləyir (təkrar istifadəyə qarşı qorunma), iki addımlı giriş (parol → 5 dəqiqəlik challenge → kod). `PLATFORM_REQUIRE_MFA` (production-da default açıq): 2FA aktiv edilməyincə konsolun yalnız təhlükəsizlik səhifəsi açılır, API də bunu tələb edir | ✅ | `common/totp.ts`, `/admin/security` |
-| **Email servisi** (outbox, növbə, 5 təkrar cəhd): dəvət, şifrə bərpası, ödəniş qəbzi, dəstək cavabı — 3 dildə. **SMTP qoşulmayıbsa heç nə "göndərildi" kimi göstərilmir**: status "göndərilməyib", dəvət linki UI-də qalır; Super Admin → Sistem-də emaillərin statusu (mətn göstərilmir — bərpa linkləri gizli qalır) | ✅ | `apps/api/src/mail` |
+| **Email servisi** (outbox, növbə, 5 təkrar cəhd): dəvət, şifrə bərpası, ödəniş qəbzi, dəstək cavabı — 3 dildə. **SMTP qoşulmayıbsa heç nə "göndərildi" kimi göstərilmir**: status "göndərilməyib", dəvət linki UI-də qalır; Super Admin → Sistem-də emaillərin statusu (mətn göstərilmir — bərpa linkləri gizli qalır) | ✅ | `src/server/mail` |
 | **Şifrə bərpası**: birdəfəlik link (60 dəq), yalnız ən yeni link işləyir, naməlum email üçün eyni cavab, bərpadan sonra bütün cihazlarda çıxış | ✅ | `/forgot-password`, `/reset-password/[token]` |
 | **Fayllar bölməsi**: şirkətin ümumi sənədləri + tapşırıq və çat faylları — hər istifadəçi yalnız aça bildiyi faylları görür (çatlar sahib üçün də gizlidir); axtarış, mənbə filtri, yaddaş istifadəsi; ümumi sənədi yükləyən, sahib və admin silə bilər | ✅ | `/files` |
-| **AI köməkçisi (Claude, `claude-opus-5-5`)**: yazışmada cavab qaralaması (müştərinin dilində, heç vaxt avtomatik göndərilmir, daxili qeydlər qaralamaya düşmür) və xülasə. Paket limiti (`Plan.aiCredits`: PRO 100, BUSINESS 500 sorğu/ay), uğursuz sorğu limiti geri qaytarır; müştəri mətni prompt-injection-a qarşı ayrıca etiketlərdədir; server tərəfi fallback (`fallbacks: "default"`) aktivdir. Açar yoxdursa düymələr səbəbi göstərir | ✅ | `apps/api/src/ai` |
+| **AI köməkçisi (Claude, `claude-opus-5-5`)**: yazışmada cavab qaralaması (müştərinin dilində, heç vaxt avtomatik göndərilmir, daxili qeydlər qaralamaya düşmür) və xülasə. Paket limiti (`Plan.aiCredits`: PRO 100, BUSINESS 500 sorğu/ay), uğursuz sorğu limiti geri qaytarır; müştəri mətni prompt-injection-a qarşı ayrıca etiketlərdədir; server tərəfi fallback (`fallbacks: "default"`) aktivdir. Açar yoxdursa düymələr səbəbi göstərir | ✅ | `src/server/ai` |
 | **Email kanalı**: gələn məktublar provayderin inbound webhook-u ilə (Postmark formatı, hər kanalın gizli tokeni, yalnız yaradılanda bir dəfə göstərilir), cavablar kanal ünvanından `In-Reply-To`/`References` ilə; çatdırılma statusu real göndərişə görə yenilənir. SMTP olmadan real email kanalı yaradılmır (demo mümkündür) | ✅ | `/v1/webhooks/email/:id` |
 | Tamamlanmamış modul ekranı (`[module]`, «Mərhələ N») silindi — bütün modullar artıq işləyir | ✅ | |
 | Şirkət işçiləri üçün 2FA, IMAP ilə email qəbulu, AI ilə CRM xülasələri | ⏳ | sonra |

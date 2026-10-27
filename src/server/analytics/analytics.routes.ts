@@ -1,34 +1,23 @@
-import { Controller, Get, Header, Query } from "@nestjs/common";
-import { analyticsQuerySchema, type AnalyticsPeriod } from "@axis/shared";
-import { RequireFeature, RequirePermission } from "../common/decorators";
-import { ZodPipe } from "../common/zod.pipe";
-import { AnalyticsService } from "./analytics.service";
+import { analyticsQuerySchema } from "@/shared";
+import type { Services } from "../container";
+import type { Router } from "../http/router";
 
-@RequirePermission("analytics.view")
-@Controller("v1/analytics")
-export class AnalyticsController {
-  constructor(private readonly analytics: AnalyticsService) {}
+export function analyticsRoutes(router: Router, s: Services) {
+  router.group("/v1/analytics", { permission: "analytics.view" }, (r) => {
+    r.get("basic", { feature: "analytics.basic", query: analyticsQuerySchema }, ({ query }) => s.analytics.basic(query.period));
 
-  @RequireFeature("analytics.basic")
-  @Get("basic")
-  basic(@Query(new ZodPipe(analyticsQuerySchema)) q: { period: AnalyticsPeriod }) {
-    return this.analytics.basic(q.period);
-  }
+    r.get("advanced", { feature: "analytics.advanced", query: analyticsQuerySchema }, ({ query }) => s.analytics.advanced(query.period));
 
-  @RequireFeature("analytics.advanced")
-  @Get("advanced")
-  advanced(@Query(new ZodPipe(analyticsQuerySchema)) q: { period: AnalyticsPeriod }) {
-    return this.analytics.advanced(q.period);
-  }
-
-  // Exporting is a separate right: managers may analyse without taking the data out
-  @RequireFeature("analytics.advanced")
-  @RequirePermission("deals.export")
-  @Get("export/deals.csv")
-  @Header("content-type", "text/csv; charset=utf-8")
-  @Header("content-disposition", 'attachment; filename="deals.csv"')
-  @Header("cache-control", "no-store")
-  exportDeals(@Query(new ZodPipe(analyticsQuerySchema)) q: { period: AnalyticsPeriod }) {
-    return this.analytics.exportDeals(q.period);
-  }
+    // Exporting is a separate right: managers may analyse without taking the data out
+    r.get(
+      "export/deals.csv",
+      {
+        feature: "analytics.advanced",
+        permission: "deals.export",
+        query: analyticsQuerySchema,
+        headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="deals.csv"', "cache-control": "no-store" },
+      },
+      ({ query }) => s.analytics.exportDeals(query.period),
+    );
+  });
 }

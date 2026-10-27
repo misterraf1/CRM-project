@@ -1,4 +1,4 @@
-import type { ActivityDto } from "@axis/shared";
+import type { ActivityDto } from "@/shared";
 import { ACTIVITY_ICONS, describeActivity } from "@/lib/activity";
 import { formatDate, formatRelative } from "@/lib/format";
 import type { Dictionary } from "@/lib/i18n/dictionaries/az";

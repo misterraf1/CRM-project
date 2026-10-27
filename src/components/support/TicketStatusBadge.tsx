@@ -1,4 +1,4 @@
-import type { TicketStatus } from "@axis/shared";
+import type { TicketStatus } from "@/shared";
 import clsx from "clsx";
 
 const STYLE: Record<TicketStatus, string> = {

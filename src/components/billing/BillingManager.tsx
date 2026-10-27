@@ -1,6 +1,6 @@
 "use client";
 
-import type { BillingInterval, BillingOverviewDto, CheckoutResponse, PlanDto } from "@axis/shared";
+import type { BillingInterval, BillingOverviewDto, CheckoutResponse, PlanDto } from "@/shared";
 import clsx from "clsx";
 import { Check, CreditCard, FlaskConical, Undo2 } from "lucide-react";
 import Link from "next/link";

@@ -1,6 +1,6 @@
 "use client";
 
-import type { AdminMe, MfaEnabledDto, MfaSetupDto } from "@axis/shared";
+import type { AdminMe, MfaEnabledDto, MfaSetupDto } from "@/shared";
 import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";

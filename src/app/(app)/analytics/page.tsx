@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { Download, Lock } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ANALYTICS_PERIODS, type AnalyticsPeriod } from "@axis/shared";
+import { ANALYTICS_PERIODS, type AnalyticsPeriod } from "@/shared";
 import { BarList } from "@/components/analytics/BarList";
 import { planGate } from "@/components/billing/UpgradeGate";
 import { StatTile } from "@/components/ui/StatTile";

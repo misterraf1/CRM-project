@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import type { MeResponse } from "@axis/shared";
+import type { MeResponse } from "@/shared";
 import { ChevronsLeft, ChevronsRight, Lock, LogOut, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";

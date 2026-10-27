@@ -1,8 +1,8 @@
-import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
+import type { TestApp } from "./helpers";
 
 describe("Rate limiting", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const previous = process.env.AUTH_RATE_LIMIT;
 
   beforeAll(async () => {

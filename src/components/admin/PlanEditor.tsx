@@ -1,6 +1,6 @@
 "use client";
 
-import { ALL_FEATURES, type AdminPlanDto, type PlanUpdateInput } from "@axis/shared";
+import { ALL_FEATURES, type AdminPlanDto, type PlanUpdateInput } from "@/shared";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { adminApi } from "@/lib/api/client";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { DashboardCrmDto } from "@axis/shared";
+import type { DashboardCrmDto } from "@/shared";
 import { formatDate, formatMoney } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { interpolate } from "@/lib/i18n/locales";

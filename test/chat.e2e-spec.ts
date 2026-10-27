@@ -1,12 +1,11 @@
-import type { INestApplication } from "@nestjs/common";
-import type { ChatMessageDto, ChatRoomDetailDto, ChatRoomDto } from "@axis/shared";
+import type { ChatMessageDto, ChatRoomDetailDto, ChatRoomDto } from "@/shared";
 import request from "supertest";
-import { addMember, createApp, signup } from "./helpers";
+import { addMember, createApp, signup, type TestApp } from "./helpers";
 
 type Who = { auth: Record<string, string>; memberId?: string };
 
 describe("Team chat", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {

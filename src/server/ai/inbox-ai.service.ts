@@ -1,8 +1,7 @@
-import { Injectable } from "@nestjs/common";
-import type { AiTextDto } from "@axis/shared";
+import type { AiTextDto } from "@/shared";
 import { authedContext } from "../common/context";
 import { InboxService } from "../inbox/inbox.service";
-import { PrismaService } from "../prisma/prisma.service";
+import type { Database } from "../db/database";
 import { AiService } from "./ai.service";
 
 const HISTORY = 40;
@@ -12,26 +11,24 @@ const LANGUAGE = { AZ: "Azerbaijani", EN: "English", RU: "Russian" } as const;
 const tag = (s: string) => s.replace(/<\/?conversation>/gi, "");
 
 /** Drafting help in the inbox. Nothing is sent: the agent reviews and edits every draft. */
-@Injectable()
 export class InboxAiService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly inbox: InboxService,
     private readonly ai: AiService,
   ) {}
 
   private async context(id: string, withNotes: boolean) {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const c = await this.inbox.findVisible(tx, ctx, id);
       const [messages, tenant, me] = await Promise.all([
-        tx.message.findMany({
-          where: { tenantId: ctx.tenantId, conversationId: id, ...(withNotes ? {} : { direction: { not: "INTERNAL_NOTE" } }) },
-          orderBy: { createdAt: "desc" },
-          take: HISTORY,
-        }),
-        tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { name: true } }),
-        tx.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: { fullName: true, locale: true } }),
+        tx.message.find(
+          { tenantId: ctx.tenantId, conversationId: id, ...(withNotes ? {} : { direction: { $ne: "INTERNAL_NOTE" } }) },
+          { sort: { createdAt: -1 }, limit: HISTORY },
+        ),
+        tx.tenant.get({ id: ctx.tenantId }, { projection: { name: 1 } }),
+        tx.user.get({ id: ctx.userId }, { projection: { fullName: 1, locale: 1 } }),
       ]);
       const customer = c.contact?.name ?? c.displayName ?? c.handle ?? "Customer";
       const lines = messages.reverse().map((m) => {

@@ -1,5 +1,3 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Res } from "@nestjs/common";
-import { SkipThrottle } from "@nestjs/throttler";
 import {
   cannedResponseSchema,
   channelCreateSchema,
@@ -9,140 +7,54 @@ import {
   linkContactSchema,
   sendMessageSchema,
   simulateInboundSchema,
-  type CannedResponseInput,
-  type ChannelCreateInput,
-  type ConversationListQuery,
-  type ConversationUpdateInput,
-  type SendMessageInput,
-  type SimulateInboundInput,
-} from "@axis/shared";
-import type { Response } from "express";
-import type { z } from "zod";
+  type InboxEvent,
+} from "@/shared";
 import { authedContext } from "../common/context";
-import { RequirePermission } from "../common/decorators";
-import { ZodPipe } from "../common/zod.pipe";
-import { InboxAiService } from "../ai/inbox-ai.service";
-import { ChannelsService } from "./channels.service";
-import { InboxEvents } from "./events";
-import { InboxService } from "./inbox.service";
+import type { Services } from "../container";
+import type { Router } from "../http/router";
+import { eventStream } from "../http/sse";
 
-const STREAM_MAX_MS = 30 * 60_000;
+export function inboxRoutes(router: Router, s: Services) {
+  router.group("/v1/inbox", {}, (r) => {
+    r.get("conversations", { query: conversationListQuerySchema }, ({ query }) => s.inbox.list(query));
 
-@Controller("v1/inbox")
-export class InboxController {
-  constructor(
-    private readonly inbox: InboxService,
-    private readonly channels: ChannelsService,
-    private readonly events: InboxEvents,
-    private readonly inboxAi: InboxAiService,
-  ) {}
+    r.get("conversations/:id", ({ params }) => s.inbox.get(params.id!));
 
-  @Get("conversations")
-  list(@Query(new ZodPipe(conversationListQuerySchema)) query: ConversationListQuery) {
-    return this.inbox.list(query);
-  }
+    r.post("conversations/:id/messages", { body: sendMessageSchema }, ({ params, body }) => s.inbox.send(params.id!, body));
 
-  @Get("conversations/:id")
-  get(@Param("id") id: string) {
-    return this.inbox.get(id);
-  }
+    /** AI draft of the next reply — filled into the composer, never sent by itself */
+    r.post("conversations/:id/ai/reply", { permission: "inbox.reply" }, ({ params }) => s.inboxAi.reply(params.id!));
 
-  @Post("conversations/:id/messages")
-  send(@Param("id") id: string, @Body(new ZodPipe(sendMessageSchema)) body: SendMessageInput) {
-    return this.inbox.send(id, body);
-  }
+    r.post("conversations/:id/ai/summary", ({ params }) => s.inboxAi.summary(params.id!));
 
-  /** AI draft of the next reply — filled into the composer, never sent by itself */
-  @RequirePermission("inbox.reply")
-  @Post("conversations/:id/ai/reply")
-  aiReply(@Param("id") id: string) {
-    return this.inboxAi.reply(id);
-  }
+    r.patch("conversations/:id", { body: conversationUpdateSchema }, ({ params, body }) => s.inbox.update(params.id!, body));
 
-  @Post("conversations/:id/ai/summary")
-  aiSummary(@Param("id") id: string) {
-    return this.inboxAi.summary(id);
-  }
+    r.post("conversations/:id/read", { status: 204 }, ({ params }) => s.inbox.markRead(params.id!));
 
-  @Patch("conversations/:id")
-  update(@Param("id") id: string, @Body(new ZodPipe(conversationUpdateSchema)) body: ConversationUpdateInput) {
-    return this.inbox.update(id, body);
-  }
+    r.post("conversations/:id/contact", { body: linkContactSchema }, ({ params, body }) => s.inbox.linkContact(params.id!, body));
 
-  @HttpCode(204)
-  @Post("conversations/:id/read")
-  read(@Param("id") id: string) {
-    return this.inbox.markRead(id);
-  }
+    r.get("metrics", { query: inboxMetricsQuerySchema }, ({ query }) => s.inbox.metrics(query.period));
 
-  @Post("conversations/:id/contact")
-  linkContact(@Param("id") id: string, @Body(new ZodPipe(linkContactSchema)) body: z.infer<typeof linkContactSchema>) {
-    return this.inbox.linkContact(id, body);
-  }
+    r.get("templates", () => s.inbox.templates());
 
-  @Get("metrics")
-  metrics(@Query(new ZodPipe(inboxMetricsQuerySchema)) query: z.infer<typeof inboxMetricsQuerySchema>) {
-    return this.inbox.metrics(query.period);
-  }
+    r.post("templates", { permission: "inbox.assign", body: cannedResponseSchema }, ({ body }) => s.inbox.createTemplate(body));
 
-  @Get("templates")
-  templates() {
-    return this.inbox.templates();
-  }
+    r.delete("templates/:id", { permission: "inbox.assign", status: 204 }, ({ params }) => s.inbox.deleteTemplate(params.id!));
 
-  @RequirePermission("inbox.assign")
-  @Post("templates")
-  createTemplate(@Body(new ZodPipe(cannedResponseSchema)) body: CannedResponseInput) {
-    return this.inbox.createTemplate(body);
-  }
+    r.get("channels", () => s.channels.list());
 
-  @RequirePermission("inbox.assign")
-  @HttpCode(204)
-  @Delete("templates/:id")
-  deleteTemplate(@Param("id") id: string) {
-    return this.inbox.deleteTemplate(id);
-  }
+    r.post("channels", { permission: "channels.manage", body: channelCreateSchema }, ({ body }) => s.channels.create(body));
 
-  @Get("channels")
-  channelList() {
-    return this.channels.list();
-  }
+    r.delete("channels/:id", { permission: "channels.manage", status: 204 }, ({ params }) => s.channels.disconnect(params.id!));
 
-  @RequirePermission("channels.manage")
-  @Post("channels")
-  channelCreate(@Body(new ZodPipe(channelCreateSchema)) body: ChannelCreateInput) {
-    return this.channels.create(body);
-  }
+    r.post("channels/:id/simulate", { permission: "channels.manage", body: simulateInboundSchema }, ({ params, body }) =>
+      s.channels.simulate(params.id!, body),
+    );
 
-  @RequirePermission("channels.manage")
-  @HttpCode(204)
-  @Delete("channels/:id")
-  channelDisconnect(@Param("id") id: string) {
-    return this.channels.disconnect(id);
-  }
-
-  @RequirePermission("channels.manage")
-  @Post("channels/:id/simulate")
-  simulate(@Param("id") id: string, @Body(new ZodPipe(simulateInboundSchema)) body: SimulateInboundInput) {
-    return this.channels.simulate(id, body);
-  }
-
-  /** Server-sent events: ids of changed conversations; clients re-fetch what they may see. */
-  @SkipThrottle()
-  @Get("stream")
-  stream(@Res() res: Response) {
-    const { tenantId } = authedContext();
-    res.set({ "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-accel-buffering": "no" });
-    res.flushHeaders();
-    res.write(": connected\n\n");
-    const unsubscribe = this.events.subscribe(tenantId, (event) => res.write(`data: ${JSON.stringify(event)}\n\n`));
-    const ping = setInterval(() => res.write(": ping\n\n"), 25_000);
-    // Long-lived streams outlive token checks; close periodically so the client reconnects re-authenticated
-    const limit = setTimeout(() => res.end(), STREAM_MAX_MS);
-    res.on("close", () => {
-      unsubscribe();
-      clearInterval(ping);
-      clearTimeout(limit);
+    /** Server-sent events: ids of changed conversations; clients re-fetch what they may see. */
+    r.get("stream", { throttle: false }, ({ req }) => {
+      const { tenantId } = authedContext();
+      return eventStream<InboxEvent>(req.signal, (send) => s.inboxEvents.subscribe(tenantId, send));
     });
-  }
+  });
 }

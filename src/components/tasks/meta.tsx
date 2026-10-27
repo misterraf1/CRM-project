@@ -1,4 +1,4 @@
-import type { TaskPriority } from "@axis/shared";
+import type { TaskPriority } from "@/shared";
 import clsx from "clsx";
 
 export const PRIORITY_DOT: Record<TaskPriority, string> = {

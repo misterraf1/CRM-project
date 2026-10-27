@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { hashPassword } from "../../api/src/auth/password";
-import { totp } from "../../api/src/common/totp";
+import { hashPassword } from "../src/server/auth/password";
+import { totp } from "../src/server/common/totp";
 import { PASSWORD, uniqueEmail } from "./helpers";
 import { withDb } from "./db";
 
@@ -9,7 +9,7 @@ const STEP = 30_000;
 test("platform 2FA: set up with the QR key, recovery codes, then sign-in asks for the code", async ({ page }) => {
   const email = uniqueEmail("staff2fa");
   const passwordHash = await hashPassword(PASSWORD);
-  const user = await withDb((db) => db.user.create({ data: { email, fullName: "2FA Test", passwordHash, platformRole: "SUPPORT", mfaRecoveryCodes: [] } }));
+  const user = await withDb((db) => db.user.insertOne({ email, fullName: "2FA Test", passwordHash, platformRole: "SUPPORT", mfaRecoveryCodes: [] }));
   try {
     const signIn = async () => {
       await page.goto("/admin/login");
@@ -54,6 +54,6 @@ test("platform 2FA: set up with the QR key, recovery codes, then sign-in asks fo
     await page.getByRole("button", { name: "Təsdiq et" }).click();
     await expect(page.getByRole("heading", { name: "Ümumi baxış" })).toBeVisible();
   } finally {
-    await withDb((db) => db.user.delete({ where: { id: user.id } }));
+    await withDb((db) => db.user.delete({ id: user.id }));
   }
 });

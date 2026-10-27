@@ -14,7 +14,7 @@ test("forgot password: emailed link → new password → old one stops working",
   await expect(page.getByRole("status")).toContainText("Bu email ilə hesab varsa");
 
   // Without SMTP the message stays in the mail log; the test reads the link from there
-  const mail = await withDb((db) => db.emailMessage.findFirstOrThrow({ where: { to: email, template: "password_reset" }, orderBy: { createdAt: "desc" } }));
+  const mail = await withDb((db) => db.emailMessage.get({ to: email, template: "password_reset" }, { sort: { createdAt: -1 } }));
   const link = /https?:\/\/[^\s]+\/reset-password\/[\w-]+/.exec(mail.text)![0];
   await page.goto(new URL(link).pathname);
   await expect(page.getByRole("heading", { name: "Yeni şifrə" })).toBeVisible();

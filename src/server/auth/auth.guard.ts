@@ -1,45 +1,36 @@
-import { Injectable, type CanActivate, type ExecutionContext } from "@nestjs/common";
-import { Reflector } from "@nestjs/core";
-import { resolvePermissions, type Permission } from "@axis/shared";
-import type { Request } from "express";
+import { resolvePermissions } from "@/shared";
 import { currentContext } from "../common/context";
-import { ALLOW_INACTIVE, IS_PUBLIC, REQUIRED_FEATURE, REQUIRED_PERMISSION } from "../common/decorators";
 import { AppError, forbidden } from "../common/errors";
-import { EntitlementsService, INACTIVE_STATUSES } from "../billing/entitlements.service";
-import { PrismaService } from "../prisma/prisma.service";
+import type { RouteOptions } from "../http/router";
+import { EntitlementsService, INACTIVE_STATUSES, subscriptionOf } from "../billing/entitlements.service";
+import type { Database } from "../db/database";
 import { TokensService } from "./tokens.service";
 
 /**
- * Global guard. Verifies the access token, then re-reads the session and membership
+ * Runs for every non-public route. Verifies the access token, then re-reads the session and membership
  * on every request so logout, disabling a member or a role change take effect
  * immediately instead of when the token expires.
  */
-@Injectable()
-export class AuthGuard implements CanActivate {
+export class AuthGuard {
   constructor(
-    private readonly reflector: Reflector,
     private readonly tokens: TokensService,
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly entitlements: EntitlementsService,
   ) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const targets = [context.getHandler(), context.getClass()];
-    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, targets)) return true;
-
-    const req = context.switchToHttp().getRequest<Request>();
-    const header = req.get("authorization") ?? "";
+  async check(req: Request, route: Pick<RouteOptions, "permission" | "feature" | "allowInactive">): Promise<void> {
+    const header = req.headers.get("authorization") ?? "";
     const [scheme, token] = header.split(" ");
     if (scheme !== "Bearer" || !token) throw new AppError("UNAUTHENTICATED", "Missing bearer token");
 
     const payload = await this.tokens.verifyAccess(token);
-    const found = await this.prisma.scoped(
+    const found = await this.db.scoped(
       async (tx) => {
-        const session = await tx.session.findUnique({ where: { id: payload.sid } });
+        const session = await tx.session.findOne({ id: payload.sid });
         if (!session || session.revokedAt || session.userId !== payload.sub || session.tenantId !== payload.tid) return null;
         const [membership, subscription] = await Promise.all([
-          tx.membership.findFirst({ where: { tenantId: payload.tid, userId: payload.sub, status: "ACTIVE" } }),
-          tx.subscription.findUnique({ where: { tenantId: payload.tid }, include: { plan: true } }),
+          tx.membership.findOne({ tenantId: payload.tid, userId: payload.sub, status: "ACTIVE" }),
+          subscriptionOf(tx, payload.tid).catch(() => null),
         ]);
         return membership && subscription ? { membership, subscription } : null;
       },
@@ -63,16 +54,15 @@ export class AuthGuard implements CanActivate {
     });
 
     // Suspended / canceled workspaces are read-only until paid
-    if (INACTIVE_STATUSES.has(subscription.status) && req.method !== "GET" && !this.reflector.getAllAndOverride<boolean>(ALLOW_INACTIVE, targets)) {
+    if (INACTIVE_STATUSES.has(subscription.status) && req.method !== "GET" && !route.allowInactive) {
       throw new AppError("SUBSCRIPTION_INACTIVE", "The subscription is not active; the workspace is read-only", { status: subscription.status });
     }
-    const feature = this.reflector.getAllAndOverride<string | undefined>(REQUIRED_FEATURE, targets);
+    const feature = route.feature;
     if (feature && !features.includes(feature)) {
       throw new AppError("FEATURE_NOT_IN_PLAN", `The ${subscription.plan.code} plan does not include ${feature}`, { feature, plan: subscription.plan.code });
     }
 
-    const required = this.reflector.getAllAndOverride<Permission | undefined>(REQUIRED_PERMISSION, targets);
+    const required = route.permission;
     if (required && !permissions.includes(required)) throw forbidden(`Requires permission ${required}`);
-    return true;
   }
 }

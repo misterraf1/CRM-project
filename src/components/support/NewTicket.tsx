@@ -1,6 +1,6 @@
 "use client";
 
-import { TICKET_PRIORITIES, type TicketDto } from "@axis/shared";
+import { TICKET_PRIORITIES, type TicketDto } from "@/shared";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { api } from "@/lib/api/client";

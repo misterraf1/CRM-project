@@ -1,13 +1,12 @@
-import type { INestApplication } from "@nestjs/common";
-import type { BillingOverviewDto, CheckoutResponse, InvoiceDto } from "@axis/shared";
+import type { BillingOverviewDto, CheckoutResponse, InvoiceDto } from "@/shared";
 import request from "supertest";
-import { BillingJob } from "../src/billing/billing.job";
-import { addMember, createApp, setPlan, signup, withRawDb, type Company } from "./helpers";
+import { BillingJob } from "@/server/billing/billing.job";
+import { addMember, createApp, setPlan, signup, withRawDb, type Company, type TestApp } from "./helpers";
 
 const DAY = 86_400_000;
 
 describe("Billing (demo provider)", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {
@@ -70,7 +69,7 @@ describe("Billing (demo provider)", () => {
     const owner = await signup(app);
     await http().get("/v1/deals").set(owner.auth).expect(200);
     await setPlan(await tenantOf(owner), "START");
-    await withRawDb(async (db) => db.subscription.update({ where: { tenantId: await tenantOf(owner) }, data: { status: "ACTIVE" } }));
+    await withRawDb(async (db) => db.subscription.update({ tenantId: await tenantOf(owner) }, { $set: { status: "ACTIVE" } }));
 
     const res = await http().get("/v1/deals").set(owner.auth).expect(402);
     expect(res.body.error).toMatchObject({ code: "FEATURE_NOT_IN_PLAN", details: { feature: "deals.pipeline", plan: "START" } });
@@ -89,9 +88,9 @@ describe("Billing (demo provider)", () => {
     const tenantId = await tenantOf(owner);
     // Move to the middle of the period
     await withRawDb(async (db) => {
-      const s = await db.subscription.findUniqueOrThrow({ where: { tenantId } });
+      const s = await db.subscription.get({ tenantId });
       const len = s.currentPeriodEnd.getTime() - s.currentPeriodStart.getTime();
-      await db.subscription.update({ where: { tenantId }, data: { currentPeriodStart: new Date(Date.now() - len / 2), currentPeriodEnd: new Date(Date.now() + len / 2) } });
+      await db.subscription.update({ tenantId }, { $set: { currentPeriodStart: new Date(Date.now() - len / 2), currentPeriodEnd: new Date(Date.now() + len / 2) } });
     });
     const periodEnd = (await overview(owner)).subscription.currentPeriodEnd;
     const co = (await checkout(owner, "BUSINESS").expect(201)).body as CheckoutResponse;
@@ -136,7 +135,7 @@ describe("Billing (demo provider)", () => {
     expect((new Date(renewal.periodEnd).getTime() - new Date(renewal.periodStart).getTime()) / DAY).toBeGreaterThanOrEqual(28);
     // The real job (no demo shortcut) renews from the stored period end
     const end = new Date(Date.now() - 60_000);
-    await withRawDb((db) => db.subscription.update({ where: { tenantId }, data: { currentPeriodEnd: end } }));
+    await withRawDb((db) => db.subscription.update({ tenantId }, { $set: { currentPeriodEnd: end } }));
     await app.get(BillingJob).run();
     expect((await overview(owner)).subscription.currentPeriodStart).toBe(end.toISOString());
     expect(renewed.invoices[0]).toMatchObject({ kind: "renewal", status: "PAID", amount: 9900 });
@@ -190,7 +189,7 @@ describe("Billing (demo provider)", () => {
   it("trial: reminder 3 days before, suspended when it ends unpaid", async () => {
     const owner = await signup(app);
     const tenantId = await tenantOf(owner);
-    await withRawDb((db) => db.subscription.update({ where: { tenantId }, data: { trialEndsAt: new Date(Date.now() + 2 * DAY) } }));
+    await withRawDb((db) => db.subscription.update({ tenantId }, { $set: { trialEndsAt: new Date(Date.now() + 2 * DAY) } }));
     await app.get(BillingJob).run();
     expect(await notices(owner)).toContain("billing_trial_ending");
     expect((await overview(owner)).subscription.status).toBe("TRIALING");

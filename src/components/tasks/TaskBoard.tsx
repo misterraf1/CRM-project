@@ -1,6 +1,6 @@
 "use client";
 
-import type { TaskDto, TaskStatus } from "@axis/shared";
+import type { TaskDto, TaskStatus } from "@/shared";
 import clsx from "clsx";
 import Link from "next/link";
 import { useMemo, useRef, useState, type DragEvent } from "react";

@@ -1,4 +1,4 @@
-import type { AuthTokens } from "@axis/shared";
+import type { AuthTokens } from "@/shared";
 import { NextResponse, type NextRequest } from "next/server";
 import { apiPublic } from "@/lib/api/server";
 import { safeNext, writeTokens } from "@/lib/auth/cookies";

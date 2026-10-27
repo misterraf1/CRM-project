@@ -9,7 +9,7 @@ import {
   type AutomationRunDto,
   type AutomationTrigger,
   type StageDto,
-} from "@axis/shared";
+} from "@/shared";
 import clsx from "clsx";
 import { Pencil, Plus, Trash2, X, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";

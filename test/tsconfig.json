@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "isolatedModules": false,
+    "allowImportingTsExtensions": false,
+    "jsx": "react-jsx",
+    "types": ["jest", "node"]
+  },
+  "include": ["../src/server", "../src/shared", "."]
+}

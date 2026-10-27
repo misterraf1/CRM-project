@@ -1,10 +1,9 @@
-import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { createHash } from "node:crypto";
-import { createApp, PASSWORD, signup, uniqueEmail, withRawDb } from "./helpers";
+import { createApp, PASSWORD, signup, uniqueEmail, withRawDb, type TestApp } from "./helpers";
 
 describe("Auth", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {
@@ -76,8 +75,8 @@ describe("Auth", () => {
     // 30 s are tolerated, so age this family's rotation timestamps past that window.
     const hash = createHash("sha256").update(tokens.refreshToken).digest("hex");
     await withRawDb(async (db) => {
-      const { familyId } = await db.session.findUniqueOrThrow({ where: { tokenHash: hash } });
-      await db.session.updateMany({ where: { familyId, rotatedAt: { not: null } }, data: { rotatedAt: new Date(Date.now() - 3600_000) } });
+      const { familyId } = await db.session.get({ tokenHash: hash });
+      await db.session.updateMany({ familyId, rotatedAt: { $ne: null } }, { $set: { rotatedAt: new Date(Date.now() - 3600_000) } });
     });
 
     await http().post("/v1/auth/refresh").send({ refreshToken: tokens.refreshToken }).expect(401);

@@ -1,6 +1,6 @@
 "use client";
 
-import type { DashboardCrmDto } from "@axis/shared";
+import type { DashboardCrmDto } from "@/shared";
 import clsx from "clsx";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import Link from "next/link";

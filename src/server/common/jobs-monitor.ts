@@ -1,12 +1,11 @@
-import { Injectable, Logger } from "@nestjs/common";
-import type { JobHealth } from "@axis/shared";
+import { Logger } from "../common/logger";
+import type { JobHealth } from "@/shared";
 
 /**
  * Last-run bookkeeping for background jobs, shown on the platform System page.
  * Per instance and in memory — enough for one API process; moves to the queue's
  * own metrics with BullMQ.
  */
-@Injectable()
 export class JobsMonitor {
   private readonly logger = new Logger("Jobs");
   private readonly jobs = new Map<string, JobHealth>();

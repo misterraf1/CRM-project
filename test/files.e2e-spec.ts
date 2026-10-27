@@ -1,10 +1,9 @@
-import type { INestApplication } from "@nestjs/common";
-import type { FileListResponse, TaskDto } from "@axis/shared";
+import type { FileListResponse, TaskDto } from "@/shared";
 import request from "supertest";
-import { addMember, createApp, signup } from "./helpers";
+import { addMember, createApp, signup, type TestApp } from "./helpers";
 
 describe("Files section", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import type { InvoiceDto } from "@axis/shared";
+import type { InvoiceDto } from "@/shared";
 import { api } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";

@@ -1,12 +1,11 @@
-import type { INestApplication } from "@nestjs/common";
-import type { AutomationRuleDto, AutomationRunDto, ChannelDto, ContactDto, DealDto, PipelineDto, TaskDto } from "@axis/shared";
+import type { AutomationRuleDto, AutomationRunDto, ChannelDto, ContactDto, DealDto, PipelineDto, TaskDto } from "@/shared";
 import request from "supertest";
-import { AutomationRunner } from "../src/automations/automation.runner";
-import { OverdueJob } from "../src/tasks/overdue.job";
-import { addMember, createApp, setPlan, signup, withRawDb, type Company } from "./helpers";
+import { AutomationRunner } from "@/server/automations/automation.runner";
+import { OverdueJob } from "@/server/tasks/overdue.job";
+import { addMember, createApp, setPlan, signup, withRawDb, type Company, type TestApp } from "./helpers";
 
 describe("Automations", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
   const drain = () => app.get(AutomationRunner).drain();
 
@@ -122,10 +121,10 @@ describe("Automations", () => {
     // PRO has no automations: rules stay, but don't run
     const id = await tenantOf(owner);
     await setPlan(id, "PRO");
-    await withRawDb((db) => db.subscription.update({ where: { tenantId: id }, data: { status: "ACTIVE" } }));
-    await withRawDb((db) => db.automationEvent.create({ data: { tenantId: id, trigger: "contact.created", payload: { contactId: gone.id } } }));
+    await withRawDb((db) => db.subscription.update({ tenantId: id }, { $set: { status: "ACTIVE" } }));
+    await withRawDb((db) => db.automationEvent.insertOne({ tenantId: id, trigger: "contact.created", payload: { contactId: gone.id } }));
     await drain();
-    expect((await withRawDb((db) => db.automationRule.findUniqueOrThrow({ where: { id: r.id } }))).runCount).toBe(0);
+    expect((await withRawDb((db) => db.automationRule.get({ id: r.id }))).runCount).toBe(0);
     await http().get("/v1/automations").set(owner.auth).expect(402);
   });
 

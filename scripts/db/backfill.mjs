@@ -1,8 +1,8 @@
 import { MongoClient } from "mongodb";
 
-// MongoDB counterpart of schema migrations. Prisma fails to read a document that
-// lacks a required field, so every required field added to an existing model needs
-// a backfill here. Each step is idempotent (only touches documents missing the field).
+// MongoDB counterpart of schema migrations. The API expects every field of a model
+// (src/server/db/models.ts) to be present, so every required field added to an
+// existing model needs a backfill here. Each step is idempotent (only touches documents missing the field).
 
 export const BACKFILLS = [
   // Phase 6 — billing

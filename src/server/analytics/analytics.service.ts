@@ -1,11 +1,12 @@
-import { Injectable } from "@nestjs/common";
-import type { AnalyticsAdvancedDto, AnalyticsBasicDto, AnalyticsPeriod, ChannelType, MemberPerformance, MonthTrend } from "@axis/shared";
-import type { Prisma } from "@prisma/client";
+import type { AnalyticsAdvancedDto, AnalyticsBasicDto, AnalyticsPeriod, ChannelType, MemberPerformance, MonthTrend } from "@/shared";
 import { authedContext, type AuthedContext } from "../common/context";
 import { addDays, startOfDay, startOfMonth } from "../common/time";
 import { memberRefs, ownerScope } from "../crm/scope";
 import { inboxScope } from "../inbox/inbox.service";
-import { PrismaService, type Tx } from "../prisma/prisma.service";
+import type { Database, Tx } from "../db/database";
+import type { Deal } from "../db/models";
+import { and, countBy } from "../db/query";
+import type { Filter } from "../db/repo";
 import { taskScope } from "../tasks/tasks.service";
 
 const DAYS: Record<AnalyticsPeriod, number> = { "30d": 30, "90d": 90, "365d": 365 };
@@ -19,18 +20,23 @@ const minutes = (msList: number[]) => {
 };
 const rate = (part: number, whole: number) => (whole ? part / whole : null);
 
-type ClosedDeal = { amount: number; createdAt: Date; closedAt: Date | null; ownerId: string | null; contactId: string | null; lostReason: string | null; stage: { kind: string } };
+/** Deals with their stage's name and kind (open / won / lost). */
+async function withStages(tx: Tx, tenantId: string, deals: Deal[]) {
+  const stages = new Map((await tx.pipelineStage.find({ tenantId }, { projection: { id: 1, name: 1, kind: 1 } })).map((st) => [st.id, { name: st.name, kind: st.kind }]));
+  return deals.map((d) => ({ ...d, stage: stages.get(d.stageId) ?? { name: "", kind: "open" } }));
+}
+
+const DEAL_FIELDS = { amount: 1, createdAt: 1, closedAt: 1, ownerId: 1, contactId: 1, lostReason: 1, stageId: 1 } as const;
 
 /**
  * Analytics over the same visibility rules as the rest of the CRM: owners and admins
  * see the company, managers their department, others their own records.
  */
-@Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly db: Database) {}
 
   private async frame(tx: Tx, ctx: AuthedContext, period: AnalyticsPeriod) {
-    const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { timezone: true, currency: true } });
+    const tenant = await tx.tenant.get({ id: ctx.tenantId }, { projection: { timezone: 1, currency: 1 } });
     const now = new Date();
     const start = addDays(startOfDay(now, tenant.timezone), -(DAYS[period] - 1), tenant.timezone);
     const owners = await ownerScope(tx, ctx, "dashboard.view_all");
@@ -39,55 +45,45 @@ export class AnalyticsService {
 
   async basic(period: AnalyticsPeriod): Promise<AnalyticsBasicDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const { tenant, now, start, owners } = await this.frame(tx, ctx, period);
       const base = { tenantId: ctx.tenantId };
-      const dealWhere = (extra: Prisma.DealWhereInput): Prisma.DealWhereInput => ({ AND: [base, owners.where, extra] });
-      const select = { amount: true, createdAt: true, closedAt: true, ownerId: true, contactId: true, lostReason: true, stage: { select: { kind: true } } } as const;
+      const dealWhere = (extra: Filter) => and(base, owners.where, extra);
+      const deals = async (where: Filter) => withStages(tx, ctx.tenantId, await tx.deal.find(where, { projection: DEAL_FIELDS }));
 
-      const pipeline = await tx.pipeline.findFirst({ where: { tenantId: ctx.tenantId, isDefault: true }, include: { stages: { orderBy: { order: "asc" } } } });
+      const defaultPipeline = await tx.pipeline.findOne({ tenantId: ctx.tenantId, isDefault: true });
+      const pipeline = defaultPipeline && {
+        ...defaultPipeline,
+        stages: await tx.pipelineStage.find({ tenantId: ctx.tenantId, pipelineId: defaultPipeline.id }, { sort: { order: 1 } }),
+      };
       const { where: taskWhere } = await taskScope(tx, ctx);
       const convScope = await inboxScope(tx, ctx);
 
       const [createdDeals, closedDeals, byStage, contacts, conversations, tasksCreated, tasksDone, overdueOpen] = await Promise.all([
-        tx.deal.findMany({ where: dealWhere({ createdAt: { gte: start } }), select }),
-        tx.deal.findMany({ where: dealWhere({ closedAt: { gte: start, not: null } }), select }),
+        deals(dealWhere({ createdAt: { $gte: start } })),
+        deals(dealWhere({ closedAt: { $gte: start, $ne: null } })),
         pipeline
-          ? tx.deal.groupBy({
-              by: ["stageId"],
-              // Open stages: everything sitting there now; won/lost: closed in the period
-              where: dealWhere({ pipelineId: pipeline.id, OR: [{ closedAt: null }, { closedAt: { gte: start } }] }),
-              _count: true,
-              _sum: { amount: true },
-            })
-          : [],
-        tx.contact.findMany({
-          where: { AND: [base, owners.where, { deletedAt: null, createdAt: { gte: start } }] },
-          select: { id: true, source: true, stage: true },
-        }),
-        tx.conversation.findMany({
-          where: { AND: [base, convScope, { createdAt: { gte: start } }] },
-          select: { firstResponseMs: true, channel: { select: { type: true } } },
-        }),
-        tx.task.count({ where: { AND: [base, taskWhere, { parentId: null, createdAt: { gte: start } }] } }),
-        tx.task.findMany({
-          where: { AND: [base, taskWhere, { parentId: null, status: "DONE", completedAt: { gte: start, not: null } }] },
-          select: { completedAt: true, dueAt: true },
-        }),
-        tx.task.count({ where: { AND: [base, taskWhere, { parentId: null, status: { notIn: ["DONE", "CANCELED"] }, dueAt: { lt: now, not: null } }] } }),
+          ? // Open stages: everything sitting there now; won/lost: closed in the period
+            countBy(tx.deal, "stageId", dealWhere({ pipelineId: pipeline.id, $or: [{ closedAt: null }, { closedAt: { $gte: start } }] }), "amount")
+          : new Map<string, { count: number; sum: number }>(),
+        tx.contact.find(and(base, owners.where, { deletedAt: null, createdAt: { $gte: start } }), { projection: { id: 1, source: 1, stage: 1 } }),
+        tx.conversation.find(and(base, convScope, { createdAt: { $gte: start } }), { projection: { firstResponseMs: 1, channelId: 1 } }),
+        tx.task.count(and(base, taskWhere, { parentId: null, createdAt: { $gte: start } })),
+        tx.task.find(and(base, taskWhere, { parentId: null, status: "DONE", completedAt: { $gte: start, $ne: null } }), { projection: { completedAt: 1, dueAt: 1 } }),
+        tx.task.count(and(base, taskWhere, { parentId: null, status: { $nin: ["DONE", "CANCELED"] }, dueAt: { $lt: now, $ne: null } })),
       ]);
+      const channelType = new Map((await tx.channel.find({ tenantId: ctx.tenantId }, { projection: { id: 1, type: 1 } })).map((ch) => [ch.id, ch.type]));
 
       const won = closedDeals.filter((d) => d.stage.kind === "won");
       const lost = closedDeals.filter((d) => d.stage.kind === "lost");
       const wonAmount = won.reduce((a, d) => a + d.amount, 0);
 
-      const stageCounts = new Map(byStage.map((s) => [s.stageId, s]));
       const funnel = (pipeline?.stages ?? []).map((s) => ({
         stageId: s.id,
         name: s.name,
         kind: s.kind as "open" | "won" | "lost",
-        deals: stageCounts.get(s.id)?._count ?? 0,
-        amount: stageCounts.get(s.id)?._sum.amount ?? 0,
+        deals: byStage.get(s.id)?.count ?? 0,
+        amount: byStage.get(s.id)?.sum ?? 0,
       }));
 
       const reasons = new Map<string, { deals: number; amount: number }>();
@@ -121,8 +117,9 @@ export class AnalyticsService {
       const channels = new Map<string, number[]>();
       const channelCount = new Map<string, number>();
       for (const c of conversations) {
-        channelCount.set(c.channel.type, (channelCount.get(c.channel.type) ?? 0) + 1);
-        if (c.firstResponseMs !== null) channels.set(c.channel.type, [...(channels.get(c.channel.type) ?? []), c.firstResponseMs]);
+        const type = channelType.get(c.channelId) ?? "WEBCHAT";
+        channelCount.set(type, (channelCount.get(type) ?? 0) + 1);
+        if (c.firstResponseMs !== null) channels.set(type, [...(channels.get(type) ?? []), c.firstResponseMs]);
       }
 
       return {
@@ -160,14 +157,13 @@ export class AnalyticsService {
 
   async advanced(period: AnalyticsPeriod): Promise<AnalyticsAdvancedDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const { tenant, start, owners, now } = await this.frame(tx, ctx, period);
       const base = { tenantId: ctx.tenantId };
-      const members = await tx.membership.findMany({
-        where: { tenantId: ctx.tenantId, status: "ACTIVE", ...(owners.memberIds ? { id: { in: owners.memberIds } } : {}) },
-        select: { id: true },
-        orderBy: { createdAt: "asc" },
-      });
+      const members = await tx.membership.find(
+        { tenantId: ctx.tenantId, status: "ACTIVE", ...(owners.memberIds ? { id: { $in: owners.memberIds } } : {}) },
+        { projection: { id: 1 }, sort: { createdAt: 1 } },
+      );
       const ids = members.map((m) => m.id);
 
       // 12 local calendar months, oldest first
@@ -175,25 +171,24 @@ export class AnalyticsService {
       while (monthStarts.length < 12) monthStarts.unshift(startOfMonth(addDays(monthStarts[0]!, -1, tenant.timezone), tenant.timezone));
       const trendStart = monthStarts[0]!;
 
+      const wonStages = (await tx.pipelineStage.find({ tenantId: ctx.tenantId, kind: "won" }, { projection: { id: 1 } })).map((st) => st.id);
       const [refs, created, closed, tasksDone, conversations, trendContacts, trendWon] = await Promise.all([
         memberRefs(tx, ctx.tenantId, ids),
-        tx.deal.groupBy({ by: ["ownerId"], where: { ...base, ownerId: { in: ids }, createdAt: { gte: start } }, _count: true }),
-        tx.deal.findMany({
-          where: { ...base, ownerId: { in: ids }, closedAt: { gte: start, not: null } },
-          select: { amount: true, createdAt: true, closedAt: true, ownerId: true, contactId: true, lostReason: true, stage: { select: { kind: true } } },
-        }),
-        tx.task.findMany({
-          where: { ...base, parentId: null, assigneeId: { in: ids }, status: "DONE", completedAt: { gte: start, not: null } },
-          select: { assigneeId: true, completedAt: true, dueAt: true },
-        }),
-        tx.conversation.findMany({ where: { ...base, assigneeId: { in: ids }, createdAt: { gte: start } }, select: { assigneeId: true, firstResponseMs: true } }),
-        tx.contact.findMany({ where: { AND: [base, owners.where, { deletedAt: null, createdAt: { gte: trendStart } }] }, select: { createdAt: true } }),
-        tx.deal.findMany({ where: { AND: [base, owners.where, { stage: { kind: "won" }, closedAt: { gte: trendStart, not: null } }] }, select: { amount: true, closedAt: true } }),
+        countBy(tx.deal, "ownerId", { ...base, ownerId: { $in: ids }, createdAt: { $gte: start } }),
+        tx.deal
+          .find({ ...base, ownerId: { $in: ids }, closedAt: { $gte: start, $ne: null } }, { projection: DEAL_FIELDS })
+          .then((rows) => withStages(tx, ctx.tenantId, rows)),
+        tx.task.find(
+          { ...base, parentId: null, assigneeId: { $in: ids }, status: "DONE", completedAt: { $gte: start, $ne: null } },
+          { projection: { assigneeId: 1, completedAt: 1, dueAt: 1 } },
+        ),
+        tx.conversation.find({ ...base, assigneeId: { $in: ids }, createdAt: { $gte: start } }, { projection: { assigneeId: 1, firstResponseMs: 1 } }),
+        tx.contact.find(and(base, owners.where, { deletedAt: null, createdAt: { $gte: trendStart } }), { projection: { createdAt: 1 } }),
+        tx.deal.find(and(base, owners.where, { stageId: { $in: wonStages }, closedAt: { $gte: trendStart, $ne: null } }), { projection: { amount: 1, closedAt: 1 } }),
       ]);
 
-      const createdBy = new Map(created.map((c) => [c.ownerId, c._count]));
       const perMember: MemberPerformance[] = ids.map((id) => {
-        const mine = (closed as ClosedDeal[]).filter((d) => d.ownerId === id);
+        const mine = closed.filter((d) => d.ownerId === id);
         const w = mine.filter((d) => d.stage.kind === "won");
         const l = mine.filter((d) => d.stage.kind === "lost");
         const done = tasksDone.filter((t) => t.assigneeId === id);
@@ -201,7 +196,7 @@ export class AnalyticsService {
         const convs = conversations.filter((c) => c.assigneeId === id);
         return {
           member: refs.get(id) ?? { id, name: "—", title: null },
-          dealsCreated: createdBy.get(id) ?? 0,
+          dealsCreated: created.get(id)?.count ?? 0,
           dealsWon: w.length,
           dealsLost: l.length,
           winRate: rate(w.length, w.length + l.length),
@@ -235,13 +230,12 @@ export class AnalyticsService {
   /** Deals created in the period as CSV (UTF-8 with BOM so Excel shows Azerbaijani letters). */
   async exportDeals(period: AnalyticsPeriod): Promise<string> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const { start, owners } = await this.frame(tx, ctx, period);
-      const deals = await tx.deal.findMany({
-        where: { AND: [{ tenantId: ctx.tenantId }, owners.where, { createdAt: { gte: start } }] },
-        orderBy: { createdAt: "asc" },
-        include: { stage: { select: { name: true, kind: true } }, contact: { select: { name: true, source: true } } },
-      });
+      const rows0 = await withStages(tx, ctx.tenantId, await tx.deal.find(and({ tenantId: ctx.tenantId }, owners.where, { createdAt: { $gte: start } }), { sort: { createdAt: 1 } }));
+      const contactIds = [...new Set(rows0.map((d) => d.contactId).filter((x): x is string => !!x))];
+      const contacts = new Map((await tx.contact.find({ tenantId: ctx.tenantId, id: { $in: contactIds } }, { projection: { id: 1, name: 1, source: 1 } })).map((c) => [c.id, c]));
+      const deals = rows0.map((d) => ({ ...d, contact: (d.contactId && contacts.get(d.contactId)) || null }));
       const refs = await memberRefs(tx, ctx.tenantId, deals.map((d) => d.ownerId));
       const cell = (v: string | number | null | undefined) => {
         const s = v === null || v === undefined ? "" : String(v);

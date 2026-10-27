@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ChannelIcon } from "@/components/ui/ChannelIcon";
-import type { DashboardCrmDto } from "@axis/shared";
+import type { DashboardCrmDto } from "@/shared";
 import { formatDuration } from "@/lib/format";
 import type { Dictionary } from "@/lib/i18n/dictionaries/az";
 import { interpolate, type Locale } from "@/lib/i18n/locales";

@@ -1,68 +1,28 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from "@nestjs/common";
-import {
-  dealCreateSchema,
-  dealListQuerySchema,
-  dealMoveSchema,
-  dealUpdateSchema,
-  type DealCreateInput,
-  type DealListQuery,
-  type DealMoveInput,
-  type DealUpdateInput,
-} from "@axis/shared";
+import { dealCreateSchema, dealListQuerySchema, dealMoveSchema, dealUpdateSchema } from "@/shared";
 import { z } from "zod";
-import { RequireFeature, RequirePermission } from "../common/decorators";
-import { ZodPipe } from "../common/zod.pipe";
-import { DealsService } from "./deals.service";
+import type { Services } from "../container";
+import type { Router } from "../http/router";
 
 const forecastQuery = z.object({ pipelineId: z.string().min(1).max(64).optional() });
 
 // Sales pipeline: PRO and up
-@RequireFeature("deals.pipeline")
-@Controller("v1")
-export class DealsController {
-  constructor(private readonly deals: DealsService) {}
+export function dealsRoutes(router: Router, s: Services) {
+  router.group("/v1", { feature: "deals.pipeline" }, (r) => {
+    r.get("pipelines", () => s.deals.pipelines());
 
-  @Get("pipelines")
-  pipelines() {
-    return this.deals.pipelines();
-  }
+    r.get("deals", { query: dealListQuerySchema }, ({ query }) => s.deals.list(query));
 
-  @Get("deals")
-  list(@Query(new ZodPipe(dealListQuerySchema)) query: DealListQuery) {
-    return this.deals.list(query);
-  }
+    // Declared before :id so "forecast" isn't captured as an id
+    r.get("deals/forecast", { query: forecastQuery }, ({ query }) => s.deals.forecast(query.pipelineId));
 
-  // Declared before :id so "forecast" isn't captured as an id
-  @Get("deals/forecast")
-  forecast(@Query(new ZodPipe(forecastQuery)) query: z.infer<typeof forecastQuery>) {
-    return this.deals.forecast(query.pipelineId);
-  }
+    r.post("deals", { body: dealCreateSchema }, ({ body }) => s.deals.create(body));
 
-  @Post("deals")
-  create(@Body(new ZodPipe(dealCreateSchema)) body: DealCreateInput) {
-    return this.deals.create(body);
-  }
+    r.get("deals/:id", ({ params }) => s.deals.get(params.id!));
 
-  @Get("deals/:id")
-  get(@Param("id") id: string) {
-    return this.deals.get(id);
-  }
+    r.patch("deals/:id", { body: dealUpdateSchema }, ({ params, body }) => s.deals.update(params.id!, body));
 
-  @Patch("deals/:id")
-  update(@Param("id") id: string, @Body(new ZodPipe(dealUpdateSchema)) body: DealUpdateInput) {
-    return this.deals.update(id, body);
-  }
+    r.post("deals/:id/move", { status: 200, body: dealMoveSchema }, ({ params, body }) => s.deals.move(params.id!, body));
 
-  @HttpCode(200)
-  @Post("deals/:id/move")
-  move(@Param("id") id: string, @Body(new ZodPipe(dealMoveSchema)) body: DealMoveInput) {
-    return this.deals.move(id, body);
-  }
-
-  @RequirePermission("deals.delete")
-  @HttpCode(204)
-  @Delete("deals/:id")
-  remove(@Param("id") id: string) {
-    return this.deals.remove(id);
-  }
+    r.delete("deals/:id", { permission: "deals.delete", status: 204 }, ({ params }) => s.deals.remove(params.id!));
+  });
 }

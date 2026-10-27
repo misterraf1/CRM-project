@@ -1,8 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ACCESS_COOKIE, ADMIN_COOKIE, REFRESH_COOKIE } from "./lib/auth/cookies";
 
-// The website chat widget and its API calls are used by anonymous site visitors
-const PUBLIC = [/^\/login$/, /^\/signup$/, /^\/forgot-password$/, /^\/reset-password\//, /^\/invite\//, /^\/auth\//, /^\/widget\//, /^\/api\/v1\/widget\//];
+// The website chat widget and its API calls are used by anonymous site visitors;
+// provider webhooks, the health check and the cron trigger authenticate themselves
+const PUBLIC = [
+  /^\/login$/,
+  /^\/signup$/,
+  /^\/forgot-password$/,
+  /^\/reset-password\//,
+  /^\/invite\//,
+  /^\/auth\//,
+  /^\/widget\//,
+  /^\/api\/v1\/widget\//,
+  /^\/v1\/webhooks\//,
+  /^\/health$/,
+  /^\/api\/cron$/,
+];
 
 function unauthenticated(req: NextRequest) {
   if (req.nextUrl.pathname.startsWith("/api/")) {
@@ -18,7 +31,7 @@ function unauthenticated(req: NextRequest) {
 /**
  * Keeps the session alive: when the short-lived access cookie is gone but a refresh
  * token exists, pages detour through /auth/refresh and the API proxy refreshes inline.
- * Middleware never calls the API: on Vercel the service binding isn't available here.
+ * Middleware never calls the API (it runs before route handlers and stays cheap).
  */
 export async function middleware(req: NextRequest) {
   // Platform console: its own session, never the company one
@@ -55,7 +68,6 @@ function adminGate(req: NextRequest) {
 }
 
 export const config = {
-  // Vercel services don't run Edge Functions
   runtime: "nodejs",
   matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.[a-z0-9]+$).*)"],
 };

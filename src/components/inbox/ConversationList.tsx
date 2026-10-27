@@ -1,4 +1,4 @@
-import type { ConversationListItemDto } from "@axis/shared";
+import type { ConversationListItemDto } from "@/shared";
 import clsx from "clsx";
 import Link from "next/link";
 import { DemoBadge } from "@/components/ui/Card";

@@ -1,15 +1,13 @@
-import { Injectable } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
-import type { NotificationDto, NotificationListResponse, NotificationType, ShellSummaryDto } from "@axis/shared";
+import type { NotificationDto, NotificationListResponse, NotificationType, ShellSummaryDto } from "@/shared";
 import { authedContext } from "../common/context";
 import { notFound } from "../common/errors";
 import { unreadChatTotal } from "../chat/unread";
 import { inboxScope } from "../inbox/inbox.service";
-import { PrismaService, type Tx } from "../prisma/prisma.service";
+import type { Database, Tx } from "../db/database";
+import type { Notification } from "../db/models";
 
-@Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly db: Database) {}
 
   /** In-app notifications, written in the caller's transaction. The actor is never notified of their own action. */
   async notify(
@@ -17,21 +15,21 @@ export class NotificationsService {
     tenantId: string,
     recipients: (string | null | undefined)[],
     type: NotificationType,
-    payload: Prisma.InputJsonObject,
+    payload: Record<string, unknown>,
     exceptMemberId?: string,
   ) {
     const memberIds = [...new Set(recipients.filter((id): id is string => !!id && id !== exceptMemberId))];
     if (!memberIds.length) return;
-    await tx.notification.createMany({ data: memberIds.map((memberId) => ({ tenantId, memberId, type, payload })) });
+    await tx.notification.insertMany(memberIds.map((memberId) => ({ tenantId, memberId, type, payload: payload as Notification["payload"] })));
   }
 
   async list(): Promise<NotificationListResponse> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const where = { tenantId: ctx.tenantId, memberId: ctx.membershipId };
       const [rows, unread] = await Promise.all([
-        tx.notification.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 30 }),
-        tx.notification.count({ where: { ...where, readAt: null } }),
+        tx.notification.find(where, { sort: { createdAt: -1, id: -1 }, limit: 30 }),
+        tx.notification.count({ ...where, readAt: null }),
       ]);
       return {
         unread,
@@ -50,33 +48,26 @@ export class NotificationsService {
 
   async markRead(id: string) {
     const ctx = authedContext();
-    await this.prisma.scoped(async (tx) => {
-      const res = await tx.notification.updateMany({
-        where: { id, tenantId: ctx.tenantId, memberId: ctx.membershipId, readAt: null },
-        data: { readAt: new Date() },
-      });
-      if (!res.count && !(await tx.notification.count({ where: { id, memberId: ctx.membershipId } }))) throw notFound("Notification");
+    await this.db.scoped(async (tx) => {
+      const res = await tx.notification.updateMany({ id, tenantId: ctx.tenantId, memberId: ctx.membershipId, readAt: null }, { $set: { readAt: new Date() } });
+      if (!res.count && !(await tx.notification.count({ id, memberId: ctx.membershipId }))) throw notFound("Notification");
     });
   }
 
   async markAllRead() {
     const ctx = authedContext();
-    await this.prisma.scoped((tx) =>
-      tx.notification.updateMany({ where: { tenantId: ctx.tenantId, memberId: ctx.membershipId, readAt: null }, data: { readAt: new Date() } }),
-    );
+    await this.db.scoped((tx) => tx.notification.updateMany({ tenantId: ctx.tenantId, memberId: ctx.membershipId, readAt: null }, { $set: { readAt: new Date() } }));
   }
 
   /** Counters for the app shell (sidebar badge, bell). */
   async summary(): Promise<ShellSummaryDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const scoped = await inboxScope(tx, ctx);
       const [overdueTasks, unreadNotifications, awaitingConversations, unreadChat] = await Promise.all([
-        tx.task.count({
-          where: { tenantId: ctx.tenantId, assigneeId: ctx.membershipId, status: { notIn: ["DONE", "CANCELED"] }, dueAt: { lt: new Date(), not: null } },
-        }),
-        tx.notification.count({ where: { tenantId: ctx.tenantId, memberId: ctx.membershipId, readAt: null } }),
-        tx.conversation.count({ where: { AND: [{ tenantId: ctx.tenantId, awaitingSince: { not: null }, status: { not: "RESOLVED" } }, scoped] } }),
+        tx.task.count({ tenantId: ctx.tenantId, assigneeId: ctx.membershipId, status: { $nin: ["DONE", "CANCELED"] }, dueAt: { $lt: new Date(), $ne: null } }),
+        tx.notification.count({ tenantId: ctx.tenantId, memberId: ctx.membershipId, readAt: null }),
+        tx.conversation.count({ $and: [{ tenantId: ctx.tenantId, awaitingSince: { $ne: null }, status: { $ne: "RESOLVED" } }, scoped] }),
         unreadChatTotal(tx, ctx),
       ]);
       return { overdueTasks, unreadNotifications, awaitingConversations, unreadChat };

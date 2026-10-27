@@ -1,4 +1,4 @@
-import type { InvoiceLineDto, MeResponse, SubscriptionStatus } from "@axis/shared";
+import type { InvoiceLineDto, MeResponse, SubscriptionStatus } from "@/shared";
 import type { Dictionary } from "./i18n/dictionaries/az";
 import { interpolate } from "./i18n/locales";
 

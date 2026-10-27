@@ -1,15 +1,14 @@
-import type { INestApplication } from "@nestjs/common";
-import type { CheckoutResponse, InviteCreatedResponse, SystemHealthDto } from "@axis/shared";
+import type { CheckoutResponse, InviteCreatedResponse, SystemHealthDto } from "@/shared";
 import nodemailer from "nodemailer";
 import request from "supertest";
-import { config } from "../src/config";
-import { MailService } from "../src/mail/mail.service";
-import { createApp, platformStaff, signup, uniqueEmail, withRawDb, PASSWORD } from "./helpers";
+import { config } from "@/server/config";
+import { MailService } from "@/server/mail/mail.service";
+import { createApp, platformStaff, signup, uniqueEmail, withRawDb, PASSWORD, type TestApp } from "./helpers";
 
 describe("Email", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
-  const mailTo = (to: string) => withRawDb((db) => db.emailMessage.findMany({ where: { to }, orderBy: { createdAt: "asc" } }));
+  const mailTo = (to: string) => withRawDb((db) => db.emailMessage.find({ to }, { sort: { createdAt: 1 } }));
 
   beforeAll(async () => {
     app = await createApp();

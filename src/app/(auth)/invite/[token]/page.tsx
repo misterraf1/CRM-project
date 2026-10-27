@@ -1,4 +1,4 @@
-import type { InvitePreview } from "@axis/shared";
+import type { InvitePreview } from "@/shared";
 import { Link2Off } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";

@@ -1,6 +1,6 @@
 "use client";
 
-import type { NotificationDto, NotificationListResponse } from "@axis/shared";
+import type { NotificationDto, NotificationListResponse } from "@/shared";
 import clsx from "clsx";
 import { Bell } from "lucide-react";
 import { useRouter } from "next/navigation";

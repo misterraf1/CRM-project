@@ -1,7 +1,6 @@
-import { Injectable } from "@nestjs/common";
-import { JwtService } from "@nestjs/jwt";
-import type { AdminMe, AdminMfaChallenge, AdminTokens, MfaEnabledDto, MfaSetupDto, PlatformRole } from "@axis/shared";
-import type { User } from "@prisma/client";
+import { JwtService } from "../common/jwt";
+import type { AdminMe, AdminMfaChallenge, AdminTokens, MfaEnabledDto, MfaSetupDto, PlatformRole } from "@/shared";
+import type { User } from "../db/models";
 import { randomBytes } from "node:crypto";
 import QRCode from "qrcode";
 import { verifyPassword } from "../auth/password";
@@ -11,7 +10,7 @@ import { AppError } from "../common/errors";
 import { sha256 } from "../common/ids";
 import { openCredentials, sealCredentials } from "../common/secrets";
 import { base32Encode, newTotpSecret, otpauthUri, verifyTotp } from "../common/totp";
-import { PrismaService } from "../prisma/prisma.service";
+import type { Database } from "../db/database";
 
 /** Admin tokens use their own issuer, so a tenant token can never pass as one (and vice versa). */
 export const ADMIN_ISSUER = "axis-admin";
@@ -27,22 +26,19 @@ export interface AdminPayload {
 
 const normaliseRecovery = (code: string) => code.replace(/[\s-]/g, "").toUpperCase();
 
-@Injectable()
 export class AdminAuthService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly jwt: JwtService,
   ) {}
 
   private user(id: string) {
-    return this.prisma.system(() => this.prisma.user.findUniqueOrThrow({ where: { id } }));
+    return this.db.system.user.get({ id });
   }
 
   private audit(userId: string, action: string) {
     const ctx = currentContext();
-    return this.prisma.system(() =>
-      this.prisma.auditLog.create({ data: { tenantId: null, actorId: userId, action, entityType: "user", entityId: userId, ip: ctx.ip } }),
-    );
+    return this.db.system.auditLog.insertOne({ tenantId: null, actorId: userId, action, entityType: "user", entityId: userId, ip: ctx.ip ?? null });
   }
 
   /**
@@ -50,7 +46,7 @@ export class AdminAuthService {
    * With 2FA on, a correct password only yields a challenge for the code step.
    */
   async login(email: string, password: string): Promise<AdminTokens | AdminMfaChallenge> {
-    const user = await this.prisma.system(() => this.prisma.user.findUnique({ where: { email } }));
+    const user = await this.db.system.user.findOne({ email });
     const ok = await verifyPassword(user?.passwordHash, password);
     if (!ok || !user || user.platformRole === "NONE") throw new AppError("INVALID_CREDENTIALS", "Email or password is incorrect");
     if (user.mfaEnabledAt) {
@@ -76,9 +72,9 @@ export class AdminAuthService {
   private async issue(userId: string): Promise<AdminTokens> {
     const ctx = currentContext();
     const expiresAt = new Date(Date.now() + SESSION_HOURS * 3_600_000);
-    const session = await this.prisma.systemTx(async (tx) => {
-      const s = await tx.adminSession.create({ data: { userId, expiresAt, ip: ctx.ip, userAgent: ctx.userAgent } });
-      await tx.auditLog.create({ data: { tenantId: null, actorId: userId, action: "platform.login", entityType: "user", entityId: userId, ip: ctx.ip } });
+    const session = await this.db.systemTx(async (tx) => {
+      const s = await tx.adminSession.insertOne({ userId, expiresAt, ip: ctx.ip ?? null, userAgent: ctx.userAgent ?? null });
+      await tx.auditLog.insertOne({ tenantId: null, actorId: userId, action: "platform.login", entityType: "user", entityId: userId, ip: ctx.ip ?? null });
       return s;
     });
     const accessToken = await this.jwt.signAsync({ sub: userId, sid: session.id } satisfies AdminPayload, {
@@ -99,24 +95,17 @@ export class AdminAuthService {
    */
   private async consumeCode(user: User, code: string, allowRecovery: boolean): Promise<boolean> {
     const secret = this.secretOf(user);
-    const db = this.prisma;
+    const users = this.db.system.user;
     if (secret && /^\d{6}$/.test(code.replace(/\s/g, ""))) {
       const step = verifyTotp(secret, code);
       if (step === null) return false;
-      const claimed = await this.prisma.system(() =>
-        db.user.updateMany({ where: { id: user.id, OR: [{ mfaLastStep: null }, { mfaLastStep: { lt: step } }] }, data: { mfaLastStep: step } }),
-      );
+      const claimed = await users.updateMany({ id: user.id, $or: [{ mfaLastStep: null }, { mfaLastStep: { $lt: step } }] }, { $set: { mfaLastStep: step } });
       return claimed.count === 1;
     }
     if (!allowRecovery) return false;
     const hash = sha256(normaliseRecovery(code));
     if (!user.mfaRecoveryCodes.includes(hash)) return false;
-    const claimed = await this.prisma.system(() =>
-      db.user.updateMany({
-        where: { id: user.id, mfaRecoveryCodes: { has: hash } },
-        data: { mfaRecoveryCodes: user.mfaRecoveryCodes.filter((h) => h !== hash) },
-      }),
-    );
+    const claimed = await users.updateMany({ id: user.id, mfaRecoveryCodes: hash }, { $pull: { mfaRecoveryCodes: hash } });
     if (claimed.count === 1) await this.audit(user.id, "platform.mfa_recovery_used");
     return claimed.count === 1;
   }
@@ -129,15 +118,16 @@ export class AdminAuthService {
 
   /** Session + role re-read on every request: logout and role removal apply immediately. */
   async resolve(payload: AdminPayload): Promise<{ userId: string; role: PlatformRole; sessionId: string; mfaEnabled: boolean }> {
-    const session = await this.prisma.system(() => this.prisma.adminSession.findUnique({ where: { id: payload.sid }, include: { user: true } }));
-    if (!session || session.revokedAt || session.expiresAt < new Date() || session.userId !== payload.sub || session.user.platformRole === "NONE") {
+    const session = await this.db.system.adminSession.findOne({ id: payload.sid });
+    const user = session && (await this.db.system.user.findOne({ id: session.userId }));
+    if (!session || !user || session.revokedAt || session.expiresAt < new Date() || session.userId !== payload.sub || user.platformRole === "NONE") {
       throw new AppError("UNAUTHENTICATED", "Admin session is no longer valid");
     }
-    return { userId: session.userId, role: session.user.platformRole, sessionId: session.id, mfaEnabled: !!session.user.mfaEnabledAt };
+    return { userId: session.userId, role: user.platformRole, sessionId: session.id, mfaEnabled: !!user.mfaEnabledAt };
   }
 
   async logout(sessionId: string) {
-    await this.prisma.system(() => this.prisma.adminSession.updateMany({ where: { id: sessionId, revokedAt: null }, data: { revokedAt: new Date() } }));
+    await this.db.system.adminSession.updateMany({ id: sessionId, revokedAt: null }, { $set: { revokedAt: new Date() } });
   }
 
   async me(userId: string): Promise<AdminMe> {
@@ -158,9 +148,7 @@ export class AdminAuthService {
     const user = await this.user(userId);
     if (user.mfaEnabledAt) throw new AppError("CONFLICT", "2FA is already on");
     const secret = newTotpSecret();
-    await this.prisma.system(() =>
-      this.prisma.user.update({ where: { id: userId }, data: { mfaSecret: sealCredentials({ totp: secret }).toString("base64"), mfaLastStep: null } }),
-    );
+    await this.db.system.user.update({ id: userId }, { $set: { mfaSecret: sealCredentials({ totp: secret }).toString("base64"), mfaLastStep: null } });
     const uri = otpauthUri(secret, user.email, "Axis Platform");
     return { secret, otpauthUri: uri, qrSvg: await QRCode.toString(uri, { type: "svg", margin: 1, errorCorrectionLevel: "M" }) };
   }
@@ -171,9 +159,7 @@ export class AdminAuthService {
     if (user.mfaEnabledAt) throw new AppError("CONFLICT", "2FA is already on");
     if (!user.mfaSecret || !(await this.consumeCode(user, code, false))) throw new AppError("MFA_INVALID", "The code is not valid");
     const recoveryCodes = this.newRecoveryCodes();
-    await this.prisma.system(() =>
-      this.prisma.user.update({ where: { id: userId }, data: { mfaEnabledAt: new Date(), mfaRecoveryCodes: recoveryCodes.map((c) => sha256(normaliseRecovery(c))) } }),
-    );
+    await this.db.system.user.update({ id: userId }, { $set: { mfaEnabledAt: new Date(), mfaRecoveryCodes: recoveryCodes.map((c) => sha256(normaliseRecovery(c))) } });
     await this.audit(userId, "platform.mfa_enabled");
     return { recoveryCodes };
   }
@@ -182,7 +168,7 @@ export class AdminAuthService {
     const user = await this.user(userId);
     if (!user.mfaEnabledAt || !(await this.consumeCode(user, code, false))) throw new AppError("MFA_INVALID", "The code is not valid");
     const recoveryCodes = this.newRecoveryCodes();
-    await this.prisma.system(() => this.prisma.user.update({ where: { id: userId }, data: { mfaRecoveryCodes: recoveryCodes.map((c) => sha256(normaliseRecovery(c))) } }));
+    await this.db.system.user.update({ id: userId }, { $set: { mfaRecoveryCodes: recoveryCodes.map((c) => sha256(normaliseRecovery(c))) } });
     await this.audit(userId, "platform.mfa_recovery_regenerated");
     return { recoveryCodes };
   }
@@ -192,9 +178,7 @@ export class AdminAuthService {
     if (config().PLATFORM_REQUIRE_MFA) throw new AppError("CONFLICT", "2FA is mandatory for platform staff");
     const user = await this.user(userId);
     if (!user.mfaEnabledAt || !(await this.consumeCode(user, code, false))) throw new AppError("MFA_INVALID", "The code is not valid");
-    await this.prisma.system(() =>
-      this.prisma.user.update({ where: { id: userId }, data: { mfaSecret: null, mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [] } }),
-    );
+    await this.db.system.user.update({ id: userId }, { $set: { mfaSecret: null, mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [] } });
     await this.audit(userId, "platform.mfa_disabled");
   }
 

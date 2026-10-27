@@ -1,4 +1,4 @@
-import { TASK_VIEWS } from "@axis/shared";
+import { TASK_VIEWS } from "@/shared";
 import clsx from "clsx";
 import { LayoutList, Search, SquareKanban } from "lucide-react";
 import type { Metadata } from "next";

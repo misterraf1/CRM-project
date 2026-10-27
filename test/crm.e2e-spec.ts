@@ -1,10 +1,9 @@
-import type { INestApplication } from "@nestjs/common";
-import type { ContactDto, DealDto, PipelineDto } from "@axis/shared";
+import type { ContactDto, DealDto, PipelineDto } from "@/shared";
 import request from "supertest";
-import { addMember, createApp, signup, withRawDb, type Company } from "./helpers";
+import { addMember, createApp, signup, withRawDb, type Company, type TestApp } from "./helpers";
 
 describe("CRM: contacts, deals, dashboard", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {
@@ -77,7 +76,7 @@ describe("CRM: contacts, deals, dashboard", () => {
       const list = await http().get("/v1/contacts").set(owner.auth).expect(200);
       expect(list.body.total).toBe(0);
       // Row still exists for restore/audit
-      const row = await withRawDb((db) => db.contact.findUniqueOrThrow({ where: { id: c.id } }));
+      const row = await withRawDb((db) => db.contact.get({ id: c.id }));
       expect(row.deletedAt).not.toBeNull();
     });
   });
@@ -245,7 +244,7 @@ describe("CRM: contacts, deals, dashboard", () => {
       // A deal won 40 days ago counts in 90d but not in 30d, and as "previous" for 30d
       const old = await mk(owner, 50000);
       await http().post(`/v1/deals/${old.id}/move`).set(owner.auth).send({ stageId: stage(p, "won").id }).expect(200);
-      await withRawDb((db) => db.deal.update({ where: { id: old.id }, data: { closedAt: new Date(Date.now() - 40 * 86400_000) } }));
+      await withRawDb((db) => db.deal.update({ id: old.id }, { $set: { closedAt: new Date(Date.now() - 40 * 86400_000) } }));
 
       const d30 = (await http().get("/v1/dashboard").query({ period: "30d" }).set(owner.auth).expect(200)).body;
       expect(d30.scope).toBe("all");

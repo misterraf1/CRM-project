@@ -1,6 +1,6 @@
 "use client";
 
-import type { SubscriptionStatus } from "@axis/shared";
+import type { SubscriptionStatus } from "@/shared";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { adminApi } from "@/lib/api/client";

@@ -1,15 +1,14 @@
-import type { INestApplication } from "@nestjs/common";
-import type { ChannelDto, ConversationDetailDto, ConversationListItemDto } from "@axis/shared";
+import type { ChannelDto, ConversationDetailDto, ConversationListItemDto } from "@/shared";
 import { createHmac } from "node:crypto";
 import request from "supertest";
 import { startFakeGraph } from "./fake-graph";
-import { addMember, createApp, signup, withRawDb, type Company } from "./helpers";
+import { addMember, createApp, signup, withRawDb, type Company, type TestApp } from "./helpers";
 
 type Who = { auth: Record<string, string> };
 const SECRET = "test-meta-app-secret";
 
 describe("Inbox: website chat, Meta channels, routing, metrics", () => {
-  let app: INestApplication;
+  let app: TestApp;
   let graph: Awaited<ReturnType<typeof startFakeGraph>>;
   const http = () => request(app.getHttpServer());
 
@@ -134,7 +133,7 @@ describe("Inbox: website chat, Meta channels, routing, metrics", () => {
       const owner = await signup(app);
       const { ch } = await liveWhatsApp(owner);
       expect(JSON.stringify(ch)).not.toContain("EAAG");
-      const row = await withRawDb((db) => db.channel.findUniqueOrThrow({ where: { id: ch.id } }));
+      const row = await withRawDb((db) => db.channel.get({ id: ch.id }));
       expect(Buffer.from(row.credentials!).toString("latin1")).not.toContain("EAAG");
       // Live channels need credentials
       await http().post("/v1/inbox/channels").set(owner.auth).send({ type: "WHATSAPP", name: "x" }).expect(400);
@@ -205,7 +204,7 @@ describe("Inbox: website chat, Meta channels, routing, metrics", () => {
       await deliver(waText(phoneNumberId, "994701112233", `wamid.old${Date.now()}`, "Salam")).expect(200);
       const [c] = await conversations(owner);
       expect((await detail(owner, c!.id)).replyWindowEndsAt).not.toBeNull();
-      await withRawDb((db) => db.conversation.update({ where: { id: c!.id }, data: { lastInboundAt: new Date(Date.now() - 25 * 3600_000) } }));
+      await withRawDb((db) => db.conversation.update({ id: c!.id }, { $set: { lastInboundAt: new Date(Date.now() - 25 * 3600_000) } }));
       const res = await reply(owner, c!.id, "Gecikmiş cavab").expect(409);
       expect(res.body.error.code).toBe("WINDOW_CLOSED");
       // Internal notes are still fine
@@ -311,8 +310,8 @@ describe("Inbox: website chat, Meta channels, routing, metrics", () => {
     await http().post(`/v1/widget/${key}/messages`).send({ body: "İkinci", name: "Sevinc" }).expect(201);
     const list = await conversations(owner);
     await withRawDb(async (db) => {
-      const conv = await db.conversation.findUniqueOrThrow({ where: { id: list[0]!.id } });
-      await db.conversation.update({ where: { id: conv.id }, data: { createdAt: new Date(conv.createdAt.getTime() - 10 * 60_000) } });
+      const conv = await db.conversation.get({ id: list[0]!.id });
+      await db.conversation.update({ id: conv.id }, { $set: { createdAt: new Date(conv.createdAt.getTime() - 10 * 60_000) } });
     });
     await reply(owner, list[0]!.id, "Cavab").expect(201);
 

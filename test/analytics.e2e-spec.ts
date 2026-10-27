@@ -1,10 +1,9 @@
-import type { INestApplication } from "@nestjs/common";
-import type { AnalyticsAdvancedDto, AnalyticsBasicDto, ContactDto, DealDto, PipelineDto, TaskDto } from "@axis/shared";
+import type { AnalyticsAdvancedDto, AnalyticsBasicDto, ContactDto, DealDto, PipelineDto, TaskDto } from "@/shared";
 import request from "supertest";
-import { addMember, createApp, setPlan, signup, withRawDb, type Company } from "./helpers";
+import { addMember, createApp, setPlan, signup, withRawDb, type Company, type TestApp } from "./helpers";
 
 describe("Analytics", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {
@@ -21,7 +20,7 @@ describe("Analytics", () => {
   const paidPlan = async (who: Company, plan: "START" | "PRO" | "BUSINESS") => {
     const id = await tenantOf(who);
     await setPlan(id, plan);
-    await withRawDb((db) => db.subscription.update({ where: { tenantId: id }, data: { status: "ACTIVE" } }));
+    await withRawDb((db) => db.subscription.update({ tenantId: id }, { $set: { status: "ACTIVE" } }));
   };
 
   /** 3 contacts, 3 deals: one won (from Instagram), one lost, one open; one task done. */

@@ -1,4 +1,4 @@
-import { resolvePermissions } from "@axis/shared";
+import { resolvePermissions } from "@/shared";
 
 // Pins the role matrix (docs/ARCHITECTURE.md §6). A change here must be deliberate:
 // a permission silently added to a role widens what every such member can see.

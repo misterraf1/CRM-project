@@ -2,8 +2,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MongoClient } from "mongodb";
 
-// All MongoDB indexes, created idempotently. Prisma's `db push` is not used because
-// unique fields that may be null need partial indexes: a plain unique index treats
+// All MongoDB indexes, created idempotently. Unique fields that may be null need
+// partial indexes: a plain unique index treats
 // every null as the same value (two memberships without an invite token would clash).
 
 const nonNull = (...fields) => ({ partialFilterExpression: Object.fromEntries(fields.map((f) => [f, { $type: "string" }])) });

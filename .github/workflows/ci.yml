@@ -15,24 +15,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run db:validate
-        env:
-          DATABASE_URL: mongodb://localhost/x
       - run: npm run typecheck
       # API e2e tests start their own throwaway MongoDB replica set (mongodb-memory-server)
       - run: npm test
-      - run: npm run build
       - run: cp .env.example .env
-      # Full stack for the UI tests: local PostgreSQL, API, web
+      - run: npm run build
+      # Full stack for the UI tests: local MongoDB + the Next.js app (backend included)
       - name: Start stack
         run: |
           nohup npm run db:start > db.log 2>&1 &
           timeout 180 bash -c 'until grep -q "MongoDB ready" db.log; do sleep 1; done'
-          (cd apps/api && nohup node dist/main.js > ../../api.log 2>&1 &)
-          (cd apps/web && nohup npx next start -p 3000 > ../../web.log 2>&1 &)
-          timeout 60 bash -c 'until curl -sf localhost:4000/health && curl -sf -o /dev/null localhost:3000/login; do sleep 1; done'
+          nohup npx next start -p 3000 > web.log 2>&1 &
+          timeout 60 bash -c 'until curl -sf localhost:3000/health && curl -sf -o /dev/null localhost:3000/login; do sleep 1; done'
       - run: npx playwright install --with-deps chromium
-        working-directory: apps/web
-      - run: npm run test:ui -w @axis/web
+      - run: npm run test:ui
       - if: failure()
-        run: tail -n 100 db.log api.log web.log
+        run: tail -n 100 db.log web.log

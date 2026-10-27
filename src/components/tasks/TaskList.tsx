@@ -1,6 +1,6 @@
 "use client";
 
-import type { TaskDto } from "@axis/shared";
+import type { TaskDto } from "@/shared";
 import clsx from "clsx";
 import { Check, MessageSquare, Paperclip, Repeat } from "lucide-react";
 import Link from "next/link";

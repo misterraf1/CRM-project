@@ -1,6 +1,6 @@
 "use client";
 
-import type { DealDto, PipelineDto } from "@axis/shared";
+import type { DealDto, PipelineDto } from "@/shared";
 import clsx from "clsx";
 import { Plus } from "lucide-react";
 import Link from "next/link";

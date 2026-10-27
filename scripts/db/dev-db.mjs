@@ -11,15 +11,15 @@ import { startMongo } from "./mongo.mjs";
 
 const url = new URL(process.env.DATABASE_URL ?? "mongodb://127.0.0.1:27018/axis?replicaSet=rs0&directConnection=true&w=majority&journal=true");
 const port = Number(url.port || 27017);
-const dir = fileURLToPath(new URL("../../../.data/mongo", import.meta.url));
-const cwd = fileURLToPath(new URL("..", import.meta.url));
+const dir = fileURLToPath(new URL("../../.data/mongo", import.meta.url));
+const cwd = fileURLToPath(new URL("../..", import.meta.url));
 
 mkdirSync(dir, { recursive: true });
 const server = await startMongo({ dir, port });
 await ensureIndexes(url.toString());
 await runBackfills(url.toString());
 
-const seeded = spawnSync("node", ["prisma/seed.mjs"], { stdio: "inherit", cwd, env: process.env });
+const seeded = spawnSync("node", ["--experimental-strip-types", "--no-warnings", "scripts/db/seed.mjs"], { stdio: "inherit", cwd, env: process.env });
 if (seeded.status !== 0) throw new Error("Seed failed");
 
 console.log(`\n✔ MongoDB ready on ${url.host}${url.pathname} (Ctrl+C to stop)\n`);

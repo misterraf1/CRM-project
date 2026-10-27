@@ -1,4 +1,4 @@
-import type { ActivityDto, ActivityType, LifecycleStage } from "@axis/shared";
+import type { ActivityDto, ActivityType, LifecycleStage } from "@/shared";
 import { CheckCircle2, Handshake, MoveRight, StickyNote, UserCog, UserPlus, XCircle, type LucideIcon } from "lucide-react";
 import { formatMoney } from "./format";
 import type { Dictionary } from "./i18n/dictionaries/az";

@@ -1,6 +1,5 @@
-import { Injectable } from "@nestjs/common";
 import { AutomationRunner } from "../automations/automation.runner";
-import type { Deal, Prisma } from "@prisma/client";
+import type { Deal } from "../db/models";
 import type {
   ActivityDto,
   DealCreateInput,
@@ -11,12 +10,13 @@ import type {
   ForecastDto,
   PipelineDto,
   StageKind,
-} from "@axis/shared";
+} from "@/shared";
 import { AuditService } from "../audit/audit.service";
 import { authedContext, type AuthedContext } from "../common/context";
 import { AppError, notFound } from "../common/errors";
 import { startOfMonth } from "../common/time";
-import { PrismaService, type Tx } from "../prisma/prisma.service";
+import type { Database, Tx } from "../db/database";
+import { and, contains } from "../db/query";
 import { ActivityService, TIMELINE_ORDER } from "./activity.service";
 import { memberRefs, ownerScope, resolveOwner } from "./scope";
 
@@ -45,12 +45,22 @@ export function dealToDto(d: DealRow, refs: Map<string, { id: string; name: stri
   };
 }
 
-const WITH_CONTACT = { contact: { select: { id: true, name: true } } } as const;
+/** Ids of the tenant's pipeline stages of one kind (deals filter on these). */
+export async function stageIds(tx: Tx, tenantId: string, kind: StageKind) {
+  return (await tx.pipelineStage.find({ tenantId, kind }, { projection: { id: 1 } })).map((s) => s.id);
+}
 
-@Injectable()
+/** Deals with their contact's id and name (soft-deleted contacts still show by name). */
+export async function withContacts(tx: Tx, tenantId: string, deals: Deal[]): Promise<DealRow[]> {
+  const ids = [...new Set(deals.map((d) => d.contactId).filter((id): id is string => !!id))];
+  const contacts = ids.length ? await tx.contact.find({ tenantId, id: { $in: ids } }, { projection: { id: 1, name: 1 } }) : [];
+  const byId = new Map(contacts.map((c) => [c.id, { id: c.id, name: c.name }]));
+  return deals.map((d) => ({ ...d, contact: (d.contactId && byId.get(d.contactId)) || null }));
+}
+
 export class DealsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly activity: ActivityService,
     private readonly audit: AuditService,
     private readonly automations: AutomationRunner,
@@ -58,41 +68,41 @@ export class DealsService {
 
   async pipelines(): Promise<PipelineDto[]> {
     const { tenantId } = authedContext();
-    const rows = await this.prisma.scoped((tx) =>
-      tx.pipeline.findMany({
-        where: { tenantId },
-        include: { stages: { orderBy: { order: "asc" } } },
-        orderBy: [{ isDefault: "desc" }, { name: "asc" }],
-      }),
+    const [rows, stages] = await this.db.scoped((tx) =>
+      Promise.all([tx.pipeline.find({ tenantId }, { sort: { isDefault: -1, name: 1 } }), tx.pipelineStage.find({ tenantId }, { sort: { order: 1 } })]),
     );
     return rows.map((p) => ({
       id: p.id,
       name: p.name,
       isDefault: p.isDefault,
-      stages: p.stages.map((s) => ({ id: s.id, name: s.name, order: s.order, probability: s.probability, kind: s.kind as StageKind })),
+      stages: stages
+        .filter((s) => s.pipelineId === p.id)
+        .map((s) => ({ id: s.id, name: s.name, order: s.order, probability: s.probability, kind: s.kind as StageKind })),
     }));
   }
 
   async list(query: DealListQuery): Promise<DealDto[]> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const pipeline = await this.resolvePipeline(tx, ctx, query.pipelineId);
       const { where: scoped } = await ownerScope(tx, ctx, "contacts.view_all");
       const recent = new Date(Date.now() - CLOSED_VISIBLE_DAYS * 86_400_000);
       const q = query.q?.trim();
-      const rows = await tx.deal.findMany({
-        where: {
-          AND: [
+      const matchingContacts = q ? (await tx.contact.find({ tenantId: ctx.tenantId, name: contains(q) }, { projection: { id: 1 } })).map((c) => c.id) : [];
+      const rows = await withContacts(
+        tx,
+        ctx.tenantId,
+        await tx.deal.find(
+          and(
             { tenantId: ctx.tenantId, pipelineId: pipeline.id },
             scoped,
-            { OR: [{ closedAt: null }, { closedAt: { gte: recent } }] },
+            { $or: [{ closedAt: null }, { closedAt: { $gte: recent } }] },
             query.ownerId ? { ownerId: query.ownerId } : {},
-            q ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { contact: { name: { contains: q, mode: "insensitive" } } }] } : {},
-          ],
-        },
-        include: WITH_CONTACT,
-        orderBy: [{ position: "asc" }, { createdAt: "asc" }],
-      });
+            q ? { $or: [{ title: contains(q) }, { contactId: { $in: matchingContacts } }] } : {},
+          ),
+          { sort: { position: 1, createdAt: 1 } },
+        ),
+      );
       const refs = await memberRefs(tx, ctx.tenantId, rows.map((d) => d.ownerId));
       return rows.map((d) => dealToDto(d, refs));
     });
@@ -100,9 +110,9 @@ export class DealsService {
 
   async get(id: string): Promise<DealDto & { activities: ActivityDto[] }> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const deal = await this.findVisible(tx, ctx, id);
-      const rows = await tx.activity.findMany({ where: { tenantId: ctx.tenantId, dealId: id }, orderBy: TIMELINE_ORDER, take: 100 });
+      const rows = await tx.activity.find({ tenantId: ctx.tenantId, dealId: id }, { sort: TIMELINE_ORDER, limit: 100 });
       const refs = await memberRefs(tx, ctx.tenantId, [deal.ownerId]);
       return { ...dealToDto(deal, refs), activities: await this.activity.toDtos(tx, ctx.tenantId, rows) };
     });
@@ -110,7 +120,7 @@ export class DealsService {
 
   async create(input: DealCreateInput): Promise<DealDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const pipeline = await this.resolvePipeline(tx, ctx, input.pipelineId);
       const stage = input.stageId ? pipeline.stages.find((s) => s.id === input.stageId) : pipeline.stages.find((s) => s.kind === "open");
       if (!stage) throw new AppError("VALIDATION_FAILED", "Unknown stage", { stageId: ["Unknown stage"] });
@@ -118,20 +128,18 @@ export class DealsService {
       const contact = input.contactId ? await this.visibleContact(tx, ctx, input.contactId) : null;
       const ownerId = await resolveOwner(tx, ctx, input.ownerId, ctx.membershipId);
 
-      const deal = await tx.deal.create({
-        data: {
-          tenantId: ctx.tenantId,
-          pipelineId: pipeline.id,
-          stageId: stage.id,
-          title: input.title,
-          amount: input.amount,
-          contactId: contact?.id ?? null,
-          ownerId,
-          expectedClose: input.expectedClose ?? null,
-          position: await this.nextPosition(tx, stage.id),
-        },
-        include: WITH_CONTACT,
+      const created = await tx.deal.insertOne({
+        tenantId: ctx.tenantId,
+        pipelineId: pipeline.id,
+        stageId: stage.id,
+        title: input.title,
+        amount: input.amount,
+        contactId: contact?.id ?? null,
+        ownerId,
+        expectedClose: input.expectedClose ?? null,
+        position: await this.nextPosition(tx, stage.id),
       });
+      const deal = { ...created, contact };
       await this.activity.record(tx, {
         type: "deal_created",
         dealId: deal.id,
@@ -145,16 +153,16 @@ export class DealsService {
 
   async update(id: string, input: DealUpdateInput): Promise<DealDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       await this.findVisible(tx, ctx, id);
       const contactId = input.contactId ? (await this.visibleContact(tx, ctx, input.contactId)).id : input.contactId;
       const ownerId = input.ownerId !== undefined ? await resolveOwner(tx, ctx, input.ownerId, null) : undefined;
-      const deal = await tx.deal.update({
-        where: { id },
-        data: { title: input.title, amount: input.amount, contactId, ownerId, expectedClose: input.expectedClose },
-        include: WITH_CONTACT,
-      });
-      return dealToDto(deal, await memberRefs(tx, ctx.tenantId, [deal.ownerId]));
+      const [deal] = await withContacts(
+        tx,
+        ctx.tenantId,
+        [await tx.deal.update({ id }, { $set: { title: input.title, amount: input.amount, contactId, ownerId, expectedClose: input.expectedClose } })],
+      );
+      return dealToDto(deal!, await memberRefs(tx, ctx.tenantId, [deal!.ownerId]));
     });
   }
 
@@ -164,9 +172,9 @@ export class DealsService {
    */
   async move(id: string, input: DealMoveInput): Promise<DealDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const deal = await this.findVisible(tx, ctx, id);
-      const stages = await tx.pipelineStage.findMany({ where: { tenantId: ctx.tenantId, pipelineId: deal.pipelineId } });
+      const stages = await tx.pipelineStage.find({ tenantId: ctx.tenantId, pipelineId: deal.pipelineId });
       const from = stages.find((s) => s.id === deal.stageId)!;
       const to = stages.find((s) => s.id === input.stageId);
       if (!to) throw new AppError("VALIDATION_FAILED", "Stage belongs to another pipeline", { stageId: ["Unknown stage"] });
@@ -175,16 +183,18 @@ export class DealsService {
       }
 
       const closing = to.kind !== "open";
-      const updated = await tx.deal.update({
-        where: { id },
-        data: {
-          stageId: to.id,
-          position: input.position ?? (to.id === from.id ? deal.position : await this.nextPosition(tx, to.id)),
-          closedAt: closing ? (from.kind === to.kind ? deal.closedAt : new Date()) : null,
-          lostReason: to.kind === "lost" ? (input.lostReason ?? deal.lostReason) : null,
+      const changed = await tx.deal.update(
+        { id },
+        {
+          $set: {
+            stageId: to.id,
+            position: input.position ?? (to.id === from.id ? deal.position : await this.nextPosition(tx, to.id)),
+            closedAt: closing ? (from.kind === to.kind ? deal.closedAt : new Date()) : null,
+            lostReason: to.kind === "lost" ? (input.lostReason ?? deal.lostReason) : null,
+          },
         },
-        include: WITH_CONTACT,
-      });
+      );
+      const updated = { ...changed, contact: deal.contact };
 
       if (to.id !== from.id) {
         const base = { dealId: id, contactId: deal.contactId };
@@ -204,30 +214,24 @@ export class DealsService {
 
   async remove(id: string) {
     const ctx = authedContext();
-    await this.prisma.scoped(async (tx) => {
+    await this.db.scoped(async (tx) => {
       const deal = await this.findVisible(tx, ctx, id);
-      await tx.deal.delete({ where: { id } });
+      await tx.deal.delete({ id });
       await this.audit.log(tx, { action: "deal.deleted", entityType: "deal", entityId: id, diff: { title: deal.title, amount: deal.amount } });
     });
   }
 
   async forecast(pipelineId?: string): Promise<ForecastDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const pipeline = await this.resolvePipeline(tx, ctx, pipelineId);
-      const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { timezone: true, currency: true } });
+      const tenant = await tx.tenant.get({ id: ctx.tenantId }, { projection: { timezone: 1, currency: 1 } });
       const { where: scoped } = await ownerScope(tx, ctx, "contacts.view_all");
       const monthStart = startOfMonth(new Date(), tenant.timezone);
-      const deals = await tx.deal.findMany({
-        where: {
-          AND: [
-            { tenantId: ctx.tenantId, pipelineId: pipeline.id },
-            scoped,
-            { OR: [{ closedAt: null }, { closedAt: { gte: monthStart } }] },
-          ],
-        },
-        select: { amount: true, stageId: true, lostReason: true },
-      });
+      const deals = await tx.deal.find(
+        and({ tenantId: ctx.tenantId, pipelineId: pipeline.id }, scoped, { $or: [{ closedAt: null }, { closedAt: { $gte: monthStart } }] }),
+        { projection: { amount: 1, stageId: 1, lostReason: 1 } },
+      );
       const stageById = new Map(pipeline.stages.map((s) => [s.id, s]));
       const out: ForecastDto = {
         currency: tenant.currency,
@@ -259,9 +263,9 @@ export class DealsService {
   }
 
   private async promoteToCustomer(tx: Tx, contactId: string) {
-    const contact = await tx.contact.findUnique({ where: { id: contactId } });
+    const contact = await tx.contact.findOne({ id: contactId });
     if (!contact || contact.deletedAt || contact.stage === "CUSTOMER") return;
-    await tx.contact.update({ where: { id: contactId }, data: { stage: "CUSTOMER" } });
+    await tx.contact.update({ id: contactId }, { $set: { stage: "CUSTOMER" } });
     await this.activity.record(tx, {
       type: "contact_stage",
       contactId,
@@ -271,30 +275,26 @@ export class DealsService {
 
   private async findVisible(tx: Tx, ctx: AuthedContext, id: string) {
     const { where } = await ownerScope(tx, ctx, "contacts.view_all");
-    const deal = await tx.deal.findFirst({ where: { AND: [{ id, tenantId: ctx.tenantId }, where] }, include: WITH_CONTACT });
+    const deal = await tx.deal.findOne(and({ id, tenantId: ctx.tenantId }, where));
     if (!deal) throw notFound("Deal");
-    return deal;
+    return (await withContacts(tx, ctx.tenantId, [deal]))[0]!;
   }
 
   private async visibleContact(tx: Tx, ctx: AuthedContext, contactId: string) {
     const { where } = await ownerScope(tx, ctx, "contacts.view_all");
-    const contact = await tx.contact.findFirst({
-      where: { AND: [{ id: contactId, tenantId: ctx.tenantId, deletedAt: null }, where] },
-      select: { id: true, name: true },
-    });
+    const contact = await tx.contact.findOne(and({ id: contactId, tenantId: ctx.tenantId, deletedAt: null }, where), { projection: { id: 1, name: 1 } });
     if (!contact) throw new AppError("VALIDATION_FAILED", "Unknown contact", { contactId: ["Unknown contact"] });
-    return contact;
+    return { id: contact.id, name: contact.name };
   }
 
   private async resolvePipeline(tx: Tx, ctx: AuthedContext, pipelineId?: string) {
-    const where: Prisma.PipelineWhereInput = pipelineId ? { id: pipelineId, tenantId: ctx.tenantId } : { tenantId: ctx.tenantId, isDefault: true };
-    const pipeline = await tx.pipeline.findFirst({ where, include: { stages: { orderBy: { order: "asc" } } } });
+    const pipeline = await tx.pipeline.findOne(pipelineId ? { id: pipelineId, tenantId: ctx.tenantId } : { tenantId: ctx.tenantId, isDefault: true });
     if (!pipeline) throw notFound("Pipeline");
-    return pipeline;
+    return { ...pipeline, stages: await tx.pipelineStage.find({ tenantId: ctx.tenantId, pipelineId: pipeline.id }, { sort: { order: 1 } }) };
   }
 
   private async nextPosition(tx: Tx, stageId: string) {
-    const last = await tx.deal.aggregate({ where: { stageId }, _max: { position: true } });
-    return (last._max.position ?? 0) + POSITION_STEP;
+    const last = await tx.deal.findOne({ stageId }, { sort: { position: -1 }, projection: { position: 1 } });
+    return (last?.position ?? 0) + POSITION_STEP;
   }
 }

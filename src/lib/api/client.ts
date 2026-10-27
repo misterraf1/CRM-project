@@ -1,6 +1,6 @@
 "use client";
 
-import type { ApiError, ErrorCode } from "@axis/shared";
+import type { ApiError, ErrorCode } from "@/shared";
 
 export type ClientResult<T> = { ok: true; data: T } | { ok: false; code: ErrorCode; details?: unknown };
 

@@ -1,4 +1,4 @@
-import type { ActivityDto } from "@axis/shared";
+import type { ActivityDto } from "@/shared";
 import Link from "next/link";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ACTIVITY_ICONS, describeActivity } from "@/lib/activity";

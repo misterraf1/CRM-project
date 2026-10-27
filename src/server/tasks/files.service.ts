@@ -1,12 +1,13 @@
-import { Inject, Injectable } from "@nestjs/common";
-import type { FileDto, FileListItemDto, FileListQuery, FileListResponse, FileSource } from "@axis/shared";
-import type { Prisma } from "@prisma/client";
+import type { FileDto, FileListItemDto, FileListQuery, FileListResponse, FileSource } from "@/shared";
 import { authedContext } from "../common/context";
 import { AppError, forbidden, notFound } from "../common/errors";
 import { newId } from "../common/ids";
 import { memberRefs } from "../crm/scope";
-import { PrismaService } from "../prisma/prisma.service";
-import { FILE_STORAGE, type FileStorage } from "../storage/storage.service";
+import { storageUsed, subscriptionOf } from "../billing/entitlements.service";
+import type { Database } from "../db/database";
+import { and, contains } from "../db/query";
+import type { Filter } from "../db/repo";
+import type { FileStorage } from "../storage/storage.service";
 import { taskScope, TasksService } from "./tasks.service";
 
 export interface UploadedFile {
@@ -16,27 +17,21 @@ export interface UploadedFile {
   buffer: Buffer;
 }
 
-/**
- * Multipart filenames arrive latin1-decoded (busboy default), which turns "müqavilə"
- * into mojibake. Re-decode as UTF-8, then strip control and path characters.
- */
+/** Upload filename (already UTF-8: "müqavilə") without control and path characters. */
 export function displayName(raw: string) {
-  const utf8 = Buffer.from(raw, "latin1").toString("utf8");
-  const name = utf8.includes("\uFFFD") ? raw : utf8;
-  return name.replace(/[\u0000-\u001f\\/]/g, "_").slice(0, 200) || "file";
+  return raw.replace(/[\u0000-\u001f\\/]/g, "_").slice(0, 200) || "file";
 }
 
-@Injectable()
 export class FilesService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly tasks: TasksService,
-    @Inject(FILE_STORAGE) private readonly storage: FileStorage,
+    private readonly storage: FileStorage,
   ) {}
 
   async uploadToTask(taskId: string, file: UploadedFile | undefined): Promise<FileDto> {
     const ctx = authedContext();
-    await this.prisma.scoped((tx) => this.tasks.findVisible(tx, ctx, taskId));
+    await this.db.scoped((tx) => this.tasks.findVisible(tx, ctx, taskId));
     return this.store({ entityType: "task", entityId: taskId }, file);
   }
 
@@ -50,19 +45,14 @@ export class FilesService {
     const id = newId("fil");
     const key = `tenants/${ctx.tenantId}/${id}`;
 
-    const record = await this.prisma.scoped(async (tx) => {
+    const record = await this.db.scoped(async (tx) => {
       // Storage quota = plan + purchased add-on
-      const [sub, used] = await Promise.all([
-        tx.subscription.findUniqueOrThrow({ where: { tenantId: ctx.tenantId }, include: { plan: true } }),
-        tx.fileObject.aggregate({ where: { tenantId: ctx.tenantId }, _sum: { sizeBytes: true } }),
-      ]);
+      const [sub, usedBytes] = await Promise.all([subscriptionOf(tx, ctx.tenantId), storageUsed(tx, ctx.tenantId)]);
       const limit = (sub.plan.storageMb + sub.extraStorageMb) * 1024 * 1024;
-      const usedBytes = used._sum.sizeBytes ?? 0;
       if (usedBytes + file.size > limit) {
         throw new AppError("STORAGE_LIMIT", "Storage limit reached", { usedMb: Math.ceil(usedBytes / 1048576), limitMb: Math.floor(limit / 1048576) });
       }
-      return tx.fileObject.create({
-        data: {
+      return tx.fileObject.insertOne({
           id,
           tenantId: ctx.tenantId,
           uploaderId: ctx.membershipId,
@@ -73,17 +63,16 @@ export class FilesService {
           sizeBytes: file.size,
           entityType: target.entityType,
           entityId: target.entityId,
-        },
       });
     });
 
     try {
       await this.storage.put(key, file.buffer);
     } catch (e) {
-      await this.prisma.scoped((tx) => tx.fileObject.delete({ where: { id } }));
+      await this.db.scoped((tx) => tx.fileObject.delete({ id }));
       throw e;
     }
-    const refs = await this.prisma.scoped((tx) => memberRefs(tx, ctx.tenantId, [ctx.membershipId]));
+    const refs = await this.db.scoped((tx) => memberRefs(tx, ctx.tenantId, [ctx.membershipId]));
     const me = refs.get(ctx.membershipId);
     return {
       id,
@@ -98,15 +87,15 @@ export class FilesService {
   /** Returns the record after checking the caller can see the task it belongs to. */
   async open(id: string) {
     const ctx = authedContext();
-    const file = await this.prisma.scoped(async (tx) => {
-      const f = await tx.fileObject.findFirst({ where: { id, tenantId: ctx.tenantId } });
+    const file = await this.db.scoped(async (tx) => {
+      const f = await tx.fileObject.findOne({ id, tenantId: ctx.tenantId });
       if (!f) throw notFound("File");
       // Library files belong to the whole company
       if (f.entityType === "task" && f.entityId) await this.tasks.findVisible(tx, ctx, f.entityId).catch(() => {
         throw notFound("File");
       });
       // Chat files: only current members of the room (entityId = room id)
-      if (f.entityType === "chat" && !(await tx.chatMember.count({ where: { roomId: f.entityId ?? "", memberId: ctx.membershipId } }))) {
+      if (f.entityType === "chat" && !(await tx.chatMember.count({ roomId: f.entityId ?? "", memberId: ctx.membershipId }))) {
         throw notFound("File");
       }
       return f;
@@ -116,11 +105,11 @@ export class FilesService {
 
   async remove(id: string) {
     const ctx = authedContext();
-    const key = await this.prisma.scoped(async (tx) => {
-      const f = await tx.fileObject.findFirst({ where: { id, tenantId: ctx.tenantId } });
+    const key = await this.db.scoped(async (tx) => {
+      const f = await tx.fileObject.findOne({ id, tenantId: ctx.tenantId });
       if (f?.entityType === "library") {
         if (!this.canDeleteLibrary(f.uploaderId)) throw forbidden("Not allowed to delete this file");
-        await tx.fileObject.delete({ where: { id } });
+        await tx.fileObject.delete({ id });
         return f.key;
       }
       // Chat attachments are removed together with their message
@@ -129,7 +118,7 @@ export class FilesService {
         throw notFound("File");
       });
       if (f.uploaderId !== ctx.membershipId && !this.tasks.canEdit(ctx, task)) throw forbidden("Not allowed to delete this file");
-      await tx.fileObject.delete({ where: { id } });
+      await tx.fileObject.delete({ id });
       return f.key;
     });
     await this.storage.remove(key);
@@ -152,35 +141,29 @@ export class FilesService {
   async list(q: FileListQuery): Promise<FileListResponse> {
     const ctx = authedContext();
     const PAGE = 50;
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const { where: taskWhere, memberIds } = await taskScope(tx, ctx);
       const [rooms, visibleTasks] = await Promise.all([
-        tx.chatMember.findMany({ where: { tenantId: ctx.tenantId, memberId: ctx.membershipId }, select: { roomId: true } }),
-        memberIds ? tx.task.findMany({ where: { AND: [{ tenantId: ctx.tenantId }, taskWhere] }, select: { id: true } }) : null,
+        tx.chatMember.find({ tenantId: ctx.tenantId, memberId: ctx.membershipId }, { projection: { roomId: 1 } }),
+        memberIds ? tx.task.find(and({ tenantId: ctx.tenantId }, taskWhere), { projection: { id: 1 } }) : null,
       ]);
-      const visible: Prisma.FileObjectWhereInput[] = [
+      const visible: Filter[] = [
         { entityType: "library" },
-        visibleTasks ? { entityType: "task", entityId: { in: visibleTasks.map((t) => t.id) } } : { entityType: "task" },
-        { entityType: "chat", entityId: { in: rooms.map((r) => r.roomId) } },
+        visibleTasks ? { entityType: "task", entityId: { $in: visibleTasks.map((t) => t.id) } } : { entityType: "task" },
+        { entityType: "chat", entityId: { $in: rooms.map((r) => r.roomId) } },
       ];
-      const where: Prisma.FileObjectWhereInput = {
-        AND: [
-          { tenantId: ctx.tenantId, OR: visible },
-          ...(q.source ? [{ entityType: q.source }] : []),
-          ...(q.q ? [{ name: { contains: q.q, mode: "insensitive" as const } }] : []),
-        ],
-      };
+      const where = and({ tenantId: ctx.tenantId, $or: visible }, q.source ? { entityType: q.source } : {}, q.q ? { name: contains(q.q) } : {});
       const [rows, total, sub, used] = await Promise.all([
-        tx.fileObject.findMany({ where, orderBy: { createdAt: "desc" }, skip: (q.page - 1) * PAGE, take: PAGE }),
-        tx.fileObject.count({ where }),
-        tx.subscription.findUniqueOrThrow({ where: { tenantId: ctx.tenantId }, include: { plan: true } }),
-        tx.fileObject.aggregate({ where: { tenantId: ctx.tenantId }, _sum: { sizeBytes: true } }),
+        tx.fileObject.find(where, { sort: { createdAt: -1 }, skip: (q.page - 1) * PAGE, limit: PAGE }),
+        tx.fileObject.count(where),
+        subscriptionOf(tx, ctx.tenantId),
+        storageUsed(tx, ctx.tenantId),
       ]);
       const taskIds = rows.filter((f) => f.entityType === "task").map((f) => f.entityId!);
       const roomIds = rows.filter((f) => f.entityType === "chat").map((f) => f.entityId!);
       const [tasks, chatRooms, refs] = await Promise.all([
-        tx.task.findMany({ where: { tenantId: ctx.tenantId, id: { in: taskIds } }, select: { id: true, title: true, creatorId: true, assigneeId: true } }),
-        tx.chatRoom.findMany({ where: { tenantId: ctx.tenantId, id: { in: roomIds } }, select: { id: true, name: true, kind: true } }),
+        tx.task.find({ tenantId: ctx.tenantId, id: { $in: taskIds } }, { projection: { id: 1, title: 1, creatorId: 1, assigneeId: 1 } }),
+        tx.chatRoom.find({ tenantId: ctx.tenantId, id: { $in: roomIds } }, { projection: { id: 1, name: 1, kind: 1 } }),
         memberRefs(tx, ctx.tenantId, rows.map((f) => f.uploaderId)),
       ]);
       const taskById = new Map(tasks.map((t) => [t.id, t]));
@@ -207,7 +190,7 @@ export class FilesService {
       return {
         items,
         total,
-        storage: { usedMb: Math.ceil((used._sum.sizeBytes ?? 0) / 1048576), limitMb: sub.plan.storageMb + sub.extraStorageMb },
+        storage: { usedMb: Math.ceil(used / 1048576), limitMb: sub.plan.storageMb + sub.extraStorageMb },
       };
     });
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import type { MemberDto } from "@axis/shared";
+import type { MemberDto } from "@/shared";
 import { Plus, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";

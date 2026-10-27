@@ -1,11 +1,12 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
-import type { ChannelType } from "@axis/shared";
+import { Logger } from "../common/logger";
+import type { ChannelType } from "@/shared";
 import { timingSafeEqual } from "node:crypto";
 import { AppError } from "../common/errors";
 import { sha256 } from "../common/ids";
 import { openCredentials } from "../common/secrets";
-import { PrismaService } from "../prisma/prisma.service";
+import type { Database } from "../db/database";
+import { isDuplicateKey } from "../db/errors";
+import type { WebhookEvent } from "../db/models";
 import { IngestService } from "./ingest.service";
 
 interface WaValue {
@@ -40,21 +41,20 @@ export interface InboundEmail {
 }
 
 /** Parses Meta webhook payloads (WhatsApp Cloud API, Messenger, Instagram) into inbox messages. */
-@Injectable()
 export class WebhooksService {
   private readonly logger = new Logger("Webhooks");
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly ingest: IngestService,
   ) {}
 
   async processMeta(raw: Buffer, payload: MetaPayload) {
     // Whole-delivery idempotency: Meta retries identical bodies
     try {
-      await this.prisma.webhookEvent.create({ data: { provider: "meta", externalId: sha256(raw.toString("utf8")), payload: payload as Prisma.InputJsonObject } });
+      await this.db.system.webhookEvent.insertOne({ provider: "meta", externalId: sha256(raw.toString("utf8")), payload: payload as unknown as WebhookEvent["payload"] });
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { duplicate: true, stored: 0 };
+      if (isDuplicateKey(e)) return { duplicate: true, stored: 0 };
       throw e;
     }
 
@@ -74,9 +74,7 @@ export class WebhooksService {
    * (shown once when the channel was connected).
    */
   async processEmail(channelId: string, token: string, mail: InboundEmail) {
-    const channel = await this.prisma.system(() =>
-      this.prisma.channel.findFirst({ where: { id: channelId, type: "EMAIL", demo: false, status: { not: "disconnected" } } }),
-    );
+    const channel = await this.db.system.channel.findOne({ id: channelId, type: "EMAIL", demo: false, status: { $ne: "disconnected" } });
     const expected = channel?.credentials ? Buffer.from(openCredentials(channel.credentials).inboundToken ?? "") : Buffer.alloc(0);
     const given = Buffer.from(token);
     if (!channel || !expected.length || given.length !== expected.length || !timingSafeEqual(given, expected)) {
@@ -86,7 +84,7 @@ export class WebhooksService {
     const body = (mail.StrippedTextReply?.trim() || mail.TextBody?.trim() || "").slice(0, 20_000);
     if (!from || !body) return { stored: 0 };
     const messageId = mail.MessageID || mail.Headers?.find((h) => h.Name.toLowerCase() === "message-id")?.Value || null;
-    const res = await this.prisma.scoped(
+    const res = await this.db.scoped(
       (tx) =>
         this.ingest.inbound(tx, channel, {
           externalThread: from,
@@ -105,12 +103,7 @@ export class WebhooksService {
   private async resolve(type: ChannelType, externalId: string) {
     // Meta only tells us the phone number / page id: resolve the one live channel
     // (and its tenant) across tenants, then continue tenant-scoped
-    const channel = await this.prisma.system(() =>
-      this.prisma.channel.findFirst({
-        where: { type, externalId, demo: false, status: { not: "disconnected" } },
-        select: { id: true, tenantId: true },
-      }),
-    );
+    const channel = await this.db.system.channel.findOne({ type, externalId, demo: false, status: { $ne: "disconnected" } }, { projection: { id: 1, tenantId: 1 } });
     if (!channel) this.logger.warn(`No live ${type} channel for ${externalId}`);
     return channel ? { tenantId: channel.tenantId, channelId: channel.id } : undefined;
   }
@@ -119,9 +112,9 @@ export class WebhooksService {
     const target = value.metadata?.phone_number_id && (await this.resolve("WHATSAPP", value.metadata.phone_number_id));
     if (!target) return 0;
     const names = new Map((value.contacts ?? []).map((c) => [c.wa_id, c.profile?.name]));
-    return this.prisma.scoped(
+    return this.db.scoped(
       async (tx) => {
-        const channel = await tx.channel.findUniqueOrThrow({ where: { id: target.channelId } });
+        const channel = await tx.channel.get({ id: target.channelId });
         let stored = 0;
         for (const m of value.messages ?? []) {
           const res = await this.ingest.inbound(tx, channel, {
@@ -136,7 +129,7 @@ export class WebhooksService {
         }
         // Delivery receipts for our outbound messages
         for (const s of value.statuses ?? []) {
-          await tx.message.updateMany({ where: { tenantId: target.tenantId, externalId: s.id, direction: "OUTBOUND" }, data: { deliveryStatus: s.status } });
+          await tx.message.updateMany({ tenantId: target.tenantId, externalId: s.id, direction: "OUTBOUND" }, { $set: { deliveryStatus: s.status } });
         }
         return stored;
       },
@@ -147,9 +140,9 @@ export class WebhooksService {
   private async page(type: "MESSENGER" | "INSTAGRAM", accountId: string, events: PageEvent[]) {
     const target = await this.resolve(type, accountId);
     if (!target) return 0;
-    return this.prisma.scoped(
+    return this.db.scoped(
       async (tx) => {
-        const channel = await tx.channel.findUniqueOrThrow({ where: { id: target.channelId } });
+        const channel = await tx.channel.get({ id: target.channelId });
         let stored = 0;
         for (const e of events) {
           // Echoes are our own outbound messages reflected back

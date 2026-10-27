@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { Facebook, Globe, Instagram, Mail, MessageCircle } from "lucide-react";
-import type { ChannelType } from "@axis/shared";
+import type { ChannelType } from "@/shared";
 
 const MAP = {
   WHATSAPP: { icon: MessageCircle, className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" },

@@ -1,12 +1,10 @@
-import { Injectable } from "@nestjs/common";
-import type { ChatEvent } from "@axis/shared";
+import type { ChatEvent } from "@/shared";
 import { EventEmitter } from "node:events";
 
 /**
  * Team-chat fan-out keyed by membership id, so events reach only the members of a
  * room. In-process (single instance); Redis pub/sub with horizontal scaling.
  */
-@Injectable()
 export class ChatEvents {
   private readonly bus = new EventEmitter().setMaxListeners(0);
 

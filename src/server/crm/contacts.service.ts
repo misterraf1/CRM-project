@@ -1,6 +1,5 @@
-import { Injectable } from "@nestjs/common";
 import { AutomationRunner } from "../automations/automation.runner";
-import type { Contact, Prisma } from "@prisma/client";
+import type { Contact } from "../db/models";
 import type {
   ActivityDto,
   ContactCreateInput,
@@ -9,23 +8,30 @@ import type {
   ContactListQuery,
   ContactListResponse,
   ContactUpdateInput,
-} from "@axis/shared";
+} from "@/shared";
 import { AuditService } from "../audit/audit.service";
 import { authedContext, type AuthedContext } from "../common/context";
 import { notFound } from "../common/errors";
-import { PrismaService, type Tx } from "../prisma/prisma.service";
+import type { Database, Tx } from "../db/database";
+import { and, contains } from "../db/query";
 import { ActivityService, TIMELINE_ORDER } from "./activity.service";
-import { dealToDto } from "./deals.service";
+import { dealToDto, withContacts } from "./deals.service";
 import { memberRefs, ownerScope, resolveOwner } from "./scope";
 
-type ContactWithCount = Contact & { _count: { deals: number } };
+/** Open deals per contact (deals in an open stage). */
+async function openDealCounts(tx: Tx, tenantId: string, contactIds: string[]) {
+  if (!contactIds.length) return new Map<string, number>();
+  const openStages = (await tx.pipelineStage.find({ tenantId, kind: "open" }, { projection: { id: 1 } })).map((s) => s.id);
+  const rows = await tx.deal.aggregate<{ _id: string; n: number }>([
+    { $match: { tenantId, contactId: { $in: contactIds }, stageId: { $in: openStages } } },
+    { $group: { _id: "$contactId", n: { $sum: 1 } } },
+  ]);
+  return new Map(rows.map((r) => [r._id, r.n]));
+}
 
-const OPEN_DEALS = { _count: { select: { deals: { where: { stage: { kind: "open" } } } } } } as const;
-
-@Injectable()
 export class ContactsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly activity: ActivityService,
     private readonly audit: AuditService,
     private readonly automations: AutomationRunner,
@@ -33,36 +39,22 @@ export class ContactsService {
 
   async list(query: ContactListQuery): Promise<ContactListResponse> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const { where: scoped } = await ownerScope(tx, ctx, "contacts.view_all");
       const q = query.q?.trim();
-      const where: Prisma.ContactWhereInput = {
-        AND: [
-          { tenantId: ctx.tenantId, deletedAt: null },
-          scoped,
-          query.stage ? { stage: query.stage } : {},
-          query.ownerId ? { ownerId: query.ownerId === "none" ? null : query.ownerId } : {},
-          q
-            ? {
-                OR: [
-                  { name: { contains: q, mode: "insensitive" } },
-                  { email: { contains: q, mode: "insensitive" } },
-                  { companyName: { contains: q, mode: "insensitive" } },
-                  { phone: { contains: q.replace(/[\s()-]/g, "") } },
-                ],
-              }
-            : {},
-        ],
-      };
+      const where = and(
+        { tenantId: ctx.tenantId, deletedAt: null },
+        scoped,
+        query.stage ? { stage: query.stage } : {},
+        query.ownerId ? { ownerId: query.ownerId === "none" ? null : query.ownerId } : {},
+        q ? { $or: [{ name: contains(q) }, { email: contains(q) }, { companyName: contains(q) }, { phone: contains(q.replace(/[\s()-]/g, ""), false) }] } : {},
+      );
+      // Keyset pagination: rows after the cursor in (createdAt desc, id desc) order
+      const cursor = query.cursor ? await tx.contact.findOne({ id: query.cursor, tenantId: ctx.tenantId }, { projection: { id: 1, createdAt: 1 } }) : null;
+      const after = cursor ? { $or: [{ createdAt: { $lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { $lt: cursor.id } }] } : {};
       const [rows, total] = await Promise.all([
-        tx.contact.findMany({
-          where,
-          include: OPEN_DEALS,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: query.limit + 1,
-          ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-        }),
-        tx.contact.count({ where }),
+        tx.contact.find(and(where, after), { sort: { createdAt: -1, id: -1 }, limit: query.limit + 1 }),
+        tx.contact.count(where),
       ]);
       const page = rows.slice(0, query.limit);
       return {
@@ -75,13 +67,9 @@ export class ContactsService {
 
   async get(id: string): Promise<ContactDetailDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const contact = await this.findVisible(tx, ctx, id);
-      const deals = await tx.deal.findMany({
-        where: { tenantId: ctx.tenantId, contactId: id },
-        include: { contact: { select: { id: true, name: true } } },
-        orderBy: { createdAt: "desc" },
-      });
+      const deals = await withContacts(tx, ctx.tenantId, await tx.deal.find({ tenantId: ctx.tenantId, contactId: id }, { sort: { createdAt: -1 } }));
       const refs = await memberRefs(tx, ctx.tenantId, [contact.ownerId, ...deals.map((d) => d.ownerId)]);
       const [dto] = await this.toDtos(tx, ctx.tenantId, [contact]);
       return { ...dto!, deals: deals.map((d) => dealToDto(d, refs)) };
@@ -90,22 +78,19 @@ export class ContactsService {
 
   async create(input: ContactCreateInput): Promise<ContactDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const ownerId = await resolveOwner(tx, ctx, input.ownerId, ctx.membershipId);
-      const contact = await tx.contact.create({
-        data: {
-          tenantId: ctx.tenantId,
-          type: input.type,
-          name: input.name,
-          email: input.email ?? null,
-          phone: input.phone ?? null,
-          companyName: input.companyName ?? null,
-          stage: input.stage,
-          source: input.source,
-          tags: input.tags,
-          ownerId,
-        },
-        include: OPEN_DEALS,
+      const contact = await tx.contact.insertOne({
+        tenantId: ctx.tenantId,
+        type: input.type,
+        name: input.name,
+        email: input.email ?? null,
+        phone: input.phone ?? null,
+        companyName: input.companyName ?? null,
+        stage: input.stage,
+        source: input.source,
+        tags: input.tags,
+        ownerId,
       });
       await this.activity.record(tx, { type: "contact_created", contactId: contact.id, payload: { contactName: contact.name } });
       await this.automations.enqueue(tx, ctx.tenantId, "contact.created", { contactId: contact.id });
@@ -115,24 +100,25 @@ export class ContactsService {
 
   async update(id: string, input: ContactUpdateInput): Promise<ContactDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const current = await this.findVisible(tx, ctx, id);
       const ownerId = input.ownerId !== undefined ? await resolveOwner(tx, ctx, input.ownerId, null) : undefined;
-      const updated = await tx.contact.update({
-        where: { id },
-        data: {
-          type: input.type,
-          name: input.name,
-          email: input.email,
-          phone: input.phone,
-          companyName: input.companyName,
-          stage: input.stage,
-          source: input.source,
-          tags: input.tags,
-          ownerId,
+      const updated = await tx.contact.update(
+        { id },
+        {
+          $set: {
+            type: input.type,
+            name: input.name,
+            email: input.email,
+            phone: input.phone,
+            companyName: input.companyName,
+            stage: input.stage,
+            source: input.source,
+            tags: input.tags,
+            ownerId,
+          },
         },
-        include: OPEN_DEALS,
-      });
+      );
       if (input.stage && input.stage !== current.stage) {
         await this.activity.record(tx, {
           type: "contact_stage",
@@ -155,25 +141,25 @@ export class ContactsService {
   /** Soft delete: the row and its history stay for restore and audit. */
   async remove(id: string) {
     const ctx = authedContext();
-    await this.prisma.scoped(async (tx) => {
+    await this.db.scoped(async (tx) => {
       const current = await this.findVisible(tx, ctx, id);
-      await tx.contact.update({ where: { id }, data: { deletedAt: new Date() } });
+      await tx.contact.update({ id }, { $set: { deletedAt: new Date() } });
       await this.audit.log(tx, { action: "contact.deleted", entityType: "contact", entityId: id, diff: { name: current.name } });
     });
   }
 
   async activities(id: string): Promise<ActivityDto[]> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       await this.findVisible(tx, ctx, id);
-      const rows = await tx.activity.findMany({ where: { tenantId: ctx.tenantId, contactId: id }, orderBy: TIMELINE_ORDER, take: 100 });
+      const rows = await tx.activity.find({ tenantId: ctx.tenantId, contactId: id }, { sort: TIMELINE_ORDER, limit: 100 });
       return this.activity.toDtos(tx, ctx.tenantId, rows);
     });
   }
 
   async addNote(id: string, body: string): Promise<ActivityDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const contact = await this.findVisible(tx, ctx, id);
       const row = await this.activity.record(tx, { type: "note", contactId: id, payload: { body, contactName: contact.name } });
       return (await this.activity.toDtos(tx, ctx.tenantId, [row]))[0]!;
@@ -183,16 +169,13 @@ export class ContactsService {
   /** Not found and not visible look the same, so ids can't be probed across scopes. */
   async findVisible(tx: Tx, ctx: AuthedContext, id: string) {
     const { where } = await ownerScope(tx, ctx, "contacts.view_all");
-    const contact = await tx.contact.findFirst({
-      where: { AND: [{ id, tenantId: ctx.tenantId, deletedAt: null }, where] },
-      include: OPEN_DEALS,
-    });
+    const contact = await tx.contact.findOne(and({ id, tenantId: ctx.tenantId, deletedAt: null }, where));
     if (!contact) throw notFound("Contact");
     return contact;
   }
 
-  private async toDtos(tx: Tx, tenantId: string, rows: ContactWithCount[]): Promise<ContactDto[]> {
-    const refs = await memberRefs(tx, tenantId, rows.map((r) => r.ownerId));
+  private async toDtos(tx: Tx, tenantId: string, rows: Contact[]): Promise<ContactDto[]> {
+    const [refs, openDeals] = await Promise.all([memberRefs(tx, tenantId, rows.map((r) => r.ownerId)), openDealCounts(tx, tenantId, rows.map((r) => r.id))]);
     return rows.map((c) => {
       const owner = c.ownerId ? refs.get(c.ownerId) : undefined;
       return {
@@ -206,7 +189,7 @@ export class ContactsService {
         source: c.source,
         tags: c.tags,
         owner: owner ? { id: owner.id, name: owner.name } : null,
-        openDeals: c._count.deals,
+        openDeals: openDeals.get(c.id) ?? 0,
         createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString(),
       };

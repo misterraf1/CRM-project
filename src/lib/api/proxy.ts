@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { apiUrl, clientIpHeader } from "@/lib/auth/cookies";
+import { callApi } from "./internal";
 
-// Shared by the company proxy (/api/v1) and the platform proxy (/api/admin).
-// Bodies are streamed both ways, so JSON, multipart uploads, file downloads and
-// event streams all work.
+// Shared by the company proxy (/api/v1) and the platform proxy (/api/admin): the
+// browser's cookie session becomes a bearer token for the in-process API. Responses
+// are streamed, so JSON, file downloads and event streams all work.
 
 const PASS_THROUGH = ["content-type", "content-disposition", "content-length", "x-content-type-options", "content-security-policy", "cache-control"];
 
@@ -18,16 +18,20 @@ export function crossSite(req: NextRequest) {
 
 export async function forward(req: NextRequest, upstreamPath: string, token: string | undefined) {
   const contentType = req.headers.get("content-type");
-  const upstream = await fetch(apiUrl(`${upstreamPath}${req.nextUrl.search}`), {
-    method: req.method,
-    headers: {
-      ...clientIpHeader(req.headers),
-      ...(token !== undefined ? { authorization: `Bearer ${token}` } : {}),
-      ...(contentType ? { "content-type": contentType } : {}),
+  const upstream = await callApi(
+    `${upstreamPath}${req.nextUrl.search}`,
+    {
+      method: req.method,
+      headers: {
+        ...(token !== undefined ? { authorization: `Bearer ${token}` } : {}),
+        ...(contentType ? { "content-type": contentType } : {}),
+      },
+      body: req.method === "GET" ? undefined : await req.arrayBuffer(),
+      // Event streams end when the browser goes away
+      signal: req.signal,
     },
-    body: req.method === "GET" ? undefined : await req.arrayBuffer(),
-    cache: "no-store",
-  });
+    req.headers,
+  );
 
   const headers = new Headers();
   for (const h of PASS_THROUGH) {

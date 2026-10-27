@@ -1,4 +1,4 @@
-import { CONVERSATION_STATUSES } from "@axis/shared";
+import { CONVERSATION_STATUSES } from "@/shared";
 import clsx from "clsx";
 import { Search, Settings } from "lucide-react";
 import type { Metadata } from "next";

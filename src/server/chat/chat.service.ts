@@ -1,5 +1,5 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
-import { Prisma, type ChatMessage, type ChatRoom } from "@prisma/client";
+import { Logger } from "../common/logger";
+import type { ChatMessage, ChatRoom } from "../db/models";
 import type {
   ChatAttachmentDto,
   ChatMessageDto,
@@ -9,16 +9,18 @@ import type {
   ChatRoomKind,
   ChatSearchHitDto,
   GroupRoomInput,
-} from "@axis/shared";
+} from "@/shared";
 import { authedContext, type AuthedContext } from "../common/context";
 import { AppError, forbidden, notFound } from "../common/errors";
 import { memberRefs } from "../crm/scope";
-import { PrismaService, type Tx } from "../prisma/prisma.service";
-import { FILE_STORAGE, type FileStorage } from "../storage/storage.service";
+import type { Database, Tx } from "../db/database";
+import { isDuplicateKey } from "../db/errors";
+import { and, contains, groupBy } from "../db/query";
+import type { FileStorage } from "../storage/storage.service";
 import { FilesService, type UploadedFile } from "../tasks/files.service";
 import { taskScope } from "../tasks/tasks.service";
 import { ChatEvents } from "./events";
-import { unreadByRoom } from "./unread";
+import { unreadByRoom, visibleRoomIds } from "./unread";
 
 const directKey = (a: string, b: string) => [a, b].sort().join(":");
 
@@ -27,42 +29,39 @@ const directKey = (a: string, b: string) => [a, b].sort().join(":");
  * Access = current membership of the room; department rooms follow the
  * department, so someone who moves out loses access immediately.
  */
-@Injectable()
 export class ChatService {
   private readonly logger = new Logger("Chat");
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly events: ChatEvents,
     private readonly files: FilesService,
-    @Inject(FILE_STORAGE) private readonly storage: FileStorage,
+    private readonly storage: FileStorage,
   ) {}
 
   async rooms(): Promise<ChatRoomDto[]> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       await this.syncDepartmentRoom(tx, ctx);
-      const rooms = await tx.chatRoom.findMany({
-        where: {
-          tenantId: ctx.tenantId,
-          members: { some: { memberId: ctx.membershipId } },
-          OR: [{ kind: { not: "department" } }, { departmentId: ctx.departmentId ?? "__none__" }],
-        },
-        include: { _count: { select: { members: true } }, members: { select: { memberId: true } } },
-      });
+      const roomIds = [...(await this.myVisibleRooms(tx, ctx))];
+      const [rooms, members] = await Promise.all([
+        tx.chatRoom.find({ tenantId: ctx.tenantId, id: { $in: roomIds } }),
+        tx.chatMember.find({ tenantId: ctx.tenantId, roomId: { $in: roomIds } }, { projection: { roomId: 1, memberId: 1 } }),
+      ]);
+      const membersOf = groupBy(members, (m) => m.roomId);
       const [unread, last] = await Promise.all([
         unreadByRoom(tx, ctx),
-        Promise.all(rooms.map((r) => tx.chatMessage.findFirst({ where: { roomId: r.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }))),
+        Promise.all(rooms.map((r) => tx.chatMessage.findOne({ roomId: r.id }, { sort: { createdAt: -1, id: -1 } }))),
       ]);
-      const refs = await memberRefs(tx, ctx.tenantId, [...rooms.flatMap((r) => r.members.map((m) => m.memberId)), ...last.map((m) => m?.authorId)]);
+      const refs = await memberRefs(tx, ctx.tenantId, [...members.map((m) => m.memberId), ...last.map((m) => m?.authorId)]);
       return rooms
         .map((r, i) => {
           const m = last[i];
           return {
             id: r.id,
             kind: r.kind as ChatRoomKind,
-            name: this.roomName(r, r.members.map((x) => x.memberId), ctx, refs),
-            memberCount: r._count.members,
+            name: this.roomName(r, (membersOf.get(r.id) ?? []).map((x) => x.memberId), ctx, refs),
+            memberCount: membersOf.get(r.id)?.length ?? 0,
             unread: unread.get(r.id) ?? 0,
             lastMessage: m
               ? {
@@ -85,26 +84,19 @@ export class ChatService {
     const ctx = authedContext();
     if (memberId === ctx.membershipId) throw new AppError("VALIDATION_FAILED", "Cannot chat with yourself", { memberId: ["Self"] });
     const key = directKey(ctx.membershipId, memberId);
-    const find = () => this.prisma.scoped((tx) => tx.chatRoom.findUnique({ where: { tenantId_directKey: { tenantId: ctx.tenantId, directKey: key } } }));
+    const find = () => this.db.scoped((tx) => tx.chatRoom.findOne({ tenantId: ctx.tenantId, directKey: key }));
     const existing = await find();
     if (existing) return { id: existing.id };
     try {
-      return await this.prisma.scoped(async (tx) => {
+      return await this.db.scoped(async (tx) => {
         await this.assertActiveMembers(tx, ctx, [memberId]);
-        const room = await tx.chatRoom.create({
-          data: {
-            tenantId: ctx.tenantId,
-            kind: "direct",
-            directKey: key,
-            createdById: ctx.membershipId,
-            members: { create: [ctx.membershipId, memberId].map((m) => ({ tenantId: ctx.tenantId, memberId: m })) },
-          },
-        });
+        const room = await tx.chatRoom.insertOne({ tenantId: ctx.tenantId, kind: "direct", directKey: key, createdById: ctx.membershipId });
+        await tx.chatMember.insertMany([ctx.membershipId, memberId].map((m) => ({ tenantId: ctx.tenantId, roomId: room.id, memberId: m })));
         return { id: room.id };
       });
     } catch (e) {
       // Both people opened the chat at the same moment
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { id: (await find())!.id };
+      if (isDuplicateKey(e)) return { id: (await find())!.id };
       throw e;
     }
   }
@@ -112,17 +104,10 @@ export class ChatService {
   async group(input: GroupRoomInput): Promise<{ id: string }> {
     const ctx = authedContext();
     const ids = [...new Set([ctx.membershipId, ...input.memberIds])];
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       await this.assertActiveMembers(tx, ctx, ids);
-      const room = await tx.chatRoom.create({
-        data: {
-          tenantId: ctx.tenantId,
-          kind: "group",
-          name: input.name,
-          createdById: ctx.membershipId,
-          members: { create: ids.map((m) => ({ tenantId: ctx.tenantId, memberId: m })) },
-        },
-      });
+      const room = await tx.chatRoom.insertOne({ tenantId: ctx.tenantId, kind: "group", name: input.name, createdById: ctx.membershipId });
+      await tx.chatMember.insertMany(ids.map((m) => ({ tenantId: ctx.tenantId, roomId: room.id, memberId: m })));
       this.events.publish(ids, { type: "room", roomId: room.id });
       return { id: room.id };
     });
@@ -130,7 +115,7 @@ export class ChatService {
 
   async addMembers(roomId: string, memberIds: string[]) {
     const ctx = authedContext();
-    await this.prisma.scoped(async (tx) => {
+    await this.db.scoped(async (tx) => {
       const room = await this.access(tx, ctx, roomId);
       if (room.kind !== "group") throw forbidden("Members can be added to group chats only");
       await this.assertActiveMembers(tx, ctx, memberIds);
@@ -141,25 +126,21 @@ export class ChatService {
 
   async leave(roomId: string) {
     const ctx = authedContext();
-    await this.prisma.scoped(async (tx) => {
+    await this.db.scoped(async (tx) => {
       const room = await this.access(tx, ctx, roomId);
       if (room.kind !== "group") throw forbidden("Only group chats can be left");
-      await tx.chatMember.delete({ where: { roomId_memberId: { roomId, memberId: ctx.membershipId } } });
+      await tx.chatMember.delete({ roomId, memberId: ctx.membershipId });
     });
   }
 
   async detail(roomId: string, before?: string, limit = 50): Promise<ChatRoomDetailDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       await this.syncDepartmentRoom(tx, ctx);
       const room = await this.access(tx, ctx, roomId);
       const memberIds = await this.memberIds(tx, roomId);
-      const pivot = before ? await tx.chatMessage.findFirst({ where: { id: before, roomId } }) : null;
-      const rows = await tx.chatMessage.findMany({
-        where: { roomId, ...(pivot ? { createdAt: { lt: pivot.createdAt } } : {}) },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: limit + 1,
-      });
+      const pivot = before ? await tx.chatMessage.findOne({ id: before, roomId }) : null;
+      const rows = await tx.chatMessage.find({ roomId, ...(pivot ? { createdAt: { $lt: pivot.createdAt } } : {}) }, { sort: { createdAt: -1, id: -1 }, limit: limit + 1 });
       const page = rows.slice(0, limit).reverse();
       const refs = await memberRefs(tx, ctx.tenantId, [...memberIds, ...page.map((m) => m.authorId)]);
       const unread = (await unreadByRoom(tx, ctx)).get(roomId) ?? 0;
@@ -180,12 +161,10 @@ export class ChatService {
 
   async send(roomId: string, input: ChatMessageInput): Promise<ChatMessageDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       await this.access(tx, ctx, roomId);
       if (input.taskId) await this.assertTaskVisible(tx, ctx, input.taskId);
-      const message = await tx.chatMessage.create({
-        data: { tenantId: ctx.tenantId, roomId, authorId: ctx.membershipId, body: input.body ?? null, taskId: input.taskId ?? null },
-      });
+      const message = await tx.chatMessage.insertOne({ tenantId: ctx.tenantId, roomId, authorId: ctx.membershipId, body: input.body ?? null, taskId: input.taskId ?? null });
       return this.afterWrite(tx, ctx, roomId, message);
     });
   }
@@ -193,18 +172,16 @@ export class ChatService {
   /** File (or image) message: stored with the quota rules shared with task files. */
   async upload(roomId: string, file: UploadedFile | undefined, caption?: string): Promise<ChatMessageDto> {
     const ctx = authedContext();
-    await this.prisma.scoped((tx) => this.access(tx, ctx, roomId));
+    await this.db.scoped((tx) => this.access(tx, ctx, roomId));
     const stored = await this.files.store({ entityType: "chat", entityId: roomId }, file);
     const attachment: ChatAttachmentDto = { fileId: stored.id, name: stored.name, sizeBytes: stored.sizeBytes, mimeType: stored.mimeType };
-    return this.prisma.scoped(async (tx) => {
-      const message = await tx.chatMessage.create({
-        data: {
-          tenantId: ctx.tenantId,
-          roomId,
-          authorId: ctx.membershipId,
-          body: caption?.trim().slice(0, 4000) || null,
-          attachments: [attachment] as unknown as Prisma.InputJsonArray,
-        },
+    return this.db.scoped(async (tx) => {
+      const message = await tx.chatMessage.insertOne({
+        tenantId: ctx.tenantId,
+        roomId,
+        authorId: ctx.membershipId,
+        body: caption?.trim().slice(0, 4000) || null,
+        attachments: [attachment] as unknown as ChatMessage["attachments"],
       });
       return this.afterWrite(tx, ctx, roomId, message);
     });
@@ -212,9 +189,9 @@ export class ChatService {
 
   async edit(messageId: string, body: string): Promise<ChatMessageDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
+    return this.db.scoped(async (tx) => {
       const m = await this.ownMessage(tx, ctx, messageId);
-      const updated = await tx.chatMessage.update({ where: { id: m.id }, data: { body, editedAt: new Date() } });
+      const updated = await tx.chatMessage.update({ id: m.id }, { $set: { body, editedAt: new Date() } });
       this.events.publish(await this.memberIds(tx, m.roomId), { type: "message", roomId: m.roomId });
       return (await this.toDtos(tx, ctx, [updated]))[0]!;
     });
@@ -222,12 +199,12 @@ export class ChatService {
 
   async remove(messageId: string) {
     const ctx = authedContext();
-    const keys = await this.prisma.scoped(async (tx) => {
+    const keys = await this.db.scoped(async (tx) => {
       const m = await this.ownMessage(tx, ctx, messageId);
       const fileIds = this.attachments(m).map((a) => a.fileId);
-      const files = await tx.fileObject.findMany({ where: { tenantId: ctx.tenantId, id: { in: fileIds } }, select: { key: true } });
-      await tx.fileObject.deleteMany({ where: { tenantId: ctx.tenantId, id: { in: fileIds } } });
-      await tx.chatMessage.delete({ where: { id: m.id } });
+      const files = await tx.fileObject.find({ tenantId: ctx.tenantId, id: { $in: fileIds } }, { projection: { key: 1 } });
+      await tx.fileObject.deleteMany({ tenantId: ctx.tenantId, id: { $in: fileIds } });
+      await tx.chatMessage.delete({ id: m.id });
       this.events.publish(await this.memberIds(tx, m.roomId), { type: "message", roomId: m.roomId });
       return files.map((f) => f.key);
     });
@@ -236,44 +213,44 @@ export class ChatService {
 
   async read(roomId: string) {
     const ctx = authedContext();
-    await this.prisma.scoped(async (tx) => {
+    await this.db.scoped(async (tx) => {
       await this.access(tx, ctx, roomId);
-      await tx.chatMember.update({ where: { roomId_memberId: { roomId, memberId: ctx.membershipId } }, data: { lastReadAt: new Date() } });
+      await tx.chatMember.update({ roomId, memberId: ctx.membershipId }, { $set: { lastReadAt: new Date() } });
     });
   }
 
   async search(q: string): Promise<ChatSearchHitDto[]> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
-      const rows = await tx.chatMessage.findMany({
-        where: {
-          tenantId: ctx.tenantId,
-          body: { contains: q, mode: "insensitive" },
-          room: {
-            members: { some: { memberId: ctx.membershipId } },
-            OR: [{ kind: { not: "department" } }, { departmentId: ctx.departmentId ?? "__none__" }],
-          },
-        },
-        include: { room: { include: { members: { select: { memberId: true } } } } },
-        orderBy: { createdAt: "desc" },
-        take: 30,
-      });
-      const refs = await memberRefs(tx, ctx.tenantId, rows.flatMap((r) => r.room.members.map((m) => m.memberId)));
+    return this.db.scoped(async (tx) => {
+      const roomIds = [...(await this.myVisibleRooms(tx, ctx))];
+      const rows = await tx.chatMessage.find({ tenantId: ctx.tenantId, roomId: { $in: roomIds }, body: contains(q) }, { sort: { createdAt: -1 }, limit: 30 });
+      const hitRooms = [...new Set(rows.map((r) => r.roomId))];
+      const [rooms, members] = await Promise.all([
+        tx.chatRoom.find({ tenantId: ctx.tenantId, id: { $in: hitRooms } }),
+        tx.chatMember.find({ tenantId: ctx.tenantId, roomId: { $in: hitRooms } }, { projection: { roomId: 1, memberId: 1 } }),
+      ]);
+      const roomById = new Map(rooms.map((r) => [r.id, r]));
+      const membersOf = groupBy(members, (m) => m.roomId);
+      const refs = await memberRefs(tx, ctx.tenantId, members.map((m) => m.memberId));
       const dtos = await this.toDtos(tx, ctx, rows);
-      return rows.map((r, i) => ({
-        message: dtos[i]!,
-        room: { id: r.room.id, kind: r.room.kind as ChatRoomKind, name: this.roomName(r.room, r.room.members.map((m) => m.memberId), ctx, refs) },
-      }));
+      return rows.map((r, i) => {
+        const room = roomById.get(r.roomId)!;
+        return {
+          message: dtos[i]!,
+          room: { id: room.id, kind: room.kind as ChatRoomKind, name: this.roomName(room, (membersOf.get(room.id) ?? []).map((m) => m.memberId), ctx, refs) },
+        };
+      });
     });
   }
 
   /** Room the caller may use, or 404 (same answer for "missing" and "not a member"). */
   private async access(tx: Tx, ctx: AuthedContext, roomId: string) {
-    const room = await tx.chatRoom.findFirst({ where: { id: roomId, tenantId: ctx.tenantId, members: { some: { memberId: ctx.membershipId } } } });
+    const member = await tx.chatMember.count({ tenantId: ctx.tenantId, roomId, memberId: ctx.membershipId });
+    const room = member ? await tx.chatRoom.findOne({ id: roomId, tenantId: ctx.tenantId }) : null;
     if (!room) throw notFound("Chat");
     if (room.kind === "department" && room.departmentId !== ctx.departmentId) {
       // Moved to another department: membership is stale, drop it
-      await tx.chatMember.deleteMany({ where: { roomId, memberId: ctx.membershipId } });
+      await tx.chatMember.deleteMany({ roomId, memberId: ctx.membershipId });
       throw notFound("Chat");
     }
     return room;
@@ -282,33 +259,39 @@ export class ChatService {
   /** Creates the caller's department room on first use and keeps its members in line with the department. */
   private async syncDepartmentRoom(tx: Tx, ctx: AuthedContext) {
     if (!ctx.departmentId) return;
-    const dept = await tx.department.findFirst({ where: { id: ctx.departmentId, tenantId: ctx.tenantId } });
+    const dept = await tx.department.findOne({ id: ctx.departmentId, tenantId: ctx.tenantId });
     if (!dept) return;
     const room =
-      (await tx.chatRoom.findUnique({ where: { departmentId: dept.id } })) ??
-      (await tx.chatRoom.create({ data: { tenantId: ctx.tenantId, kind: "department", departmentId: dept.id, name: dept.name } }));
-    if (room.name !== dept.name) await tx.chatRoom.update({ where: { id: room.id }, data: { name: dept.name } });
-    const current = (await tx.membership.findMany({ where: { tenantId: ctx.tenantId, departmentId: dept.id, status: "ACTIVE" }, select: { id: true } })).map((m) => m.id);
+      (await tx.chatRoom.findOne({ departmentId: dept.id })) ??
+      (await tx.chatRoom.insertOne({ tenantId: ctx.tenantId, kind: "department", departmentId: dept.id, name: dept.name }));
+    if (room.name !== dept.name) await tx.chatRoom.update({ id: room.id }, { $set: { name: dept.name } });
+    const current = (await tx.membership.find({ tenantId: ctx.tenantId, departmentId: dept.id, status: "ACTIVE" }, { projection: { id: 1 } })).map((m) => m.id);
     await this.addMissingMembers(tx, ctx, room.id, current);
-    await tx.chatMember.deleteMany({ where: { roomId: room.id, memberId: { notIn: current } } });
+    await tx.chatMember.deleteMany({ roomId: room.id, memberId: { $nin: current } });
   }
 
   private async afterWrite(tx: Tx, ctx: AuthedContext, roomId: string, message: ChatMessage) {
     // Writing in a room counts as having read it
-    await tx.chatMember.update({ where: { roomId_memberId: { roomId, memberId: ctx.membershipId } }, data: { lastReadAt: message.createdAt } });
+    await tx.chatMember.update({ roomId, memberId: ctx.membershipId }, { $set: { lastReadAt: message.createdAt } });
     this.events.publish(await this.memberIds(tx, roomId), { type: "message", roomId });
     return (await this.toDtos(tx, ctx, [message]))[0]!;
   }
 
-  /** createMany without duplicates (MongoDB has no skipDuplicates). */
+  /** Rooms the caller belongs to and may currently see. */
+  private async myVisibleRooms(tx: Tx, ctx: AuthedContext) {
+    const mine = await tx.chatMember.find({ tenantId: ctx.tenantId, memberId: ctx.membershipId }, { projection: { roomId: 1 } });
+    return visibleRoomIds(tx, ctx, mine.map((m) => m.roomId));
+  }
+
+  /** Adds members who aren't in the room yet. */
   private async addMissingMembers(tx: Tx, ctx: AuthedContext, roomId: string, memberIds: string[]) {
-    const existing = new Set((await tx.chatMember.findMany({ where: { roomId }, select: { memberId: true } })).map((m) => m.memberId));
+    const existing = new Set((await tx.chatMember.find({ roomId }, { projection: { memberId: 1 } })).map((m) => m.memberId));
     const missing = [...new Set(memberIds)].filter((m) => !existing.has(m));
-    if (missing.length) await tx.chatMember.createMany({ data: missing.map((m) => ({ tenantId: ctx.tenantId, roomId, memberId: m })) });
+    await tx.chatMember.insertMany(missing.map((m) => ({ tenantId: ctx.tenantId, roomId, memberId: m })));
   }
 
   private async ownMessage(tx: Tx, ctx: AuthedContext, messageId: string) {
-    const m = await tx.chatMessage.findFirst({ where: { id: messageId, tenantId: ctx.tenantId } });
+    const m = await tx.chatMessage.findOne({ id: messageId, tenantId: ctx.tenantId });
     if (!m) throw notFound("Message");
     await this.access(tx, ctx, m.roomId);
     if (m.authorId !== ctx.membershipId) throw forbidden("You can change only your own messages");
@@ -317,18 +300,18 @@ export class ChatService {
 
   private async assertTaskVisible(tx: Tx, ctx: AuthedContext, taskId: string) {
     const { where } = await taskScope(tx, ctx);
-    if (!(await tx.task.count({ where: { AND: [{ id: taskId, tenantId: ctx.tenantId }, where] } }))) {
+    if (!(await tx.task.count(and({ id: taskId, tenantId: ctx.tenantId }, where)))) {
       throw new AppError("VALIDATION_FAILED", "Unknown task", { taskId: ["Unknown task"] });
     }
   }
 
   private async assertActiveMembers(tx: Tx, ctx: AuthedContext, ids: string[]) {
-    const n = await tx.membership.count({ where: { tenantId: ctx.tenantId, status: "ACTIVE", id: { in: ids } } });
+    const n = await tx.membership.count({ tenantId: ctx.tenantId, status: "ACTIVE", id: { $in: ids } });
     if (n !== new Set(ids).size) throw new AppError("VALIDATION_FAILED", "Unknown member", { memberIds: ["Unknown member"] });
   }
 
   private async memberIds(tx: Tx, roomId: string) {
-    return (await tx.chatMember.findMany({ where: { roomId }, select: { memberId: true } })).map((m) => m.memberId);
+    return (await tx.chatMember.find({ roomId }, { projection: { memberId: 1 } })).map((m) => m.memberId);
   }
 
   private roomName(room: ChatRoom, memberIds: string[], ctx: AuthedContext, refs: Map<string, { name: string }>) {
@@ -346,9 +329,9 @@ export class ChatService {
     const taskIds = [...new Set(rows.map((r) => r.taskId).filter((x): x is string => !!x))];
     const { where } = await taskScope(tx, ctx);
     const tasks = taskIds.length
-      ? await tx.task.findMany({ where: { AND: [{ tenantId: ctx.tenantId, id: { in: taskIds } }, where] }, select: { id: true, title: true, status: true } })
+      ? await tx.task.find(and({ tenantId: ctx.tenantId, id: { $in: taskIds } }, where), { projection: { id: 1, title: 1, status: 1 } })
       : [];
-    const taskById = new Map(tasks.map((t) => [t.id, t]));
+    const taskById = new Map(tasks.map((t) => [t.id, { id: t.id, title: t.title, status: t.status }]));
     const refs = await memberRefs(tx, ctx.tenantId, rows.map((r) => r.authorId));
     return rows.map((m) => {
       const a = refs.get(m.authorId);

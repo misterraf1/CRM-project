@@ -1,57 +1,22 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from "@nestjs/common";
-import {
-  contactCreateSchema,
-  contactListQuerySchema,
-  contactUpdateSchema,
-  noteSchema,
-  type ContactCreateInput,
-  type ContactListQuery,
-  type ContactUpdateInput,
-} from "@axis/shared";
-import type { z } from "zod";
-import { RequirePermission } from "../common/decorators";
-import { ZodPipe } from "../common/zod.pipe";
-import { ContactsService } from "./contacts.service";
+import { contactCreateSchema, contactListQuerySchema, contactUpdateSchema, noteSchema } from "@/shared";
+import type { Services } from "../container";
+import type { Router } from "../http/router";
 
 // Every member works with contacts; visibility is narrowed by ownerScope() per role.
-@Controller("v1/contacts")
-export class ContactsController {
-  constructor(private readonly contacts: ContactsService) {}
+export function contactsRoutes(router: Router, s: Services) {
+  router.group("/v1/contacts", {}, (r) => {
+    r.get("", { query: contactListQuerySchema }, ({ query }) => s.contacts.list(query));
 
-  @Get()
-  list(@Query(new ZodPipe(contactListQuerySchema)) query: ContactListQuery) {
-    return this.contacts.list(query);
-  }
+    r.post("", { body: contactCreateSchema }, ({ body }) => s.contacts.create(body));
 
-  @Post()
-  create(@Body(new ZodPipe(contactCreateSchema)) body: ContactCreateInput) {
-    return this.contacts.create(body);
-  }
+    r.get(":id", ({ params }) => s.contacts.get(params.id!));
 
-  @Get(":id")
-  get(@Param("id") id: string) {
-    return this.contacts.get(id);
-  }
+    r.patch(":id", { body: contactUpdateSchema }, ({ params, body }) => s.contacts.update(params.id!, body));
 
-  @Patch(":id")
-  update(@Param("id") id: string, @Body(new ZodPipe(contactUpdateSchema)) body: ContactUpdateInput) {
-    return this.contacts.update(id, body);
-  }
+    r.delete(":id", { permission: "contacts.delete", status: 204 }, ({ params }) => s.contacts.remove(params.id!));
 
-  @RequirePermission("contacts.delete")
-  @HttpCode(204)
-  @Delete(":id")
-  remove(@Param("id") id: string) {
-    return this.contacts.remove(id);
-  }
+    r.get(":id/activities", ({ params }) => s.contacts.activities(params.id!));
 
-  @Get(":id/activities")
-  activities(@Param("id") id: string) {
-    return this.contacts.activities(id);
-  }
-
-  @Post(":id/notes")
-  addNote(@Param("id") id: string, @Body(new ZodPipe(noteSchema)) body: z.infer<typeof noteSchema>) {
-    return this.contacts.addNote(id, body.body);
-  }
+    r.post(":id/notes", { body: noteSchema }, ({ params, body }) => s.contacts.addNote(params.id!, body.body));
+  });
 }

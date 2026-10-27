@@ -1,4 +1,4 @@
-import type { ErrorCode } from "@axis/shared";
+import type { ErrorCode } from "@/shared";
 
 const STATUS: Record<ErrorCode, number> = {
   VALIDATION_FAILED: 400,

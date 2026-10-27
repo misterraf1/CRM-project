@@ -1,6 +1,6 @@
 "use client";
 
-import { TICKET_PRIORITIES, TICKET_STATUSES, type TicketDto } from "@axis/shared";
+import { TICKET_PRIORITIES, TICKET_STATUSES, type TicketDto } from "@/shared";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";

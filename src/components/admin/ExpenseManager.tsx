@@ -1,6 +1,6 @@
 "use client";
 
-import { EXPENSE_CATEGORIES, type ExpenseDto } from "@axis/shared";
+import { EXPENSE_CATEGORIES, type ExpenseDto } from "@/shared";
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";

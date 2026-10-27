@@ -1,6 +1,6 @@
 "use client";
 
-import type { FileListResponse, FileSource } from "@axis/shared";
+import type { FileListResponse, FileSource } from "@/shared";
 import clsx from "clsx";
 import { Download, Trash2, Upload } from "lucide-react";
 import Link from "next/link";

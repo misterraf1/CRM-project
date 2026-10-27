@@ -1,14 +1,13 @@
-import type { INestApplication } from "@nestjs/common";
-import type { AdminMe, MfaEnabledDto, MfaSetupDto } from "@axis/shared";
+import type { AdminMe, MfaEnabledDto, MfaSetupDto } from "@/shared";
 import request from "supertest";
-import { config } from "../src/config";
-import { totp } from "../src/common/totp";
-import { createApp, platformStaff, PASSWORD } from "./helpers";
+import { config } from "@/server/config";
+import { totp } from "@/server/common/totp";
+import { createApp, platformStaff, PASSWORD, type TestApp } from "./helpers";
 
 const STEP = 30_000;
 
 describe("Platform staff 2FA", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {

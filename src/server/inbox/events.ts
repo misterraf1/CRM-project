@@ -1,5 +1,4 @@
-import { Injectable } from "@nestjs/common";
-import type { InboxEvent } from "@axis/shared";
+import type { InboxEvent } from "@/shared";
 import { EventEmitter } from "node:events";
 
 /**
@@ -7,7 +6,6 @@ import { EventEmitter } from "node:events";
  * instance; with several instances this becomes Redis pub/sub (docs §3).
  * Events carry ids only — clients re-fetch through the authorised API.
  */
-@Injectable()
 export class InboxEvents {
   private readonly bus = new EventEmitter().setMaxListeners(0);
 

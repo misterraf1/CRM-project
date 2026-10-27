@@ -1,6 +1,6 @@
 "use client";
 
-import type { AiTextDto, CannedResponseDto, ConversationDetailDto, MeResponse, MessageDto } from "@axis/shared";
+import type { AiTextDto, CannedResponseDto, ConversationDetailDto, MeResponse, MessageDto } from "@/shared";
 import clsx from "clsx";
 import { AlertTriangle, ArrowLeft, Check, MessageSquareQuote, RotateCcw, Sparkles, StickyNote, X } from "lucide-react";
 import Link from "next/link";

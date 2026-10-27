@@ -1,6 +1,6 @@
 "use client";
 
-import type { FileDto } from "@axis/shared";
+import type { FileDto } from "@/shared";
 import { Download, Paperclip, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";

@@ -1,16 +1,12 @@
-import type { AuthTokens } from "@axis/shared";
-import { apiUrl, clientIpHeader } from "./cookies";
+import type { AuthTokens } from "@/shared";
+import { callApi } from "../api/internal";
 
-/**
- * Rotates a refresh token. Only called from route handlers: on Vercel the API is
- * reached through a service binding, which middleware can't use.
- */
+/** Rotates a refresh token. Only called from route handlers (middleware never touches the database). */
 export async function refreshTokens(refreshToken: string, headers: Headers): Promise<AuthTokens | null> {
-  const res = await fetch(apiUrl("/v1/auth/refresh"), {
-    method: "POST",
-    headers: { "content-type": "application/json", ...clientIpHeader(headers) },
-    body: JSON.stringify({ refreshToken }),
-    cache: "no-store",
-  }).catch(() => null);
+  const res = await callApi(
+    "/v1/auth/refresh",
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refreshToken }) },
+    headers,
+  ).catch(() => null);
   return res?.ok ? ((await res.json()) as AuthTokens) : null;
 }

@@ -1,202 +1,97 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import {
   adminInvoiceQuerySchema,
   adminLoginSchema,
   adminMfaVerifySchema,
-  mfaCodeSchema,
   adminTenantQuerySchema,
   expenseSchema,
   extendTrialSchema,
+  mfaCodeSchema,
   planUpdateSchema,
   suspendSchema,
   ticketMessageSchema,
   ticketUpdateSchema,
   TICKET_STATUSES,
-  type ExpenseInput,
-  type PlanUpdateInput,
   type TicketStatus,
-} from "@axis/shared";
-import { Throttle } from "@nestjs/throttler";
-import type { z } from "zod";
+} from "@/shared";
 import { config } from "../config";
 import { currentContext } from "../common/context";
-import { Public } from "../common/decorators";
-import { ZodPipe } from "../common/zod.pipe";
-import { SupportService } from "../support/support.service";
-import { AdminAuthService } from "./admin-auth.service";
-import { AdminGuard, AllowWithoutMfa, SuperAdminOnly } from "./admin.guard";
-import { AdminService } from "./admin.service";
+import type { Services } from "../container";
+import type { Router } from "../http/router";
 
-// Platform staff sign-in. Separate from /v1/auth: other issuer, no tenant.
-@Public()
-@Controller("v1/admin/auth")
-export class AdminAuthController {
-  constructor(private readonly auth: AdminAuthService) {}
+const authLimit = { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 };
 
-  @Throttle({ default: { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 } })
-  @HttpCode(200)
-  @Post("login")
-  login(@Body(new ZodPipe(adminLoginSchema)) body: z.infer<typeof adminLoginSchema>) {
-    return this.auth.login(body.email, body.password);
-  }
+export function adminRoutes(router: Router, s: Services) {
+  // Platform staff sign-in. Separate from /v1/auth: other issuer, no tenant.
+  router.group("/v1/admin/auth", { public: true }, (r) => {
+    r.post("login", { throttle: authLimit, status: 200, body: adminLoginSchema }, ({ body }) => s.adminAuth.login(body.email, body.password));
 
-  @Throttle({ default: { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 } })
-  @HttpCode(200)
-  @Post("mfa/verify")
-  verifyMfa(@Body(new ZodPipe(adminMfaVerifySchema)) body: z.infer<typeof adminMfaVerifySchema>) {
-    return this.auth.verifyMfa(body.challenge, body.code);
-  }
+    r.post("mfa/verify", { throttle: authLimit, status: 200, body: adminMfaVerifySchema }, ({ body }) => s.adminAuth.verifyMfa(body.challenge, body.code));
 
-  @UseGuards(AdminGuard)
-  @AllowWithoutMfa()
-  @HttpCode(204)
-  @Post("logout")
-  async logout() {
-    await this.auth.logout(currentContext().adminSessionId!);
-  }
+    r.post("logout", { admin: true, withoutMfa: true, status: 204 }, async () => {
+      await s.adminAuth.logout(currentContext().adminSessionId!);
+    });
 
-  @UseGuards(AdminGuard)
-  @AllowWithoutMfa()
-  @Get("me")
-  me() {
-    return this.auth.me(currentContext().userId!);
-  }
+    r.get("me", { admin: true, withoutMfa: true }, () => s.adminAuth.me(currentContext().userId!));
 
-  @UseGuards(AdminGuard)
-  @AllowWithoutMfa()
-  @Post("mfa/setup")
-  setupMfa() {
-    return this.auth.setupMfa(currentContext().userId!);
-  }
+    r.post("mfa/setup", { admin: true, withoutMfa: true }, () => s.adminAuth.setupMfa(currentContext().userId!));
 
-  @UseGuards(AdminGuard)
-  @AllowWithoutMfa()
-  @Throttle({ default: { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 } })
-  @HttpCode(200)
-  @Post("mfa/enable")
-  enableMfa(@Body(new ZodPipe(mfaCodeSchema)) body: { code: string }) {
-    return this.auth.enableMfa(currentContext().userId!, body.code);
-  }
+    r.post("mfa/enable", { admin: true, withoutMfa: true, throttle: authLimit, status: 200, body: mfaCodeSchema }, ({ body }) =>
+      s.adminAuth.enableMfa(currentContext().userId!, body.code),
+    );
 
-  @UseGuards(AdminGuard)
-  @Throttle({ default: { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 } })
-  @HttpCode(200)
-  @Post("mfa/recovery-codes")
-  regenerateRecoveryCodes(@Body(new ZodPipe(mfaCodeSchema)) body: { code: string }) {
-    return this.auth.regenerateRecoveryCodes(currentContext().userId!, body.code);
-  }
+    r.post("mfa/recovery-codes", { admin: true, throttle: authLimit, status: 200, body: mfaCodeSchema }, ({ body }) =>
+      s.adminAuth.regenerateRecoveryCodes(currentContext().userId!, body.code),
+    );
 
-  @UseGuards(AdminGuard)
-  @Throttle({ default: { limit: () => config().AUTH_RATE_LIMIT, ttl: 60_000 } })
-  @HttpCode(204)
-  @Post("mfa/disable")
-  async disableMfa(@Body(new ZodPipe(mfaCodeSchema)) body: { code: string }) {
-    await this.auth.disableMfa(currentContext().userId!, body.code);
-  }
-}
+    r.post("mfa/disable", { admin: true, throttle: authLimit, status: 204, body: mfaCodeSchema }, async ({ body }) => {
+      await s.adminAuth.disableMfa(currentContext().userId!, body.code);
+    });
+  });
 
-@Public()
-@UseGuards(AdminGuard)
-@Controller("v1/admin")
-export class AdminController {
-  constructor(
-    private readonly admin: AdminService,
-    private readonly support: SupportService,
-  ) {}
+  router.group("/v1/admin", { admin: true }, (r) => {
+    r.get("overview", () => s.admin.overview());
 
-  @Get("overview")
-  overview() {
-    return this.admin.overview();
-  }
+    r.get("tenants", { query: adminTenantQuerySchema }, ({ query }) => s.admin.tenants(query));
 
-  @Get("tenants")
-  tenants(@Query(new ZodPipe(adminTenantQuerySchema)) q: z.infer<typeof adminTenantQuerySchema>) {
-    return this.admin.tenants(q);
-  }
+    r.get("tenants/:id", ({ params }) => s.admin.tenant(params.id!));
 
-  @Get("tenants/:id")
-  tenant(@Param("id") id: string) {
-    return this.admin.tenant(id);
-  }
+    r.post("tenants/:id/extend-trial", { superAdminOnly: true, status: 204, body: extendTrialSchema }, async ({ params, body }) => {
+      await s.admin.extendTrial(params.id!, body.days);
+    });
 
-  @SuperAdminOnly()
-  @HttpCode(204)
-  @Post("tenants/:id/extend-trial")
-  async extendTrial(@Param("id") id: string, @Body(new ZodPipe(extendTrialSchema)) body: { days: number }) {
-    await this.admin.extendTrial(id, body.days);
-  }
+    r.post("tenants/:id/suspend", { superAdminOnly: true, status: 204, body: suspendSchema }, async ({ params, body }) => {
+      await s.admin.suspend(params.id!, body.reason);
+    });
 
-  @SuperAdminOnly()
-  @HttpCode(204)
-  @Post("tenants/:id/suspend")
-  async suspend(@Param("id") id: string, @Body(new ZodPipe(suspendSchema)) body: { reason: string }) {
-    await this.admin.suspend(id, body.reason);
-  }
+    r.post("tenants/:id/unsuspend", { superAdminOnly: true, status: 204 }, async ({ params }) => {
+      await s.admin.unsuspend(params.id!);
+    });
 
-  @SuperAdminOnly()
-  @HttpCode(204)
-  @Post("tenants/:id/unsuspend")
-  async unsuspend(@Param("id") id: string) {
-    await this.admin.unsuspend(id);
-  }
+    r.get("plans", () => s.admin.plans());
 
-  @Get("plans")
-  plans() {
-    return this.admin.plans();
-  }
+    r.patch("plans/:code", { superAdminOnly: true, body: planUpdateSchema }, ({ params, body }) => s.admin.updatePlan(params.code!, body));
 
-  @SuperAdminOnly()
-  @Patch("plans/:code")
-  updatePlan(@Param("code") code: string, @Body(new ZodPipe(planUpdateSchema)) body: PlanUpdateInput) {
-    return this.admin.updatePlan(code, body);
-  }
+    r.get("invoices", { query: adminInvoiceQuerySchema }, ({ query }) => s.admin.invoices(query));
 
-  @Get("invoices")
-  invoices(@Query(new ZodPipe(adminInvoiceQuerySchema)) q: z.infer<typeof adminInvoiceQuerySchema>) {
-    return this.admin.invoices(q);
-  }
+    r.get("expenses", { superAdminOnly: true }, () => s.admin.expenses());
 
-  @SuperAdminOnly()
-  @Get("expenses")
-  expenses() {
-    return this.admin.expenses();
-  }
+    r.post("expenses", { superAdminOnly: true, body: expenseSchema }, ({ body }) => s.admin.addExpense(body));
 
-  @SuperAdminOnly()
-  @Post("expenses")
-  addExpense(@Body(new ZodPipe(expenseSchema)) body: ExpenseInput) {
-    return this.admin.addExpense(body);
-  }
+    r.delete("expenses/:id", { superAdminOnly: true, status: 204 }, async ({ params }) => {
+      await s.admin.deleteExpense(params.id!);
+    });
 
-  @SuperAdminOnly()
-  @HttpCode(204)
-  @Delete("expenses/:id")
-  async deleteExpense(@Param("id") id: string) {
-    await this.admin.deleteExpense(id);
-  }
+    r.get("tickets", ({ search }) => {
+      const status = search.get("status");
+      return s.support.adminList({ status: TICKET_STATUSES.includes(status as TicketStatus) ? (status as TicketStatus) : undefined });
+    });
 
-  @Get("tickets")
-  tickets(@Query("status") status?: string) {
-    return this.support.adminList({ status: TICKET_STATUSES.includes(status as TicketStatus) ? (status as TicketStatus) : undefined });
-  }
+    r.get("tickets/:id", ({ params }) => s.support.adminGet(params.id!));
 
-  @Get("tickets/:id")
-  ticket(@Param("id") id: string) {
-    return this.support.adminGet(id);
-  }
+    r.post("tickets/:id/messages", { body: ticketMessageSchema }, ({ params, body }) => s.support.adminReply(params.id!, body.body));
 
-  @Post("tickets/:id/messages")
-  replyTicket(@Param("id") id: string, @Body(new ZodPipe(ticketMessageSchema)) body: { body: string }) {
-    return this.support.adminReply(id, body.body);
-  }
+    r.patch("tickets/:id", { body: ticketUpdateSchema }, ({ params, body }) => s.support.adminUpdate(params.id!, body));
 
-  @Patch("tickets/:id")
-  updateTicket(@Param("id") id: string, @Body(new ZodPipe(ticketUpdateSchema)) body: z.infer<typeof ticketUpdateSchema>) {
-    return this.support.adminUpdate(id, body);
-  }
-
-  @Get("system")
-  system() {
-    return this.admin.system();
-  }
+    r.get("system", () => s.admin.system());
+  });
 }

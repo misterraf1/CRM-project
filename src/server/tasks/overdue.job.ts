@@ -1,9 +1,9 @@
-import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
+import { Logger } from "../common/logger";
 import { AutomationRunner } from "../automations/automation.runner";
 import { config } from "../config";
 import { JobsMonitor } from "../common/jobs-monitor";
 import { NotificationsService } from "../notifications/notifications.service";
-import { PrismaService } from "../prisma/prisma.service";
+import type { Database } from "../db/database";
 
 const EVERY_MS = 5 * 60_000;
 const BATCH = 200;
@@ -13,19 +13,18 @@ const BATCH = 200;
  * Safe with several API instances: each task is claimed with a conditional update
  * (overdueNotifiedAt IS NULL), so only one instance notifies. Moves to BullMQ with Redis.
  */
-@Injectable()
-export class OverdueJob implements OnApplicationBootstrap, OnModuleDestroy {
+export class OverdueJob {
   private readonly logger = new Logger("OverdueJob");
   private timer?: NodeJS.Timeout;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly monitor: JobsMonitor,
     private readonly notifications: NotificationsService,
     private readonly automations: AutomationRunner,
   ) {}
 
-  onApplicationBootstrap() {
+  start() {
     this.monitor.register("overdue-tasks");
     if (!config().JOBS_ENABLED) return;
     const tick = () => this.monitor.track("overdue-tasks", () => this.run());
@@ -33,7 +32,7 @@ export class OverdueJob implements OnApplicationBootstrap, OnModuleDestroy {
     void tick();
   }
 
-  onModuleDestroy() {
+  stop() {
     clearInterval(this.timer);
   }
 
@@ -41,21 +40,17 @@ export class OverdueJob implements OnApplicationBootstrap, OnModuleDestroy {
   async run(): Promise<number> {
     // Cross-tenant by nature: find candidates by id only, then handle each one
     // inside its own tenant-scoped transaction
-    const due = await this.prisma.system(() =>
-      this.prisma.task.findMany({
-        where: { dueAt: { lt: new Date(), not: null }, status: { notIn: ["DONE", "CANCELED"] }, overdueNotifiedAt: null, assigneeId: { not: null } },
-        select: { tenantId: true, id: true },
-        orderBy: { dueAt: "asc" },
-        take: BATCH,
-      }),
+    const due = await this.db.system.task.find(
+      { dueAt: { $lt: new Date(), $ne: null }, status: { $nin: ["DONE", "CANCELED"] }, overdueNotifiedAt: null, assigneeId: { $ne: null } },
+      { projection: { tenantId: 1, id: 1 }, sort: { dueAt: 1 }, limit: BATCH },
     );
     let sent = 0;
     for (const { tenantId, id: taskId } of due) {
-      sent += await this.prisma.scoped(
+      sent += await this.db.scoped(
         async (tx) => {
-          const claimed = await tx.task.updateMany({ where: { id: taskId, tenantId, overdueNotifiedAt: null }, data: { overdueNotifiedAt: new Date() } });
+          const claimed = await tx.task.updateMany({ id: taskId, tenantId, overdueNotifiedAt: null }, { $set: { overdueNotifiedAt: new Date() } });
           if (!claimed.count) return 0;
-          const task = await tx.task.findUniqueOrThrow({ where: { id: taskId } });
+          const task = await tx.task.get({ id: taskId });
           await this.notifications.notify(tx, tenantId, [task.assigneeId, task.creatorId], "task_overdue", {
             taskId,
             title: task.title,

@@ -1,5 +1,5 @@
-import type { BillingInterval } from "@axis/shared";
-import type { Plan } from "@prisma/client";
+import type { BillingInterval } from "@/shared";
+import type { Plan } from "../db/models";
 
 const DAY = 86_400_000;
 

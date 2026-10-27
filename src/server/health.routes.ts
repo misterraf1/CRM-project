@@ -1,17 +1,11 @@
-import { Controller, Get } from "@nestjs/common";
-import { SkipThrottle } from "@nestjs/throttler";
-import { Public } from "./common/decorators";
-import { PrismaService } from "./prisma/prisma.service";
+import type { Services } from "./container";
+import type { Router } from "./http/router";
 
-@Controller("health")
-export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
-
-  @Public()
-  @SkipThrottle()
-  @Get()
-  async check() {
-    await this.prisma.ping();
-    return { status: "ok" };
-  }
+export function healthRoutes(router: Router, s: Services) {
+  router.group("/health", { public: true, throttle: false }, (r) => {
+    r.get("", async () => {
+      await s.db.ping();
+      return { status: "ok" };
+    });
+  });
 }

@@ -1,27 +1,27 @@
-import { Injectable } from "@nestjs/common";
-import type { DashboardCrmDto, DashboardPeriod } from "@axis/shared";
+import type { DashboardCrmDto, DashboardPeriod } from "@/shared";
 import { authedContext } from "../common/context";
 import { addDays, startOfDay } from "../common/time";
 import { ActivityService, TIMELINE_ORDER } from "../crm/activity.service";
+import { stageIds } from "../crm/deals.service";
 import { memberRefs, ownerScope } from "../crm/scope";
-import { PrismaService } from "../prisma/prisma.service";
+import type { Database } from "../db/database";
+import { and, countBy, sumOf } from "../db/query";
 import { computeInboxMetrics, inboxScope } from "../inbox/inbox.service";
 import { taskScope } from "../tasks/tasks.service";
 
 const DAYS: Record<DashboardPeriod, number> = { "7d": 7, "30d": 30, "90d": 90 };
 
-@Injectable()
 export class DashboardService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly activity: ActivityService,
   ) {}
 
   /** Real CRM figures for the dashboard, narrowed to what the caller may see. */
   async crm(period: DashboardPeriod): Promise<DashboardCrmDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
-      const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { timezone: true, currency: true } });
+    return this.db.scoped(async (tx) => {
+      const tenant = await tx.tenant.get({ id: ctx.tenantId }, { projection: { timezone: 1, currency: 1 } });
       const tz = tenant.timezone;
       const now = new Date();
       const days = DAYS[period];
@@ -31,15 +31,13 @@ export class DashboardService {
       const { scope, memberIds, where: scoped } = await ownerScope(tx, ctx, "dashboard.view_all");
       const base = { tenantId: ctx.tenantId };
 
+      const [openStages, wonStages] = await Promise.all([stageIds(tx, ctx.tenantId, "open"), stageIds(tx, ctx.tenantId, "won")]);
       const [newContacts, prevContacts, openDeals, won, prevWon] = await Promise.all([
-        tx.contact.count({ where: { AND: [base, scoped, { deletedAt: null, createdAt: { gte: start } }] } }),
-        tx.contact.count({ where: { AND: [base, scoped, { deletedAt: null, createdAt: { gte: prevStart, lt: start } }] } }),
-        tx.deal.aggregate({ where: { AND: [base, scoped, { stage: { kind: "open" } }] }, _count: true, _sum: { amount: true } }),
-        tx.deal.findMany({
-          where: { AND: [base, scoped, { stage: { kind: "won" }, closedAt: { gte: start } }] },
-          select: { amount: true, closedAt: true, ownerId: true },
-        }),
-        tx.deal.aggregate({ where: { AND: [base, scoped, { stage: { kind: "won" }, closedAt: { gte: prevStart, lt: start } }] }, _sum: { amount: true } }),
+        tx.contact.count(and(base, scoped, { deletedAt: null, createdAt: { $gte: start } })),
+        tx.contact.count(and(base, scoped, { deletedAt: null, createdAt: { $gte: prevStart, $lt: start } })),
+        sumOf(tx.deal, "amount", and(base, scoped, { stageId: { $in: openStages } })),
+        tx.deal.find(and(base, scoped, { stageId: { $in: wonStages }, closedAt: { $gte: start } }), { projection: { amount: 1, closedAt: 1, ownerId: 1 } }),
+        sumOf(tx.deal, "amount", and(base, scoped, { stageId: { $in: wonStages }, closedAt: { $gte: prevStart, $lt: start } })),
       ]);
 
       // Revenue buckets: daily up to 30 days, weekly beyond
@@ -56,39 +54,38 @@ export class DashboardService {
       }
 
       // Team: everyone in scope, even with zero sales, so managers see who is idle
-      const members = await tx.membership.findMany({
-        where: { tenantId: ctx.tenantId, status: "ACTIVE", ...(memberIds ? { id: { in: memberIds } } : {}) },
-        select: { id: true },
-      });
+      const members = await tx.membership.find({ tenantId: ctx.tenantId, status: "ACTIVE", ...(memberIds ? { id: { $in: memberIds } } : {}) }, { projection: { id: 1 } });
       const ids = members.map((m) => m.id);
-      const openTask = { tenantId: ctx.tenantId, parentId: null, status: { notIn: ["DONE", "CANCELED"] as ("DONE" | "CANCELED")[] } };
+      const openTask = { tenantId: ctx.tenantId, parentId: null, status: { $nin: ["DONE", "CANCELED"] } };
       const { where: taskWhere } = await taskScope(tx, ctx);
       const [refs, doneByMember, overdueByMember, openTasks, overdueTasks, overdueItems] = await Promise.all([
         memberRefs(tx, ctx.tenantId, ids),
-        tx.task.groupBy({ by: ["assigneeId"], where: { tenantId: ctx.tenantId, parentId: null, status: "DONE", assigneeId: { in: ids }, completedAt: { gte: start } }, _count: true }),
-        tx.task.groupBy({ by: ["assigneeId"], where: { ...openTask, assigneeId: { in: ids }, dueAt: { lt: now, not: null } }, _count: true }),
-        tx.task.count({ where: { AND: [openTask, taskWhere] } }),
-        tx.task.count({ where: { AND: [openTask, taskWhere, { dueAt: { lt: now, not: null } }] } }),
-        tx.task.findMany({
-          where: { AND: [openTask, taskWhere, { dueAt: { lt: now, not: null } }] },
-          orderBy: { dueAt: "asc" },
-          take: 5,
-          select: { id: true, title: true, dueAt: true, priority: true, assigneeId: true },
+        countBy(tx.task, "assigneeId", { tenantId: ctx.tenantId, parentId: null, status: "DONE", assigneeId: { $in: ids }, completedAt: { $gte: start } }),
+        countBy(tx.task, "assigneeId", { ...openTask, assigneeId: { $in: ids }, dueAt: { $lt: now, $ne: null } }),
+        tx.task.count(and(openTask, taskWhere)),
+        tx.task.count(and(openTask, taskWhere, { dueAt: { $lt: now, $ne: null } })),
+        tx.task.find(and(openTask, taskWhere, { dueAt: { $lt: now, $ne: null } }), {
+          sort: { dueAt: 1 },
+          limit: 5,
+          projection: { id: 1, title: 1, dueAt: 1, priority: 1, assigneeId: 1 },
         }),
       ]);
       const [inbox, waiting] = await Promise.all([
         computeInboxMetrics(tx, ctx, start),
-        tx.conversation.findMany({
-          where: { AND: [{ tenantId: ctx.tenantId, awaitingSince: { not: null }, status: { not: "RESOLVED" } }, await inboxScope(tx, ctx)] },
-          orderBy: { awaitingSince: "asc" },
-          take: 5,
-          include: {
-            channel: { select: { type: true } },
-            contact: { select: { name: true } },
-            messages: { where: { direction: "INBOUND" }, orderBy: { createdAt: "desc" }, take: 1, select: { body: true } },
-          },
+        tx.conversation.find(and({ tenantId: ctx.tenantId, awaitingSince: { $ne: null }, status: { $ne: "RESOLVED" } }, await inboxScope(tx, ctx)), {
+          sort: { awaitingSince: 1 },
+          limit: 5,
         }),
       ]);
+      const [channels, contacts, previews] = await Promise.all([
+        tx.channel.find({ tenantId: ctx.tenantId, id: { $in: waiting.map((c) => c.channelId) } }, { projection: { id: 1, type: 1 } }),
+        tx.contact.find({ tenantId: ctx.tenantId, id: { $in: waiting.map((c) => c.contactId).filter((x): x is string => !!x) } }, { projection: { id: 1, name: 1 } }),
+        Promise.all(
+          waiting.map((c) => tx.message.findOne({ tenantId: ctx.tenantId, conversationId: c.id, direction: "INBOUND" }, { sort: { createdAt: -1 }, projection: { body: 1 } })),
+        ),
+      ]);
+      const channelType = new Map(channels.map((ch) => [ch.id, ch.type]));
+      const contactName = new Map(contacts.map((ct) => [ct.id, ct.name]));
       const assigneeRefs = await memberRefs(tx, ctx.tenantId, [...overdueItems.map((t) => t.assigneeId), ...waiting.map((c) => c.assigneeId)]);
       const responseBy = new Map(inbox.byMember.map((m) => [m.member.id, m.avgFirstResponseMin]));
       const team = members.map((m) => {
@@ -98,17 +95,13 @@ export class DashboardService {
           member: ref,
           dealsWon: mine.length,
           revenue: mine.reduce((a, d) => a + d.amount, 0),
-          tasksDone: doneByMember.find((r) => r.assigneeId === m.id)?._count ?? 0,
-          tasksOverdue: overdueByMember.find((r) => r.assigneeId === m.id)?._count ?? 0,
+          tasksDone: doneByMember.get(m.id)?.count ?? 0,
+          tasksOverdue: overdueByMember.get(m.id)?.count ?? 0,
           avgResponseMin: responseBy.get(m.id) ?? null,
         };
       });
 
-      const activityRows = await tx.activity.findMany({
-        where: { tenantId: ctx.tenantId, ...(memberIds ? { actorId: { in: memberIds } } : {}) },
-        orderBy: TIMELINE_ORDER,
-        take: 12,
-      });
+      const activityRows = await tx.activity.find({ tenantId: ctx.tenantId, ...(memberIds ? { actorId: { $in: memberIds } } : {}) }, { sort: TIMELINE_ORDER, limit: 12 });
 
       const revenue = won.reduce((a, d) => a + d.amount, 0);
       return {
@@ -118,8 +111,8 @@ export class DashboardService {
         currency: tenant.currency,
         kpis: {
           newContacts: { value: newContacts, previous: prevContacts },
-          activeDeals: { value: openDeals._count, pipelineValue: openDeals._sum.amount ?? 0 },
-          revenue: { value: revenue, previous: prevWon._sum.amount ?? 0 },
+          activeDeals: { value: openDeals.count, pipelineValue: openDeals.sum },
+          revenue: { value: revenue, previous: prevWon.sum },
         },
         revenue: { bucket, points },
         team,
@@ -135,13 +128,13 @@ export class DashboardService {
           awaiting: inbox.awaiting,
           longestWaitMin: inbox.longestWaitMin,
           avgFirstResponseMin: inbox.avgFirstResponseMin,
-          items: waiting.map((c) => {
+          items: waiting.map((c, i) => {
             const a = c.assigneeId ? assigneeRefs.get(c.assigneeId) : undefined;
             return {
               id: c.id,
-              channel: c.channel.type,
-              displayName: c.contact?.name ?? c.displayName ?? c.handle ?? "",
-              preview: (c.messages[0]?.body ?? "").slice(0, 140),
+              channel: channelType.get(c.channelId)!,
+              displayName: (c.contactId && contactName.get(c.contactId)) || c.displayName || c.handle || "",
+              preview: (previews[i]?.body ?? "").slice(0, 140),
               waitingSince: c.awaitingSince!.toISOString(),
               assignee: a ? { id: a.id, name: a.name } : null,
             };

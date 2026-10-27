@@ -1,9 +1,8 @@
-import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { addMember, createApp, PASSWORD, setPlan, signup, uniqueEmail, withRawDb } from "./helpers";
+import { addMember, createApp, PASSWORD, setPlan, signup, uniqueEmail, withRawDb, type TestApp } from "./helpers";
 
 describe("Members, invites, roles", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
 
   beforeAll(async () => {
@@ -53,7 +52,7 @@ describe("Members, invites, roles", () => {
     const owner = await signup(app);
     const email = uniqueEmail("late");
     const inv = await http().post("/v1/members/invites").set(owner.auth).send({ email }).expect(201);
-    await withRawDb((db) => db.membership.update({ where: { id: inv.body.member.id }, data: { invitedAt: new Date(Date.now() - 8 * 86400_000) } }));
+    await withRawDb((db) => db.membership.update({ id: inv.body.member.id }, { $set: { invitedAt: new Date(Date.now() - 8 * 86400_000) } }));
     await http().get(inv.body.invitePath.replace("/invite/", "/v1/invites/")).expect(410);
   });
 
@@ -125,7 +124,7 @@ describe("Members, invites, roles", () => {
     expect([x, y].filter((r) => r.status === 200)).toHaveLength(1);
     expect(["LAST_OWNER", "FORBIDDEN"]).toContain(loser.body.error.code);
 
-    const owners = await withRawDb((db) => db.membership.count({ where: { tenantId: me.body.tenant.id, role: "OWNER", status: "ACTIVE" } }));
+    const owners = await withRawDb((db) => db.membership.count({ tenantId: me.body.tenant.id, role: "OWNER", status: "ACTIVE" }));
     expect(owners).toBe(1);
   });
 

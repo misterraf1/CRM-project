@@ -9,7 +9,7 @@ import type {
   ExpenseDto,
   SystemHealthDto,
   TicketDto,
-} from "@axis/shared";
+} from "@/shared";
 import { cache } from "react";
 import { query as qs } from "./index";
 import { adminFetch } from "./server";

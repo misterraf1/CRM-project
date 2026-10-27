@@ -1,11 +1,10 @@
-import type { INestApplication } from "@nestjs/common";
-import type { AiTextDto, ChannelDto, MeResponse } from "@axis/shared";
+import type { AiTextDto, ChannelDto, MeResponse } from "@/shared";
 import request from "supertest";
-import { AiService, type AiClient } from "../src/ai/ai.service";
-import { createApp, setPlan, signup, withRawDb, type Company } from "./helpers";
+import { AiService, type AiClient } from "@/server/ai/ai.service";
+import { createApp, setPlan, signup, withRawDb, type Company, type TestApp } from "./helpers";
 
 describe("AI assistant (fake model client)", () => {
-  let app: INestApplication;
+  let app: TestApp;
   const http = () => request(app.getHttpServer());
   const calls: { system: string; user: string }[] = [];
   let fail = false;
@@ -77,9 +76,9 @@ describe("AI assistant (fake model client)", () => {
     const id = await conversation(owner);
     const tenantId = await tenantOf(owner);
     await setPlan(tenantId, "PRO");
-    await withRawDb((db) => db.subscription.update({ where: { tenantId }, data: { status: "ACTIVE" } }));
+    await withRawDb((db) => db.subscription.update({ tenantId }, { $set: { status: "ACTIVE" } }));
     const period = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-    await withRawDb((db) => db.usageCounter.create({ data: { tenantId, metric: "ai_credits", period, value: 100 } }));
+    await withRawDb((db) => db.usageCounter.insertOne({ tenantId, metric: "ai_credits", period, value: 100 }));
     const limited = await http().post(`/v1/inbox/conversations/${id}/ai/reply`).set(owner.auth).expect(402);
     expect(limited.body.error).toMatchObject({ code: "AI_LIMIT", details: { used: 100, limit: 100 } });
 

@@ -1,15 +1,14 @@
-import { Injectable } from "@nestjs/common";
-import type { Activity, Prisma } from "@prisma/client";
-import type { ActivityDto, ActivityType } from "@axis/shared";
+import type { ActivityDto, ActivityType } from "@/shared";
 import { currentContext } from "../common/context";
-import type { Tx } from "../prisma/prisma.service";
+import type { Tx } from "../db/database";
+import type { Activity } from "../db/models";
+import type { Sort } from "../db/repo";
 import { memberRefs } from "./scope";
 
 /** Newest first; id breaks ties between rows written in the same millisecond. */
-export const TIMELINE_ORDER = [{ createdAt: "desc" as const }, { id: "desc" as const }];
+export const TIMELINE_ORDER: Sort = { createdAt: -1, id: -1 };
 
 /** CRM timeline: one row per meaningful event, shown on contact/deal pages and the dashboard. */
-@Injectable()
 export class ActivityService {
   // Events written in one request (stage change → won → contact promoted) must keep
   // their order on the timeline, so timestamps are strictly increasing per process.
@@ -22,19 +21,17 @@ export class ActivityService {
 
   async record(
     tx: Tx,
-    entry: { type: ActivityType; contactId?: string | null; dealId?: string | null; payload: Prisma.InputJsonObject },
+    entry: { type: ActivityType; contactId?: string | null; dealId?: string | null; payload: Record<string, unknown> },
   ) {
     const ctx = currentContext();
-    return tx.activity.create({
-      data: {
-        tenantId: ctx.tenantId!,
-        actorId: ctx.membershipId ?? null,
-        type: entry.type,
-        contactId: entry.contactId ?? null,
-        dealId: entry.dealId ?? null,
-        payload: entry.payload,
-        createdAt: this.nextTimestamp(),
-      },
+    return tx.activity.insertOne({
+      tenantId: ctx.tenantId!,
+      actorId: ctx.membershipId ?? null,
+      type: entry.type,
+      contactId: entry.contactId ?? null,
+      dealId: entry.dealId ?? null,
+      payload: entry.payload as Activity["payload"],
+      createdAt: this.nextTimestamp(),
     });
   }
 

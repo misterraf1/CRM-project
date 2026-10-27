@@ -1,6 +1,6 @@
 "use client";
 
-import { CONTACT_SOURCES, LIFECYCLE_STAGES, type ContactDto, type MemberDto } from "@axis/shared";
+import { CONTACT_SOURCES, LIFECYCLE_STAGES, type ContactDto, type MemberDto } from "@/shared";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { api } from "@/lib/api/client";

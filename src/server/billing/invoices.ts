@@ -1,16 +1,18 @@
-import type { Invoice, Payment } from "@prisma/client";
-import type { InvoiceDto, InvoiceKind, InvoiceLineDto } from "@axis/shared";
-import type { Tx } from "../prisma/prisma.service";
+import type { Invoice, Payment } from "../db/models";
+import type { InvoiceDto, InvoiceKind, InvoiceLineDto } from "@/shared";
+import type { Tx } from "../db/database";
 
 /** Sequential, gap-free per year across the platform: AX-2026-000001. */
 export async function nextInvoiceNumber(tx: Tx, now = new Date()) {
   const year = now.getUTCFullYear();
-  const counter = await tx.counter.upsert({
-    where: { id: `invoice:${year}` },
-    create: { id: `invoice:${year}`, value: 1 },
-    update: { value: { increment: 1 } },
-  });
+  const counter = await tx.counter.upsert({ id: `invoice:${year}` }, { $inc: { value: 1 } }, { id: `invoice:${year}`, value: 1 });
   return `AX-${year}-${String(counter.value).padStart(6, "0")}`;
+}
+
+/** Invoices with their payment attempts. */
+export async function withPayments(tx: Tx, invoices: Invoice[]): Promise<(Invoice & { payments: Payment[] })[]> {
+  const payments = invoices.length ? await tx.payment.find({ invoiceId: { $in: invoices.map((i) => i.id) } }, { sort: { createdAt: 1 } }) : [];
+  return invoices.map((i) => ({ ...i, payments: payments.filter((p) => p.invoiceId === i.id) }));
 }
 
 export function toInvoiceDto(i: Invoice & { payments?: Payment[] }): InvoiceDto {

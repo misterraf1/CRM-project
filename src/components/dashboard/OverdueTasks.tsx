@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
-import type { DashboardCrmDto } from "@axis/shared";
+import type { DashboardCrmDto } from "@/shared";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { formatDuration } from "@/lib/format";
 import type { Dictionary } from "@/lib/i18n/dictionaries/az";

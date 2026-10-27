@@ -1,6 +1,6 @@
 "use client";
 
-import { LOST_REASONS, type DealDto, type PipelineDto, type StageDto } from "@axis/shared";
+import { LOST_REASONS, type DealDto, type PipelineDto, type StageDto } from "@/shared";
 import clsx from "clsx";
 import { Plus } from "lucide-react";
 import Link from "next/link";

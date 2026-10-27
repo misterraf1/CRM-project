@@ -1,6 +1,3 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Res, UploadedFile, UseInterceptors } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
-import { SkipThrottle } from "@nestjs/throttler";
 import {
   addMembersSchema,
   chatEditSchema,
@@ -9,107 +6,43 @@ import {
   chatSearchQuerySchema,
   directRoomSchema,
   groupRoomSchema,
-  type ChatMessageInput,
-  type GroupRoomInput,
-} from "@axis/shared";
-import type { Response } from "express";
-import type { z } from "zod";
-import { config } from "../config";
+  type ChatEvent,
+} from "@/shared";
 import { authedContext } from "../common/context";
-import { ZodPipe } from "../common/zod.pipe";
-import type { UploadedFile as Upload } from "../tasks/files.service";
-import { ChatService } from "./chat.service";
-import { ChatEvents } from "./events";
+import type { Services } from "../container";
+import type { Router } from "../http/router";
+import { eventStream } from "../http/sse";
 
-const STREAM_MAX_MS = 30 * 60_000;
+export function chatRoutes(router: Router, s: Services) {
+  router.group("/v1/chat", {}, (r) => {
+    r.get("rooms", () => s.chat.rooms());
 
-@Controller("v1/chat")
-export class ChatController {
-  constructor(
-    private readonly chat: ChatService,
-    private readonly events: ChatEvents,
-  ) {}
+    r.post("rooms/direct", { body: directRoomSchema }, ({ body }) => s.chat.direct(body.memberId));
 
-  @Get("rooms")
-  rooms() {
-    return this.chat.rooms();
-  }
+    r.post("rooms", { body: groupRoomSchema }, ({ body }) => s.chat.group(body));
 
-  @Post("rooms/direct")
-  direct(@Body(new ZodPipe(directRoomSchema)) body: z.infer<typeof directRoomSchema>) {
-    return this.chat.direct(body.memberId);
-  }
+    r.get("rooms/:id", { query: chatHistoryQuerySchema }, ({ params, query }) => s.chat.detail(params.id!, query.before, query.limit));
 
-  @Post("rooms")
-  group(@Body(new ZodPipe(groupRoomSchema)) body: GroupRoomInput) {
-    return this.chat.group(body);
-  }
+    r.post("rooms/:id/members", { status: 204, body: addMembersSchema }, ({ params, body }) => s.chat.addMembers(params.id!, body.memberIds));
 
-  @Get("rooms/:id")
-  detail(@Param("id") id: string, @Query(new ZodPipe(chatHistoryQuerySchema)) q: z.infer<typeof chatHistoryQuerySchema>) {
-    return this.chat.detail(id, q.before, q.limit);
-  }
+    r.delete("rooms/:id/members/me", { status: 204 }, ({ params }) => s.chat.leave(params.id!));
 
-  @HttpCode(204)
-  @Post("rooms/:id/members")
-  addMembers(@Param("id") id: string, @Body(new ZodPipe(addMembersSchema)) body: z.infer<typeof addMembersSchema>) {
-    return this.chat.addMembers(id, body.memberIds);
-  }
+    r.post("rooms/:id/messages", { body: chatMessageSchema }, ({ params, body }) => s.chat.send(params.id!, body));
 
-  @HttpCode(204)
-  @Delete("rooms/:id/members/me")
-  leave(@Param("id") id: string) {
-    return this.chat.leave(id);
-  }
+    r.post("rooms/:id/files", { upload: true }, ({ params, file, fields }) => s.chat.upload(params.id!, file, fields.body));
 
-  @Post("rooms/:id/messages")
-  send(@Param("id") id: string, @Body(new ZodPipe(chatMessageSchema)) body: ChatMessageInput) {
-    return this.chat.send(id, body);
-  }
+    r.post("rooms/:id/read", { status: 204 }, ({ params }) => s.chat.read(params.id!));
 
-  @Post("rooms/:id/files")
-  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: config().MAX_UPLOAD_MB * 1024 * 1024, files: 1 } }))
-  upload(@Param("id") id: string, @UploadedFile() file: Upload | undefined, @Body("body") caption?: string) {
-    return this.chat.upload(id, file, caption);
-  }
+    r.patch("messages/:id", { body: chatEditSchema }, ({ params, body }) => s.chat.edit(params.id!, body.body));
 
-  @HttpCode(204)
-  @Post("rooms/:id/read")
-  read(@Param("id") id: string) {
-    return this.chat.read(id);
-  }
+    r.delete("messages/:id", { status: 204 }, ({ params }) => s.chat.remove(params.id!));
 
-  @Patch("messages/:id")
-  edit(@Param("id") id: string, @Body(new ZodPipe(chatEditSchema)) body: z.infer<typeof chatEditSchema>) {
-    return this.chat.edit(id, body.body);
-  }
+    r.get("search", { query: chatSearchQuerySchema }, ({ query }) => s.chat.search(query.q));
 
-  @HttpCode(204)
-  @Delete("messages/:id")
-  remove(@Param("id") id: string) {
-    return this.chat.remove(id);
-  }
-
-  @Get("search")
-  search(@Query(new ZodPipe(chatSearchQuerySchema)) q: z.infer<typeof chatSearchQuerySchema>) {
-    return this.chat.search(q.q);
-  }
-
-  /** Server-sent events for the caller's rooms only. */
-  @SkipThrottle()
-  @Get("stream")
-  stream(@Res() res: Response) {
-    const { membershipId } = authedContext();
-    res.set({ "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-accel-buffering": "no" });
-    res.flushHeaders();
-    res.write(": connected\n\n");
-    const unsubscribe = this.events.subscribe(membershipId, (event) => res.write(`data: ${JSON.stringify(event)}\n\n`));
-    const ping = setInterval(() => res.write(": ping\n\n"), 25_000);
-    const limit = setTimeout(() => res.end(), STREAM_MAX_MS);
-    res.on("close", () => {
-      unsubscribe();
-      clearInterval(ping);
-      clearTimeout(limit);
+    /** Server-sent events for the caller's rooms only. */
+    r.get("stream", { throttle: false }, ({ req }) => {
+      const { membershipId } = authedContext();
+      return eventStream<ChatEvent>(req.signal, (send) => s.chatEvents.subscribe(membershipId, send));
     });
-  }
+  });
 }

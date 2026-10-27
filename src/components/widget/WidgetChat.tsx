@@ -1,6 +1,6 @@
 "use client";
 
-import type { WidgetConfigDto, WidgetMessageDto, WidgetSendResponse } from "@axis/shared";
+import type { WidgetConfigDto, WidgetMessageDto, WidgetSendResponse } from "@/shared";
 import clsx from "clsx";
 import { Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";

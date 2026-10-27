@@ -1,11 +1,10 @@
-import { Injectable } from "@nestjs/common";
-import type { Channel } from "@prisma/client";
-import type { ChannelCreateInput, ChannelDto, SimulateInboundInput } from "@axis/shared";
+import type { Channel } from "../db/models";
+import type { ChannelCreateInput, ChannelDto, SimulateInboundInput } from "@/shared";
 import { config } from "../config";
 import { authedContext } from "../common/context";
 import { AppError, notFound } from "../common/errors";
 import { randomToken, sha256 } from "../common/ids";
-import { PrismaService } from "../prisma/prisma.service";
+import type { Database } from "../db/database";
 import { IngestService } from "./ingest.service";
 import { sealCredentials } from "../common/secrets";
 import { MailService } from "../mail/mail.service";
@@ -31,19 +30,16 @@ export function toChannelDto(c: Channel): ChannelDto {
   };
 }
 
-@Injectable()
 export class ChannelsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly ingest: IngestService,
     private readonly mail: MailService,
   ) {}
 
   async list(): Promise<ChannelDto[]> {
     const { tenantId } = authedContext();
-    const rows = await this.prisma.scoped((tx) =>
-      tx.channel.findMany({ where: { tenantId, status: { not: "disconnected" } }, orderBy: { createdAt: "asc" } }),
-    );
+    const rows = await this.db.scoped((tx) => tx.channel.find({ tenantId, status: { $ne: "disconnected" } }, { sort: { createdAt: 1 } }));
     return rows.map(toChannelDto);
   }
 
@@ -90,38 +86,36 @@ export class ChannelsService {
       }
     }
 
-    const channel = await this.prisma.scoped((tx) =>
-      tx.channel.create({
-        data: {
-          tenantId,
-          type: input.type,
-          name: input.name,
-          externalId,
-          credentials,
-          demo,
-          settings: input.type === "WEBCHAT" && input.greeting ? { greeting: input.greeting } : input.type === "EMAIL" ? { address: input.address } : {},
-        },
+    const channel = await this.db.scoped((tx) =>
+      tx.channel.insertOne({
+        tenantId,
+        type: input.type,
+        name: input.name,
+        externalId,
+        credentials,
+        demo,
+        settings: input.type === "WEBCHAT" && input.greeting ? { greeting: input.greeting } : input.type === "EMAIL" ? { address: input.address } : {},
       }),
     );
     // The inbound address carries its secret: shown once, when the channel is created
-    return inboundToken ? { ...toChannelDto(channel), inboundUrl: `${config().PUBLIC_API_URL}/v1/webhooks/email/${channel.id}?token=${inboundToken}` } : toChannelDto(channel);
+    return inboundToken ? { ...toChannelDto(channel), inboundUrl: `${config().PUBLIC_API_URL ?? config().WEB_ORIGIN}/v1/webhooks/email/${channel.id}?token=${inboundToken}` } : toChannelDto(channel);
   }
 
   /** Disconnects: credentials are wiped, history stays. */
   async disconnect(id: string) {
     const { tenantId } = authedContext();
-    await this.prisma.scoped(async (tx) => {
-      const c = await tx.channel.findFirst({ where: { id, tenantId } });
+    await this.db.scoped(async (tx) => {
+      const c = await tx.channel.findOne({ id, tenantId });
       if (!c) throw notFound("Channel");
-      await tx.channel.update({ where: { id }, data: { status: "disconnected", credentials: null } });
+      await tx.channel.update({ id }, { $set: { status: "disconnected", credentials: null } });
     });
   }
 
   /** Demo channels only: injects a customer message as if it arrived from the provider. */
   async simulate(id: string, input: SimulateInboundInput) {
     const { tenantId } = authedContext();
-    return this.prisma.scoped(async (tx) => {
-      const channel = await tx.channel.findFirst({ where: { id, tenantId, status: { not: "disconnected" } } });
+    return this.db.scoped(async (tx) => {
+      const channel = await tx.channel.findOne({ id, tenantId, status: { $ne: "disconnected" } });
       if (!channel) throw notFound("Channel");
       if (!channel.demo) throw new AppError("FORBIDDEN", "Only demo channels accept simulated messages");
       const result = await this.ingest.inbound(tx, channel, {

@@ -1,10 +1,11 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Logger } from "../common/logger";
 import Anthropic from "@anthropic-ai/sdk";
-import type { AiTextDto } from "@axis/shared";
+import type { AiTextDto } from "@/shared";
 import { config } from "../config";
 import { authedContext } from "../common/context";
 import { AppError } from "../common/errors";
-import { PrismaService, type Tx } from "../prisma/prisma.service";
+import { subscriptionOf } from "../billing/entitlements.service";
+import type { Database, Tx } from "../db/database";
 
 const METRIC = "ai_credits";
 
@@ -141,7 +142,6 @@ const monthStart = (d = new Date()) => new Date(Date.UTC(d.getUTCFullYear(), d.g
  * Metered access to the assistant: each request takes one credit from the plan's
  * monthly allowance (Plan.aiCredits); a failed request gives it back.
  */
-@Injectable()
 export class AiService {
   private readonly logger = new Logger("AI");
   client: AiClient | null = AiService.fromConfig();
@@ -162,8 +162,8 @@ export class AiService {
 
   async usage(tx: Tx, tenantId: string): Promise<{ used: number; limit: number }> {
     const [sub, counter] = await Promise.all([
-      tx.subscription.findUnique({ where: { tenantId }, include: { plan: true } }),
-      tx.usageCounter.findUnique({ where: { tenantId_metric_period: { tenantId, metric: METRIC, period: monthStart() } } }),
+      subscriptionOf(tx, tenantId).catch(() => null),
+      tx.usageCounter.findOne({ tenantId, metric: METRIC, period: monthStart() }),
     ]);
     return { used: counter?.value ?? 0, limit: sub?.plan.aiCredits ?? 0 };
   }
@@ -174,22 +174,22 @@ export class AiService {
     const client = this.client;
     if (!client) throw new AppError("AI_UNAVAILABLE", "The AI assistant is not configured on this server (ANTHROPIC_API_KEY or OPENROUTER_API_KEY)");
     const period = monthStart();
-    const key = { tenantId_metric_period: { tenantId: ctx.tenantId, metric: METRIC, period } };
-    const { limit } = await this.prisma.scoped((tx) => this.usage(tx, ctx.tenantId));
-    await this.prisma.scoped(async (tx) => {
-      await tx.usageCounter.upsert({ where: key, create: { tenantId: ctx.tenantId, metric: METRIC, period, value: 0 }, update: {} });
-      const taken = await tx.usageCounter.updateMany({ where: { tenantId: ctx.tenantId, metric: METRIC, period, value: { lt: limit } }, data: { value: { increment: 1 } } });
+    const key = { tenantId: ctx.tenantId, metric: METRIC, period };
+    const { limit } = await this.db.scoped((tx) => this.usage(tx, ctx.tenantId));
+    await this.db.scoped(async (tx) => {
+      await tx.usageCounter.upsert(key, {}, { ...key, value: 0 });
+      const taken = await tx.usageCounter.updateMany({ ...key, value: { $lt: limit } }, { $inc: { value: 1 } });
       if (!taken.count) {
-        const used = (await tx.usageCounter.findUnique({ where: key }))?.value ?? 0;
+        const used = (await tx.usageCounter.findOne(key))?.value ?? 0;
         throw new AppError("AI_LIMIT", "This month's AI allowance is used up", { used, limit });
       }
     });
     try {
       const { text, model } = await client.complete(system, user);
-      const usage = await this.prisma.scoped((tx) => this.usage(tx, ctx.tenantId));
+      const usage = await this.db.scoped((tx) => this.usage(tx, ctx.tenantId));
       return { text, model, usage };
     } catch (e) {
-      await this.prisma.scoped((tx) => tx.usageCounter.updateMany({ where: { tenantId: ctx.tenantId, metric: METRIC, period }, data: { value: { decrement: 1 } } }));
+      await this.db.scoped((tx) => tx.usageCounter.updateMany({ tenantId: ctx.tenantId, metric: METRIC, period }, { $inc: { value: -1 } }));
       if (e instanceof AppError) throw e;
       if (e instanceof Anthropic.RateLimitError) throw new AppError("AI_UNAVAILABLE", "The assistant is busy, try again in a minute", { reason: "rate_limited" });
       if (e instanceof Anthropic.APIError) {
@@ -200,5 +200,5 @@ export class AiService {
     }
   }
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly db: Database) {}
 }

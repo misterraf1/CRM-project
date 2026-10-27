@@ -1,9 +1,8 @@
-import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { Logger } from "../common/logger";
 import nodemailer, { type Transporter } from "nodemailer";
 import { config } from "../config";
 import { JobsMonitor } from "../common/jobs-monitor";
-import { PrismaService, type Tx } from "../prisma/prisma.service";
+import type { Database, Tx } from "../db/database";
 import { mailLocale, renderMail, type MailTemplate } from "./templates";
 
 const SWEEP_MS = 30_000;
@@ -28,8 +27,7 @@ export interface QueuedMail {
  * the caller's transaction, the sender delivers it after commit and retries failures.
  * Without SMTP_URL nothing is delivered: messages end as "not_sent" — never "sent".
  */
-@Injectable()
-export class MailService implements OnApplicationBootstrap, OnModuleDestroy {
+export class MailService {
   private readonly logger = new Logger("Mail");
   private transport?: Transporter;
   private sweep?: NodeJS.Timeout;
@@ -37,17 +35,17 @@ export class MailService implements OnApplicationBootstrap, OnModuleDestroy {
   private sending?: Promise<number>;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly monitor: JobsMonitor,
   ) {}
 
-  onApplicationBootstrap() {
+  start() {
     this.monitor.register("mail");
     if (!config().JOBS_ENABLED) return;
     this.sweep = setInterval(() => void this.monitor.track("mail", () => this.send()), SWEEP_MS);
   }
 
-  onModuleDestroy() {
+  stop() {
     clearInterval(this.sweep);
     clearTimeout(this.soonTimer);
     this.transport?.close();
@@ -59,18 +57,16 @@ export class MailService implements OnApplicationBootstrap, OnModuleDestroy {
 
   async queue(tx: Tx, mail: QueuedMail & Partial<MailTemplate>) {
     const rendered = mail.raw ?? renderMail({ template: mail.template!, vars: mail.vars! } as MailTemplate, mailLocale(mail.locale));
-    await tx.emailMessage.create({
-      data: {
-        tenantId: mail.tenantId ?? null,
-        to: mail.to,
-        subject: rendered.subject,
-        text: rendered.text,
-        html: rendered.html,
-        template: mail.template ?? "inbox_reply",
-        from: mail.from ?? null,
-        headers: (mail.headers ?? {}) as Prisma.InputJsonObject,
-        inboxMessageId: mail.inboxMessageId ?? null,
-      },
+    await tx.emailMessage.insertOne({
+      tenantId: mail.tenantId ?? null,
+      to: mail.to,
+      subject: rendered.subject,
+      text: rendered.text,
+      html: rendered.html,
+      template: mail.template ?? "inbox_reply",
+      from: mail.from ?? null,
+      headers: mail.headers ?? {},
+      inboxMessageId: mail.inboxMessageId ?? null,
     });
     this.soon();
   }
@@ -96,25 +92,21 @@ export class MailService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async sendOnce(): Promise<number> {
-    const db = this.prisma;
+    const db = this.db.system;
     let handled = 0;
     // A failed message goes back to "queued" but waits for the next pass (30 s later)
     const tried: string[] = [];
     for (;;) {
-      const batch = await this.prisma.system(() =>
-        db.emailMessage.findMany({ where: { status: "queued", id: { notIn: tried } }, orderBy: { createdAt: "asc" }, take: BATCH }),
-      );
+      const batch = await db.emailMessage.find({ status: "queued", id: { $nin: tried } }, { sort: { createdAt: 1 }, limit: BATCH });
       if (!batch.length) return handled;
       for (const m of batch) {
         tried.push(m.id);
-        const claimed = await this.prisma.system(() =>
-          db.emailMessage.updateMany({ where: { id: m.id, status: "queued" }, data: { status: "sending", attempts: { increment: 1 } } }),
-        );
+        const claimed = await db.emailMessage.updateMany({ id: m.id, status: "queued" }, { $set: { status: "sending" }, $inc: { attempts: 1 } });
         if (!claimed.count) continue;
         handled += 1;
         if (!this.configured) {
           if (process.env.NODE_ENV !== "production") this.logger.log(`not sent (no SMTP_URL) → ${m.to}: ${m.subject}\n${m.text}`);
-          await this.prisma.system(() => db.emailMessage.update({ where: { id: m.id }, data: { status: "not_sent", error: "SMTP_URL is not configured" } }));
+          await db.emailMessage.update({ id: m.id }, { $set: { status: "not_sent", error: "SMTP_URL is not configured" } });
           await this.inboxStatus(m.inboxMessageId, "failed");
           continue;
         }
@@ -127,12 +119,12 @@ export class MailService implements OnApplicationBootstrap, OnModuleDestroy {
             html: m.html,
             headers: m.headers as Record<string, string>,
           });
-          await this.prisma.system(() => db.emailMessage.update({ where: { id: m.id }, data: { status: "sent", sentAt: new Date(), error: null } }));
+          await db.emailMessage.update({ id: m.id }, { $set: { status: "sent", sentAt: new Date(), error: null } });
           await this.inboxStatus(m.inboxMessageId, "sent");
         } catch (e) {
           const error = (e instanceof Error ? e.message : String(e)).slice(0, 500);
           const final = m.attempts + 1 >= MAX_ATTEMPTS;
-          await this.prisma.system(() => db.emailMessage.update({ where: { id: m.id }, data: { status: final ? "failed" : "queued", error } }));
+          await db.emailMessage.update({ id: m.id }, { $set: { status: final ? "failed" : "queued", error } });
           if (final) await this.inboxStatus(m.inboxMessageId, "failed");
         }
       }
@@ -142,7 +134,6 @@ export class MailService implements OnApplicationBootstrap, OnModuleDestroy {
   /** Email channel replies: the conversation shows whether the email actually left. */
   private async inboxStatus(messageId: string | null, status: "sent" | "failed") {
     if (!messageId) return;
-    const db = this.prisma;
-    await this.prisma.system(() => db.message.updateMany({ where: { id: messageId }, data: { deliveryStatus: status } }));
+    await this.db.system.message.updateMany({ id: messageId }, { $set: { deliveryStatus: status } });
   }
 }

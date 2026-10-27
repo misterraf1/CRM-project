@@ -1,4 +1,4 @@
-import { LIFECYCLE_STAGES, type LifecycleStage } from "@axis/shared";
+import { LIFECYCLE_STAGES, type LifecycleStage } from "@/shared";
 import clsx from "clsx";
 import { Building2, Plus, Search } from "lucide-react";
 import type { Metadata } from "next";

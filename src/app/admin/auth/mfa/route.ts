@@ -1,4 +1,4 @@
-import type { AdminTokens } from "@axis/shared";
+import type { AdminTokens } from "@/shared";
 import { NextResponse, type NextRequest } from "next/server";
 import { apiPublic } from "@/lib/api/server";
 import { ADMIN_MFA_COOKIE, safeNext, writeAdminToken } from "@/lib/auth/cookies";

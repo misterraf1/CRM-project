@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { AlertTriangle, Menu } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import type { MeResponse } from "@axis/shared";
+import type { MeResponse } from "@/shared";
 import type { ShellSummary } from "@/lib/api/types";
 import { formatDate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";

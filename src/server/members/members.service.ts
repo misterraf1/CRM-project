@@ -1,6 +1,5 @@
-import { Injectable } from "@nestjs/common";
 import { MailService } from "../mail/mail.service";
-import type { Membership, User } from "@prisma/client";
+import type { Membership, User } from "../db/models";
 import {
   assignableRoles,
   type AcceptInviteInput,
@@ -10,7 +9,7 @@ import {
   type InvitePreview,
   type MemberDto,
   type UpdateMemberInput,
-} from "@axis/shared";
+} from "@/shared";
 import { AuditService } from "../audit/audit.service";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { TokensService } from "../auth/tokens.service";
@@ -19,7 +18,7 @@ import { config } from "../config";
 import { authedContext } from "../common/context";
 import { AppError, forbidden, notFound } from "../common/errors";
 import { randomToken, sha256 } from "../common/ids";
-import { PrismaService, type Tx } from "../prisma/prisma.service";
+import type { Database, Tx } from "../db/database";
 
 const ROLE_ORDER = { OWNER: 0, ADMIN: 1, MANAGER: 2, EMPLOYEE: 3 } as const;
 
@@ -45,12 +44,19 @@ function parseInviteToken(token: string) {
   return { tenantId: token.slice(0, dot), hash: sha256(token.slice(dot + 1)) };
 }
 
+/** Memberships with their user accounts. */
+async function withUsers(tx: Tx, rows: Membership[]): Promise<(Membership & { user: User })[]> {
+  const users = new Map((await tx.user.find({ id: { $in: [...new Set(rows.map((m) => m.userId))] } })).map((u) => [u.id, u]));
+  return rows.filter((m) => users.has(m.userId)).map((m) => ({ ...m, user: users.get(m.userId)! }));
+}
+
+const withUser = async (tx: Tx, m: Membership) => ({ ...m, user: await tx.user.get({ id: m.userId }) });
+
 const inviteExpiry = (invitedAt: Date) => new Date(invitedAt.getTime() + config().INVITE_TTL_DAYS * 86_400_000);
 
-@Injectable()
 export class MembersService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly db: Database,
     private readonly audit: AuditService,
     private readonly entitlements: EntitlementsService,
     private readonly tokens: TokensService,
@@ -59,10 +65,10 @@ export class MembersService {
 
   async list(): Promise<MemberDto[]> {
     const { tenantId } = authedContext();
-    const rows = await this.prisma.scoped((tx) =>
+    const rows = await this.db.scoped(async (tx) =>
       // Explicit tenant filter: the Membership policy also exposes the caller's
       // memberships in *other* tenants (for the workspace switcher).
-      tx.membership.findMany({ where: { tenantId }, include: { user: true } }),
+      withUsers(tx, await tx.membership.find({ tenantId })),
     );
     return rows
       .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.user.fullName.localeCompare(b.user.fullName))
@@ -74,14 +80,10 @@ export class MembersService {
     if (!assignableRoles(ctx.role).includes(input.role)) throw forbidden(`Cannot invite with role ${input.role}`);
 
     const secret = randomToken(24);
-    const member = await this.prisma.scoped(async (tx) => {
+    const member = await this.db.scoped(async (tx) => {
       await this.assertDepartment(tx, ctx.tenantId, input.departmentId);
-      const user = await tx.user.upsert({
-        where: { email: input.email },
-        create: { email: input.email, fullName: input.fullName ?? input.email.split("@")[0]! },
-        update: {},
-      });
-      const existing = await tx.membership.findFirst({ where: { tenantId: ctx.tenantId, userId: user.id } });
+      const user = await tx.user.upsert({ email: input.email }, {}, { email: input.email, fullName: input.fullName ?? input.email.split("@")[0]! });
+      const existing = await tx.membership.findOne({ tenantId: ctx.tenantId, userId: user.id });
       if (existing && existing.status !== "INVITED") {
         throw new AppError("CONFLICT", existing.status === "ACTIVE" ? "Already a member" : "Member is disabled — re-enable them instead");
       }
@@ -94,12 +96,12 @@ export class MembersService {
         inviteToken: sha256(secret),
         invitedAt: new Date(),
       };
-      const saved = existing
-        ? await tx.membership.update({ where: { id: existing.id }, data, include: { user: true } })
-        : await tx.membership.create({
-            data: { ...data, tenantId: ctx.tenantId, userId: user.id, status: "INVITED" },
-            include: { user: true },
-          });
+      const saved = {
+        ...(existing
+          ? await tx.membership.update({ id: existing.id }, { $set: data })
+          : await tx.membership.insertOne({ ...data, tenantId: ctx.tenantId, userId: user.id, status: "INVITED" })),
+        user,
+      };
       await this.audit.log(tx, {
         action: existing ? "member.reinvited" : "member.invited",
         entityType: "membership",
@@ -107,8 +109,8 @@ export class MembersService {
         diff: { email: input.email, role: input.role },
       });
       const [tenant, inviter] = await Promise.all([
-        tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { name: true } }),
-        tx.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: { fullName: true } }),
+        tx.tenant.get({ id: ctx.tenantId }, { projection: { name: 1 } }),
+        tx.user.get({ id: ctx.userId }, { projection: { fullName: 1 } }),
       ]);
       await this.mail.queue(tx, {
         tenantId: ctx.tenantId,
@@ -130,8 +132,8 @@ export class MembersService {
 
   async update(id: string, input: UpdateMemberInput): Promise<MemberDto> {
     const ctx = authedContext();
-    return this.prisma.scoped(async (tx) => {
-      const target = await tx.membership.findFirst({ where: { id, tenantId: ctx.tenantId }, include: { user: true } });
+    return this.db.scoped(async (tx) => {
+      const target = await tx.membership.findOne({ id, tenantId: ctx.tenantId });
       if (!target) throw notFound("Member");
 
       const changesAccess = input.role !== undefined || input.status !== undefined;
@@ -145,8 +147,8 @@ export class MembersService {
       if (losesOwner) {
         // Writing the tenant document serialises concurrent owner changes: MongoDB aborts
         // one of two transactions touching it, and the retry sees the committed state
-        await tx.tenant.update({ where: { id: ctx.tenantId }, data: { lockVersion: { increment: 1 } } });
-        const owners = await tx.membership.count({ where: { tenantId: ctx.tenantId, role: "OWNER", status: "ACTIVE" } });
+        await tx.tenant.update({ id: ctx.tenantId }, { $inc: { lockVersion: 1 } });
+        const owners = await tx.membership.count({ tenantId: ctx.tenantId, role: "OWNER", status: "ACTIVE" });
         if (owners <= 1) throw new AppError("LAST_OWNER", "The company must keep at least one active owner");
       }
 
@@ -157,24 +159,22 @@ export class MembersService {
       }
       if (input.departmentId !== undefined) await this.assertDepartment(tx, ctx.tenantId, input.departmentId);
 
-      const updated = await tx.membership.update({
-        where: { id: target.id },
-        data: {
-          role: input.role,
-          status: input.status,
-          departmentId: input.departmentId,
-          title: input.title,
-          // Disabling a pending invite also kills its link
-          ...(input.status === "DISABLED" ? { inviteToken: null } : {}),
+      const updated = await tx.membership.update(
+        { id: target.id },
+        {
+          $set: {
+            role: input.role,
+            status: input.status,
+            departmentId: input.departmentId,
+            title: input.title,
+            // Disabling a pending invite also kills its link
+            ...(input.status === "DISABLED" ? { inviteToken: null } : {}),
+          },
         },
-        include: { user: true },
-      });
+      );
 
       if (input.status === "DISABLED") {
-        await tx.session.updateMany({
-          where: { userId: target.userId, tenantId: ctx.tenantId, revokedAt: null },
-          data: { revokedAt: new Date() },
-        });
+        await tx.session.updateMany({ userId: target.userId, tenantId: ctx.tenantId, revokedAt: null }, { $set: { revokedAt: new Date() } });
       }
 
       const diff: Record<string, { from: unknown; to: unknown }> = {};
@@ -184,16 +184,16 @@ export class MembersService {
       if (Object.keys(diff).length) {
         await this.audit.log(tx, { action: "member.updated", entityType: "membership", entityId: target.id, diff: diff as never });
       }
-      return toDto(updated);
+      return toDto(await withUser(tx, updated));
     });
   }
 
   async previewInvite(token: string): Promise<InvitePreview> {
     const { tenantId, hash } = parseInviteToken(token);
-    return this.prisma.scoped(
+    return this.db.scoped(
       async (tx) => {
         const m = await this.findInvite(tx, tenantId, hash);
-        const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+        const tenant = await tx.tenant.get({ id: tenantId });
         return {
           tenantName: tenant.name,
           email: m.user.email,
@@ -210,7 +210,7 @@ export class MembersService {
   async acceptInvite(token: string, input: AcceptInviteInput): Promise<AuthTokens> {
     const { tenantId, hash } = parseInviteToken(token);
     const passwordHash = await hashPassword(input.password);
-    return this.prisma.scoped(
+    return this.db.scoped(
       async (tx) => {
         const m = await this.findInvite(tx, tenantId, hash);
         if (m.user.passwordHash) {
@@ -219,15 +219,9 @@ export class MembersService {
             throw new AppError("INVALID_CREDENTIALS", "Password is incorrect");
           }
         } else {
-          await tx.user.update({
-            where: { id: m.userId },
-            data: { passwordHash, fullName: input.fullName ?? m.user.fullName, emailVerified: new Date() },
-          });
+          await tx.user.update({ id: m.userId }, { $set: { passwordHash, fullName: input.fullName ?? m.user.fullName, emailVerified: new Date() } });
         }
-        await tx.membership.update({
-          where: { id: m.id },
-          data: { status: "ACTIVE", joinedAt: new Date(), inviteToken: null },
-        });
+        await tx.membership.update({ id: m.id }, { $set: { status: "ACTIVE", joinedAt: new Date(), inviteToken: null } });
         await this.audit.log(tx, { action: "member.joined", entityType: "membership", entityId: m.id, tenantId, actorId: m.userId });
         return this.tokens.issue(tx, m.userId, tenantId);
       },
@@ -236,16 +230,16 @@ export class MembersService {
   }
 
   private async findInvite(tx: Tx, tenantId: string, hash: string) {
-    const m = await tx.membership.findFirst({ where: { tenantId, inviteToken: hash, status: "INVITED" }, include: { user: true } });
+    const m = await tx.membership.findOne({ tenantId, inviteToken: hash, status: "INVITED" });
     if (!m || !m.invitedAt || inviteExpiry(m.invitedAt) < new Date()) {
       throw new AppError("INVITE_INVALID", "Invite link is invalid or expired");
     }
-    return m;
+    return withUser(tx, m);
   }
 
   private async assertDepartment(tx: Tx, tenantId: string, departmentId: string | null | undefined) {
     if (!departmentId) return;
-    const exists = await tx.department.count({ where: { id: departmentId, tenantId } });
+    const exists = await tx.department.count({ id: departmentId, tenantId });
     if (!exists) throw new AppError("VALIDATION_FAILED", "Unknown department", { departmentId: ["Unknown department"] });
   }
 }

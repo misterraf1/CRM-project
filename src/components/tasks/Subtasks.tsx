@@ -1,6 +1,6 @@
 "use client";
 
-import type { TaskDto } from "@axis/shared";
+import type { TaskDto } from "@/shared";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { api } from "@/lib/api/client";

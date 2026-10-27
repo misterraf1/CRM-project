@@ -1,4 +1,4 @@
-process.env.NODE_ENV = "test";
+Object.assign(process.env, { NODE_ENV: "test" });
 process.env.JWT_SECRET = "test-secret-test-secret-test-secret-1234";
 process.env.AUTH_RATE_LIMIT = "1000";
 process.env.FILE_STORAGE_DIR = require("node:path").join(require("node:os").tmpdir(), `axis-files-${process.pid}`);

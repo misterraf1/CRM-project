@@ -1,7 +1,7 @@
 "use client";
 
-import type { ContactDto, DealDto, MemberDto, PipelineDto } from "@axis/shared";
-import { LOST_REASONS } from "@axis/shared";
+import type { ContactDto, DealDto, MemberDto, PipelineDto } from "@/shared";
+import { LOST_REASONS } from "@/shared";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { api } from "@/lib/api/client";

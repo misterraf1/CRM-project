@@ -1,6 +1,6 @@
 "use client";
 
-import { PRIORITIES, type MemberDto, type TaskDto } from "@axis/shared";
+import { PRIORITIES, type MemberDto, type TaskDto } from "@/shared";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
