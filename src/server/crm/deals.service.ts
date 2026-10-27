@@ -84,26 +84,24 @@ export class DealsService {
   async list(query: DealListQuery): Promise<DealDto[]> {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
-      const pipeline = await this.resolvePipeline(tx, ctx, query.pipelineId);
-      const { where: scoped } = await ownerScope(tx, ctx, "contacts.view_all");
       const recent = new Date(Date.now() - CLOSED_VISIBLE_DAYS * 86_400_000);
       const q = query.q?.trim();
-      const matchingContacts = q ? (await tx.contact.find({ tenantId: ctx.tenantId, name: contains(q) }, { projection: { id: 1 } })).map((c) => c.id) : [];
-      const rows = await withContacts(
-        tx,
-        ctx.tenantId,
-        await tx.deal.find(
-          and(
-            { tenantId: ctx.tenantId, pipelineId: pipeline.id },
-            scoped,
-            { $or: [{ closedAt: null }, { closedAt: { $gte: recent } }] },
-            query.ownerId ? { ownerId: query.ownerId } : {},
-            q ? { $or: [{ title: contains(q) }, { contactId: { $in: matchingContacts } }] } : {},
-          ),
-          { sort: { position: 1, createdAt: 1 } },
+      const [pipeline, { where: scoped }, matchingContacts] = await Promise.all([
+        this.resolvePipeline(tx, ctx, query.pipelineId),
+        ownerScope(tx, ctx, "contacts.view_all"),
+        q ? tx.contact.find({ tenantId: ctx.tenantId, name: contains(q) }, { projection: { id: 1 } }).then((cs) => cs.map((c) => c.id)) : [],
+      ]);
+      const deals = await tx.deal.find(
+        and(
+          { tenantId: ctx.tenantId, pipelineId: pipeline.id },
+          scoped,
+          { $or: [{ closedAt: null }, { closedAt: { $gte: recent } }] },
+          query.ownerId ? { ownerId: query.ownerId } : {},
+          q ? { $or: [{ title: contains(q) }, { contactId: { $in: matchingContacts } }] } : {},
         ),
+        { sort: { position: 1, createdAt: 1 } },
       );
-      const refs = await memberRefs(tx, ctx.tenantId, rows.map((d) => d.ownerId));
+      const [rows, refs] = await Promise.all([withContacts(tx, ctx.tenantId, deals), memberRefs(tx, ctx.tenantId, deals.map((d) => d.ownerId))]);
       return rows.map((d) => dealToDto(d, refs));
     });
   }

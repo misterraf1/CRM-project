@@ -24,14 +24,15 @@ export class AuthGuard {
     if (scheme !== "Bearer" || !token) throw new AppError("UNAUTHENTICATED", "Missing bearer token");
 
     const payload = await this.tokens.verifyAccess(token);
-    const found = await this.db.scoped(
+    // One parallel round trip, outside a transaction: this runs before every API call
+    const found = await this.db.read(
       async (tx) => {
-        const session = await tx.session.findOne({ id: payload.sid });
-        if (!session || session.revokedAt || session.userId !== payload.sub || session.tenantId !== payload.tid) return null;
-        const [membership, subscription] = await Promise.all([
+        const [session, membership, subscription] = await Promise.all([
+          tx.session.findOne({ id: payload.sid }),
           tx.membership.findOne({ tenantId: payload.tid, userId: payload.sub, status: "ACTIVE" }),
           subscriptionOf(tx, payload.tid).catch(() => null),
         ]);
+        if (!session || session.revokedAt || session.userId !== payload.sub || session.tenantId !== payload.tid) return null;
         return membership && subscription ? { membership, subscription } : null;
       },
       { tenantId: payload.tid, userId: payload.sub },

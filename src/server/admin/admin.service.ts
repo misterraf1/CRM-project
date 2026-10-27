@@ -17,7 +17,7 @@ import type {
 import { AiService } from "../ai/ai.service";
 import { AuditService } from "../audit/audit.service";
 import { addonsPrice, days, planPrice } from "../billing/pricing";
-import { storageUsed } from "../billing/entitlements.service";
+import { invalidatePlans, storageUsed } from "../billing/entitlements.service";
 import { toInvoiceDto, withPayments } from "../billing/invoices";
 import type { PaymentProvider } from "../billing/provider";
 import { config } from "../config";
@@ -299,6 +299,7 @@ export class AdminService {
       await this.audit.log(tx, { action: "platform.plan_updated", entityType: "plan", entityId: before.id, tenantId: undefined, diff: diff as never });
       return after;
     });
+    invalidatePlans();
     const tenants = await this.sys.subscription.count({ planId: plan.id, status: { $ne: "CANCELED" } });
     return this.planDto(plan, tenants);
   }

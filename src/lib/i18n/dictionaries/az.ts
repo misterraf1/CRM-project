@@ -572,6 +572,7 @@ const az = {
   },
   shell: {
     skipToContent: "Əsas məzmuna keç",
+    loading: "Yüklənir…",
     mainNav: "Əsas menyu",
     collapse: "Menyunu yığ",
     expand: "Menyunu aç",

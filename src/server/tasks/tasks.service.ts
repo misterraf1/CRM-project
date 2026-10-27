@@ -85,9 +85,11 @@ export class TasksService {
         q ? { title: contains(q) } : {},
       );
       // Dated tasks first by due date, then undated ones (MongoDB sorts nulls first)
-      const dated = await tx.task.find(and(where, { dueAt: { $ne: null } }), { sort: { dueAt: 1, position: 1 }, limit: LIST_LIMIT });
-      const undated = await tx.task.find(and(where, { dueAt: null }), { sort: { position: 1, createdAt: 1 }, limit: LIST_LIMIT - dated.length });
-      return this.toDtos(tx, ctx, [...dated, ...undated]);
+      const [dated, undated] = await Promise.all([
+        tx.task.find(and(where, { dueAt: { $ne: null } }), { sort: { dueAt: 1, position: 1 }, limit: LIST_LIMIT }),
+        tx.task.find(and(where, { dueAt: null }), { sort: { position: 1, createdAt: 1 }, limit: LIST_LIMIT }),
+      ]);
+      return this.toDtos(tx, ctx, [...dated, ...undated].slice(0, LIST_LIMIT));
     });
   }
 

@@ -20,17 +20,17 @@ async function serve(api: ReturnType<typeof createApi>, req: IncomingMessage, re
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const abort = new AbortController();
   res.on("close", () => abort.abort());
-  const out = await api.handle(
-    new Request(`http://${req.headers.host ?? "localhost"}${req.url}`, {
-      method: req.method,
-      headers,
-      body: hasBody ? (Readable.toWeb(req) as ReadableStream) : undefined,
-      // @ts-expect-error Node's fetch needs this for a streamed request body
-      duplex: hasBody ? "half" : undefined,
-      signal: abort.signal,
-    }),
-    { ip: headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.socket.remoteAddress },
-  );
+  const request = new Request(`http://${req.headers.host ?? "localhost"}${req.url}`, {
+    method: req.method,
+    headers,
+    body: hasBody ? (Readable.toWeb(req) as ReadableStream) : undefined,
+    // @ts-expect-error Node's fetch needs this for a streamed request body
+    duplex: hasBody ? "half" : undefined,
+    signal: abort.signal,
+  });
+  const out = await api.handle(request, { ip: headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.socket.remoteAddress });
+  // A body the API rejected unread (e.g. too large) is drained first, as HTTP servers do — otherwise the client gets EPIPE mid-upload
+  if (request.body && !request.bodyUsed) await request.arrayBuffer().catch(() => undefined);
   res.writeHead(out.status, Object.fromEntries(out.headers));
   if (!out.body) return res.end();
   Readable.fromWeb(out.body as import("node:stream/web").ReadableStream).on("error", () => res.destroy()).pipe(res);

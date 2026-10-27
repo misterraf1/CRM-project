@@ -52,6 +52,11 @@ export type Tx = { [M in (typeof MODELS)[number] as Key<M>]: Repo<M> } & { sessi
 
 const key = <M extends string>(m: M) => (m[0]!.toLowerCase() + m.slice(1)) as Key<M>;
 
+/** A read-only attempt reached a write: the work is redone inside a transaction. */
+class NeedsTransaction extends Error {}
+
+const READ_METHODS = new Set(["GET", "HEAD"]);
+
 /**
  * MongoDB access for the backend (official driver). Collections are named after the
  * models (`User`, `Contact`, …) with string ids in `_id`.
@@ -70,7 +75,8 @@ export class Database {
    * request until the server (or serverless instance) is recycled.
    */
   private connect(): MongoClient {
-    const client = new MongoClient(this.url);
+    // Warm connections: a new one costs a TLS + auth handshake (several round trips)
+    const client = new MongoClient(this.url, { minPoolSize: 5, maxIdleTimeMS: 10 * 60_000 });
     client.once("topologyClosed", () => {
       if (!this.closed && this.conn === client) this.conn = this.connect();
     });
@@ -81,7 +87,7 @@ export class Database {
     return this.conn;
   }
 
-  private tx(scope: DbScope, session?: ClientSession): Tx {
+  private tx(scope: DbScope, session?: ClientSession, beforeWrite?: () => void): Tx {
     const db = this.client.db();
     // A session runs one operation at a time; queue them so services can use Promise.all
     let queue: Promise<unknown> = Promise.resolve();
@@ -102,7 +108,7 @@ export class Database {
           .then((rows) => rows.map((r) => r.tenantId as string)),
       ));
     const tx = { session } as Record<string, unknown>;
-    for (const m of MODELS) tx[key(m)] = new Repo(m, db.collection(m), scope, session, run, membershipTenants);
+    for (const m of MODELS) tx[key(m)] = new Repo(m, db.collection(m), scope, session, run, membershipTenants, beforeWrite);
     return tx as Tx;
   }
 
@@ -111,9 +117,43 @@ export class Database {
    * request's identity; pass `scope` explicitly only for flows that establish
    * identity themselves (signup, login, invite acceptance, background jobs).
    * Write conflicts with concurrent transactions are retried by the driver.
+   *
+   * In read requests (GET) `fn` first runs without a transaction, so its queries go out
+   * in parallel instead of one by one on the session; if it turns out to write, nothing
+   * is written and it reruns inside a transaction (`fn` must be rerunnable anyway — the
+   * driver retries transactions).
    */
-  scoped<T>(fn: (tx: Tx) => Promise<T>, scope: Pick<DbScope, "tenantId" | "userId"> = currentContext()): Promise<T> {
-    return this.transaction({ tenantId: scope.tenantId || undefined, userId: scope.userId || undefined }, fn);
+  async scoped<T>(fn: (tx: Tx) => Promise<T>, scope: Pick<DbScope, "tenantId" | "userId"> = currentContext()): Promise<T> {
+    const s: DbScope = { tenantId: scope.tenantId || undefined, userId: scope.userId || undefined };
+    const method = currentContext().method;
+    if (method && READ_METHODS.has(method)) {
+      const attempt = await this.attemptRead(s, fn);
+      if (attempt.done) return attempt.result;
+    }
+    return this.transaction(s, fn);
+  }
+
+  /** Reads without a transaction (consistent enough for checks and listings); writes inside go through one. */
+  async read<T>(fn: (tx: Tx) => Promise<T>, scope: Pick<DbScope, "tenantId" | "userId"> = currentContext()): Promise<T> {
+    const s: DbScope = { tenantId: scope.tenantId || undefined, userId: scope.userId || undefined };
+    const attempt = await this.attemptRead(s, fn);
+    return attempt.done ? attempt.result : this.transaction(s, fn);
+  }
+
+  private async attemptRead<T>(scope: DbScope, fn: (tx: Tx) => Promise<T>): Promise<{ done: true; result: T } | { done: false }> {
+    let wrote = false;
+    const tx = this.tx(scope, undefined, () => {
+      wrote = true;
+      throw new NeedsTransaction("write in a read-only attempt");
+    });
+    try {
+      const result = await fn(tx);
+      return wrote ? { done: false } : { done: true, result };
+    } catch (e) {
+      // `fn` may have caught the signal itself; the flag is what counts
+      if (wrote) return { done: false };
+      throw e;
+    }
   }
 
   /** Cross-tenant platform writes that must commit together. */

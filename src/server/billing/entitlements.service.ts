@@ -8,10 +8,27 @@ export const INACTIVE_STATUSES = new Set(["SUSPENDED", "CANCELED"]);
 
 export type SubscriptionWithPlan = Subscription & { plan: Plan };
 
+// Plans are a handful of platform-wide rows read on every request (auth guard) and
+// change only from the platform console, which drops this cache.
+const PLAN_TTL_MS = 60_000;
+const plans = new Map<string, { plan: Plan; until: number }>();
+
+export function invalidatePlans() {
+  plans.clear();
+}
+
+async function planOf(tx: Tx, id: string): Promise<Plan> {
+  const hit = plans.get(id);
+  if (hit && hit.until > Date.now()) return hit.plan;
+  const plan = await tx.plan.get({ id });
+  plans.set(id, { plan, until: Date.now() + PLAN_TTL_MS });
+  return plan;
+}
+
 /** The tenant's subscription with its plan (404 if missing). */
 export async function subscriptionOf(tx: Tx, tenantId: string): Promise<SubscriptionWithPlan> {
   const sub = await tx.subscription.get({ tenantId });
-  return { ...sub, plan: await tx.plan.get({ id: sub.planId }) };
+  return { ...sub, plan: await planOf(tx, sub.planId) };
 }
 
 /** Plan limits and features. The trial unlocks every feature so all of it can be tried. */

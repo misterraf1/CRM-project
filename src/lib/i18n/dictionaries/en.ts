@@ -573,6 +573,7 @@ const en: Dictionary = {
   },
   shell: {
     skipToContent: "Skip to main content",
+    loading: "Loading…",
     mainNav: "Main menu",
     collapse: "Collapse menu",
     expand: "Expand menu",

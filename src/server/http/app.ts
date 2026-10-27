@@ -73,7 +73,7 @@ export class ApiApp {
 
   handle(req: Request, client: ClientInfo = {}): Promise<Response> {
     const url = new URL(req.url);
-    return requestContext.run({ ip: client.ip, userAgent: req.headers.get("user-agent")?.slice(0, 255) }, async () => {
+    return requestContext.run({ method: req.method, ip: client.ip, userAgent: req.headers.get("user-agent")?.slice(0, 255) }, async () => {
       try {
         let found: ReturnType<Router["match"]>;
         try {

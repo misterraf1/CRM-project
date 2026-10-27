@@ -63,11 +63,12 @@ export class NotificationsService {
   async summary(): Promise<ShellSummaryDto> {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
-      const scoped = await inboxScope(tx, ctx);
       const [overdueTasks, unreadNotifications, awaitingConversations, unreadChat] = await Promise.all([
         tx.task.count({ tenantId: ctx.tenantId, assigneeId: ctx.membershipId, status: { $nin: ["DONE", "CANCELED"] }, dueAt: { $lt: new Date(), $ne: null } }),
         tx.notification.count({ tenantId: ctx.tenantId, memberId: ctx.membershipId, readAt: null }),
-        tx.conversation.count({ $and: [{ tenantId: ctx.tenantId, awaitingSince: { $ne: null }, status: { $ne: "RESOLVED" } }, scoped] }),
+        inboxScope(tx, ctx).then((scoped) =>
+          tx.conversation.count({ $and: [{ tenantId: ctx.tenantId, awaitingSince: { $ne: null }, status: { $ne: "RESOLVED" } }, scoped] }),
+        ),
         unreadChatTotal(tx, ctx),
       ]);
       return { overdueTasks, unreadNotifications, awaitingConversations, unreadChat };

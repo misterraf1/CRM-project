@@ -76,6 +76,8 @@ export class Repo<M extends ModelName, T = Models[M]> {
     /** Serialises operations of one transaction (a session runs one at a time) */
     private readonly run: <R>(op: () => Promise<R>) => Promise<R>,
     private readonly membershipTenants: () => Promise<string[]>,
+    /** Called before every write; a read-only attempt throws here so nothing is written */
+    private readonly beforeWrite: () => void = () => {},
   ) {}
 
   private get tenantModel() {
@@ -193,6 +195,7 @@ export class Repo<M extends ModelName, T = Models[M]> {
   }
 
   async insertOne(doc: Insert<T>): Promise<T> {
+    this.beforeWrite();
     const full = this.withDefaults(doc);
     this.checkInsert(full);
     await this.run(() => this.coll.insertOne(full, { session: this.session }));
@@ -200,6 +203,7 @@ export class Repo<M extends ModelName, T = Models[M]> {
   }
 
   async insertMany(docs: Insert<T>[]): Promise<T[]> {
+    this.beforeWrite();
     if (!docs.length) return [];
     const full = docs.map((d) => this.withDefaults(d));
     full.forEach((d) => this.checkInsert(d));
@@ -215,6 +219,7 @@ export class Repo<M extends ModelName, T = Models[M]> {
   }
 
   async findOneAndUpdate(filter: Filter, update: Update, options: { sort?: Sort } = {}): Promise<T | null> {
+    this.beforeWrite();
     const scope = this.writeScope();
     const u = this.prepareUpdate(update);
     return this.run(async () =>
@@ -224,6 +229,7 @@ export class Repo<M extends ModelName, T = Models[M]> {
 
   /** Returns how many documents matched. */
   async updateMany(filter: Filter, update: Update): Promise<{ count: number }> {
+    this.beforeWrite();
     const scope = this.writeScope();
     const u = this.prepareUpdate(update);
     const res = await this.run(() => this.coll.updateMany(this.narrow(filter, scope), u, { session: this.session }));
@@ -235,6 +241,7 @@ export class Repo<M extends ModelName, T = Models[M]> {
    * (plus defaults). Fields the update itself sets are taken from the update.
    */
   async upsert(filter: Filter, update: Update, insert: Insert<T>): Promise<T> {
+    this.beforeWrite();
     const scope = this.writeScope();
     const u = this.prepareUpdate(update);
     const full = this.withDefaults(insert);
@@ -251,6 +258,7 @@ export class Repo<M extends ModelName, T = Models[M]> {
 
   /** Deletes one document and returns it, or 404. */
   async delete(filter: Filter): Promise<T> {
+    this.beforeWrite();
     const scope = this.writeScope();
     const doc = await this.run(async () => fromMongo<T>(await this.coll.findOneAndDelete(this.narrow(filter, scope), { session: this.session })));
     if (!doc) throw new AppError("NOT_FOUND", `${this.model} not found`);
@@ -258,6 +266,7 @@ export class Repo<M extends ModelName, T = Models[M]> {
   }
 
   async deleteMany(filter: Filter): Promise<{ count: number }> {
+    this.beforeWrite();
     const scope = this.writeScope();
     const res = await this.run(() => this.coll.deleteMany(this.narrow(filter, scope), { session: this.session }));
     return { count: res.deletedCount };

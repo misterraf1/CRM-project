@@ -573,6 +573,7 @@ const ru: Dictionary = {
   },
   shell: {
     skipToContent: "Перейти к содержимому",
+    loading: "Загрузка…",
     mainNav: "Главное меню",
     collapse: "Свернуть меню",
     expand: "Развернуть меню",

@@ -6,6 +6,8 @@ import type { MemberRole, Permission } from "@/shared";
  * membership row; the tenant id never comes from the URL or the body.
  */
 export interface RequestContext {
+  /** HTTP method of the API request (reads skip transactions, see Database.scoped) */
+  method?: string;
   ip?: string;
   userAgent?: string;
   userId?: string;
