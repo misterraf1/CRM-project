@@ -2,7 +2,7 @@ import "server-only";
 import type { ApiError, ErrorCode } from "@axis/shared";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { ACCESS_COOKIE, ADMIN_COOKIE, API_URL, clientIpHeader } from "../auth/cookies";
+import { ACCESS_COOKIE, ADMIN_COOKIE, apiUrl, clientIpHeader } from "../auth/cookies";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -22,7 +22,7 @@ export const adminFetch = <T>(path: string, init: RequestInit = {}) => authedFet
 
 async function authedFetch<T>(cookie: string, expired: string, path: string, init: RequestInit): Promise<T> {
   const token = (await cookies()).get(cookie)?.value;
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     cache: "no-store",
     headers: {
@@ -42,7 +42,7 @@ async function authedFetch<T>(cookie: string, expired: string, path: string, ini
 
 /** Public endpoints (login, signup, invites): returns the error instead of redirecting. */
 export async function apiPublic<T>(path: string, init: RequestInit = {}) {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     cache: "no-store",
     headers: { ...clientIpHeader(await headers()), ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },

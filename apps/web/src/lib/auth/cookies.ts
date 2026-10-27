@@ -10,7 +10,13 @@ export const ADMIN_COOKIE = "axis_adm";
 /** Between the password and the 2FA code step (5 minutes, platform sign-in only). */
 export const ADMIN_MFA_COOKIE = "axis_adm_mfa";
 
-export const API_URL = process.env.API_URL ?? "http://localhost:4000";
+/**
+ * Absolute URL of an API path. On Vercel, API_URL is injected by the web → api service
+ * binding at request time (not at build time), so it's read per call, never cached.
+ */
+export function apiUrl(path: string) {
+  return (process.env.API_URL ?? "http://localhost:4000").replace(/\/+$/, "") + path;
+}
 
 const base = { httpOnly: true, sameSite: "lax" as const, path: "/", secure: process.env.NODE_ENV === "production" };
 

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { API_URL, clientIpHeader } from "@/lib/auth/cookies";
+import { apiUrl, clientIpHeader } from "@/lib/auth/cookies";
 
 // Shared by the company proxy (/api/v1) and the platform proxy (/api/admin).
 // Bodies are streamed both ways, so JSON, multipart uploads, file downloads and
@@ -18,7 +18,7 @@ export function crossSite(req: NextRequest) {
 
 export async function forward(req: NextRequest, upstreamPath: string, token: string | undefined) {
   const contentType = req.headers.get("content-type");
-  const upstream = await fetch(`${API_URL}${upstreamPath}${req.nextUrl.search}`, {
+  const upstream = await fetch(apiUrl(`${upstreamPath}${req.nextUrl.search}`), {
     method: req.method,
     headers: {
       ...clientIpHeader(req.headers),

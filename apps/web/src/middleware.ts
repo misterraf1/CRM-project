@@ -1,6 +1,5 @@
-import type { AuthTokens } from "@axis/shared";
 import { NextResponse, type NextRequest } from "next/server";
-import { ACCESS_COOKIE, ADMIN_COOKIE, API_URL, clearTokens, clientIpHeader, REFRESH_COOKIE, writeTokens } from "./lib/auth/cookies";
+import { ACCESS_COOKIE, ADMIN_COOKIE, REFRESH_COOKIE } from "./lib/auth/cookies";
 
 // The website chat widget and its API calls are used by anonymous site visitors
 const PUBLIC = [/^\/login$/, /^\/signup$/, /^\/forgot-password$/, /^\/reset-password\//, /^\/invite\//, /^\/auth\//, /^\/widget\//, /^\/api\/v1\/widget\//];
@@ -18,7 +17,8 @@ function unauthenticated(req: NextRequest) {
 
 /**
  * Keeps the session alive: when the short-lived access cookie is gone but a refresh
- * token exists, rotate it before the request reaches pages or the API proxy.
+ * token exists, pages detour through /auth/refresh and the API proxy refreshes inline.
+ * Middleware never calls the API: on Vercel the service binding isn't available here.
  */
 export async function middleware(req: NextRequest) {
   // Platform console: its own session, never the company one
@@ -27,29 +27,14 @@ export async function middleware(req: NextRequest) {
   if (PUBLIC.some((re) => re.test(req.nextUrl.pathname))) return NextResponse.next();
   if (req.cookies.get(ACCESS_COOKIE)) return NextResponse.next();
 
-  const refreshToken = req.cookies.get(REFRESH_COOKIE)?.value;
-  if (!refreshToken) return unauthenticated(req);
+  if (!req.cookies.get(REFRESH_COOKIE)) return unauthenticated(req);
 
-  const res = await fetch(`${API_URL}/v1/auth/refresh`, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...clientIpHeader(req.headers) },
-    body: JSON.stringify({ refreshToken }),
-  }).catch(() => null);
-
-  if (!res?.ok) {
-    const out = unauthenticated(req);
-    clearTokens(out.cookies);
-    return out;
-  }
-
-  const tokens = (await res.json()) as AuthTokens;
-  // Make the new tokens visible to this same request (server components read cookies)…
-  req.cookies.set(ACCESS_COOKIE, tokens.accessToken);
-  req.cookies.set(REFRESH_COOKIE, tokens.refreshToken);
-  const out = NextResponse.next({ request: { headers: req.headers } });
-  // …and persist them in the browser
-  writeTokens(out.cookies, tokens);
-  return out;
+  // The API proxy rotates the token itself
+  if (req.nextUrl.pathname.startsWith("/api/")) return NextResponse.next();
+  const url = new URL("/auth/refresh", req.url);
+  url.searchParams.set("next", req.nextUrl.pathname + req.nextUrl.search);
+  // 303 so a POST (server action) comes back as a GET
+  return NextResponse.redirect(url, req.method === "GET" ? 307 : 303);
 }
 
 function adminGate(req: NextRequest) {
