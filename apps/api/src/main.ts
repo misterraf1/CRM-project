@@ -10,7 +10,8 @@ async function main() {
   const { API_PORT } = config();
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false, rawBody: true });
   configureApp(app);
-  await app.listen(API_PORT);
+  // Vercel (and most hosts) hand the port in PORT
+  await app.listen(process.env.PORT ?? API_PORT);
   Logger.log(`API listening on http://localhost:${API_PORT}`, "Bootstrap");
 }
 

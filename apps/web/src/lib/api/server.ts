@@ -42,11 +42,19 @@ async function authedFetch<T>(cookie: string, expired: string, path: string, ini
 
 /** Public endpoints (login, signup, invites): returns the error instead of redirecting. */
 export async function apiPublic<T>(path: string, init: RequestInit = {}) {
-  const res = await fetch(apiUrl(path), {
-    ...init,
-    cache: "no-store",
-    headers: { ...clientIpHeader(await headers()), ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },
-  });
+  const url = apiUrl(path);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      cache: "no-store",
+      headers: { ...clientIpHeader(await headers()), ...(init.body ? { "content-type": "application/json" } : {}), ...init.headers },
+    });
+  } catch (e) {
+    // API unreachable (wrong API_URL, service down): show the form error instead of a bare 500
+    console.error(`API unreachable at ${new URL(url).origin}`, e);
+    return { ok: false as const, status: 503, code: "INTERNAL" as ErrorCode, details: undefined };
+  }
   const body = res.status === 204 ? undefined : await res.json().catch(() => null);
   if (!res.ok) {
     const err = (body as ApiError | null)?.error;
