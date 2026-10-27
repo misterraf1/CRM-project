@@ -53,12 +53,14 @@ export function RoomView({
     bottom.current?.scrollIntoView({ block: "end" });
   }, [room.messages.length]);
 
-  const run = (fn: () => Promise<{ ok: boolean; code?: string; details?: unknown }>, onOk?: () => void) =>
+  // onOk returning "navigated" skips the refresh: a refresh right after router.push
+  // races the navigation and can leave the old page (and room list) on screen
+  const run = (fn: () => Promise<{ ok: boolean; code?: string; details?: unknown }>, onOk?: () => void | "navigated") =>
     startTransition(async () => {
       setNotice(null);
       const res = await fn();
       if (!res.ok) setNotice({ text: errorMessage(t, res.code, res.details) ?? "", error: true });
-      else onOk?.();
+      else if (onOk?.() === "navigated") return;
       router.refresh();
     });
 
@@ -140,7 +142,10 @@ export function RoomView({
               window.confirm(interpolate(k.confirmLeave, { name: room.name })) &&
               run(
                 () => api(`/chat/rooms/${room.id}/members/me`, "DELETE"),
-                () => router.push("/chat"),
+                () => {
+                  router.push("/chat");
+                  return "navigated";
+                },
               )
             }
             className="btn-danger h-8 text-xs"
