@@ -16,6 +16,7 @@ const MODELS = [
   "Counter",
   "PlatformExpense",
   "Membership",
+  "Role",
   "Department",
   "Contact",
   "Pipeline",
@@ -43,6 +44,9 @@ const MODELS = [
   "AutomationRun",
   "PasswordReset",
   "EmailMessage",
+  "ErrorEvent",
+  "FieldDefinition",
+  "ImportJob",
 ] as const satisfies readonly ModelName[];
 
 type Key<M extends string> = Uncapitalize<M>;

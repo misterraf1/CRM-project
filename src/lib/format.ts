@@ -40,7 +40,7 @@ const MONTHS: Record<Locale, { short: string[]; long: string[] }> = {
   },
 };
 
-const CURRENCY_SYMBOL: Record<string, string> = { AZN: "₼", USD: "$", EUR: "€" };
+const CURRENCY_SYMBOL: Record<string, string> = { AZN: "₼", USD: "$", EUR: "€", RUB: "₽", TRY: "₺", GBP: "£" };
 
 /** Tenant time zone; becomes `session.tenant.timezone` when the API lands. */
 export const TIME_ZONE = "Asia/Baku";

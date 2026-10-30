@@ -18,6 +18,7 @@ import type {
   TaskDetailDto,
   TaskDto,
   ContactDetailDto,
+  ImportJobDto,
   ContactListResponse,
   DashboardCrmDto,
   DealDto,
@@ -34,6 +35,7 @@ import type {
   AutomationRunDto,
   FileListResponse,
 } from "@/shared";
+import type { CurrencySettingsDto, FieldDefinitionDto, FieldEntity, RoleDto } from "@/shared";
 import { cache } from "react";
 import { apiFetch } from "./server";
 import { PERIODS, type Period, type ShellSummary } from "./types";
@@ -45,6 +47,8 @@ export const getSession = cache(() => apiFetch<MeResponse>("/v1/me"));
 export const getMembers = cache(() => apiFetch<MemberDto[]>("/v1/members"));
 
 export const getDepartments = () => apiFetch<DepartmentDto[]>("/v1/departments");
+
+export const getRoles = () => apiFetch<RoleDto[]>("/v1/roles");
 
 export const getShellSummary = cache(async (): Promise<ShellSummary> => {
   const s = await apiFetch<ShellSummaryDto>("/v1/me/summary");
@@ -63,6 +67,15 @@ export const getContact = (id: string) => apiFetch<ContactDetailDto>(`/v1/contac
 export const getContactActivities = (id: string) => apiFetch<ActivityDto[]>(`/v1/contacts/${encodeURIComponent(id)}/activities`);
 
 export const getPipelines = cache(() => apiFetch<PipelineDto[]>("/v1/pipelines"));
+
+/** Custom field definitions (active ones unless `archived`), in display order. */
+export const getFields = cache((entity?: FieldEntity, archived = false) =>
+  apiFetch<FieldDefinitionDto[]>(`/v1/fields${query({ entity, archived: archived ? "true" : undefined })}`),
+);
+
+export const getCurrencySettings = cache(() => apiFetch<CurrencySettingsDto>("/v1/settings/currencies"));
+
+export const getImports = cache(() => apiFetch<ImportJobDto[]>("/v1/imports"));
 
 export function getDeals(params: { pipelineId?: string; q?: string }) {
   const qs = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1]));

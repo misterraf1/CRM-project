@@ -54,9 +54,13 @@ export interface PlanDto {
   extraStorageGbPrice: number;
   /** AI assistant requests per month */
   aiCredits: number;
+  /** null = unlimited */
+  contactLimit: number | null;
+  automationLimit: number | null;
 }
 
-export type InvoiceKind = "subscription" | "upgrade" | "renewal" | "addons";
+/** manual: a payment the platform recorded · gift: a period the platform gave for free */
+export type InvoiceKind = "subscription" | "upgrade" | "renewal" | "addons" | "manual" | "gift";
 export type InvoiceStatus = "DRAFT" | "OPEN" | "PAID" | "FAILED" | "VOID";
 
 export interface InvoiceLineDto {
@@ -85,7 +89,8 @@ export interface InvoiceDto {
 }
 
 export interface BillingOverviewDto {
-  provider: "demo";
+  /** "manual": the platform manages the subscription, the company has no checkout */
+  provider: "demo" | "manual";
   subscription: {
     plan: PlanDto;
     status: SubscriptionStatus;
@@ -102,7 +107,15 @@ export interface BillingOverviewDto {
     /** Demo provider: the next automatic charge will be declined */
     demoNextChargeFails: boolean;
   };
-  usage: { seats: { used: number; limit: number }; storageMb: { used: number; limit: number } };
+  usage: {
+    seats: { used: number; limit: number };
+    storageMb: { used: number; limit: number };
+    /** limit null = unlimited */
+    contacts: { used: number; limit: number | null };
+    automations: { used: number; limit: number | null };
+  };
+  /** Features in effect: the plan's plus any granted by the platform (all of them during the trial) */
+  features: string[];
   plans: PlanDto[];
   invoices: InvoiceDto[];
   company: { name: string };

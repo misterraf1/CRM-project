@@ -17,13 +17,14 @@ export interface OwnerScope {
 /**
  * Data visibility inside a tenant (docs/ARCHITECTURE.md §6):
  * - holders of `viewAll` (owner, admin) see everything
- * - managers see their department's records plus unassigned ones (to distribute leads)
+ * - holders of `records.view_department` (managers) see their department's records plus
+ *   unassigned ones (to distribute leads)
  * - everyone else sees only records they own
  */
 export async function ownerScope(tx: Tx, ctx: AuthedContext, viewAll: Permission): Promise<OwnerScope> {
   if (ctx.permissions.includes(viewAll)) return { scope: "all", memberIds: null, where: {} };
 
-  if (ctx.role === "MANAGER") {
+  if (ctx.permissions.includes("records.view_department")) {
     const ids = ctx.departmentId ? await departmentMemberIds(tx, ctx.tenantId, ctx.departmentId) : [];
     const memberIds = [...new Set([ctx.membershipId, ...ids])];
     return { scope: "department", memberIds, where: { $or: [{ ownerId: { $in: memberIds } }, { ownerId: null }] } };

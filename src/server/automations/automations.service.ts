@@ -1,6 +1,7 @@
 import type { AutomationAction, AutomationConditions, AutomationRuleDto, AutomationRuleInput, AutomationRunDto, AutomationTrigger } from "@/shared";
 import type { AutomationRule } from "../db/models";
 import { AuditService } from "../audit/audit.service";
+import { EntitlementsService } from "../billing/entitlements.service";
 import { authedContext } from "../common/context";
 import { AppError, notFound } from "../common/errors";
 import { memberRefs } from "../crm/scope";
@@ -12,6 +13,7 @@ export class AutomationsService {
   constructor(
     private readonly db: Database,
     private readonly audit: AuditService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   private dto(r: AutomationRule, names: Map<string, { name: string }>): AutomationRuleDto {
@@ -63,6 +65,7 @@ export class AutomationsService {
       if ((await tx.automationRule.count({ tenantId: ctx.tenantId })) >= MAX_RULES) {
         throw new AppError("CONFLICT", `At most ${MAX_RULES} automations per company`);
       }
+      await this.entitlements.assertCapacity(tx, ctx.tenantId, "automations");
       await this.validate(tx, ctx.tenantId, input);
       const rule = await tx.automationRule.insertOne({
         tenantId: ctx.tenantId,

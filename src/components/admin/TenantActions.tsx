@@ -7,6 +7,7 @@ import { adminApi } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
 import { interpolate } from "@/lib/i18n/locales";
+import { useHydrated } from "@/lib/use-hydrated";
 
 /** Support gestures on one company (SUPER_ADMIN; the API enforces it too). */
 export function TenantActions({ tenantId, name, status, canAct }: { tenantId: string; name: string; status: SubscriptionStatus; canAct: boolean }) {
@@ -16,6 +17,7 @@ export function TenantActions({ tenantId, name, status, canAct }: { tenantId: st
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const hydrated = useHydrated();
 
   const run = (fn: () => ReturnType<typeof adminApi>, onOk?: () => void) =>
     startTransition(async () => {
@@ -55,7 +57,7 @@ export function TenantActions({ tenantId, name, status, canAct }: { tenantId: st
             {k.days}
             <input name="days" type="number" min={1} max={60} defaultValue={7} required className="input" />
           </label>
-          <button type="submit" disabled={pending} className="btn-primary">
+          <button type="submit" disabled={pending || !hydrated} className="btn-primary">
             {k.extendTrial}
           </button>
         </form>
@@ -66,7 +68,7 @@ export function TenantActions({ tenantId, name, status, canAct }: { tenantId: st
             {k.suspendReason}
             <input name="reason" required minLength={3} maxLength={500} className="input" />
           </label>
-          <button type="submit" disabled={pending} className="btn-danger border border-danger/30">
+          <button type="submit" disabled={pending || !hydrated} className="btn-danger border border-danger/30">
             {k.suspend}
           </button>
         </form>

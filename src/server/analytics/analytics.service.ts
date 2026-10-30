@@ -26,7 +26,7 @@ async function withStages(tx: Tx, tenantId: string, deals: Deal[]) {
   return deals.map((d) => ({ ...d, stage: stages.get(d.stageId) ?? { name: "", kind: "open" } }));
 }
 
-const DEAL_FIELDS = { amount: 1, createdAt: 1, closedAt: 1, ownerId: 1, contactId: 1, lostReason: 1, stageId: 1 } as const;
+const DEAL_FIELDS = { baseAmount: 1, createdAt: 1, closedAt: 1, ownerId: 1, contactId: 1, lostReason: 1, stageId: 1 } as const;
 
 /**
  * Analytics over the same visibility rules as the rest of the CRM: owners and admins
@@ -64,7 +64,7 @@ export class AnalyticsService {
         deals(dealWhere({ closedAt: { $gte: start, $ne: null } })),
         pipeline
           ? // Open stages: everything sitting there now; won/lost: closed in the period
-            countBy(tx.deal, "stageId", dealWhere({ pipelineId: pipeline.id, $or: [{ closedAt: null }, { closedAt: { $gte: start } }] }), "amount")
+            countBy(tx.deal, "stageId", dealWhere({ pipelineId: pipeline.id, $or: [{ closedAt: null }, { closedAt: { $gte: start } }] }), "baseAmount")
           : new Map<string, { count: number; sum: number }>(),
         tx.contact.find(and(base, owners.where, { deletedAt: null, createdAt: { $gte: start } }), { projection: { id: 1, source: 1, stage: 1 } }),
         tx.conversation.find(and(base, convScope, { createdAt: { $gte: start } }), { projection: { firstResponseMs: 1, channelId: 1 } }),
@@ -76,7 +76,7 @@ export class AnalyticsService {
 
       const won = closedDeals.filter((d) => d.stage.kind === "won");
       const lost = closedDeals.filter((d) => d.stage.kind === "lost");
-      const wonAmount = won.reduce((a, d) => a + d.amount, 0);
+      const wonAmount = won.reduce((a, d) => a + d.baseAmount, 0);
 
       const funnel = (pipeline?.stages ?? []).map((s) => ({
         stageId: s.id,
@@ -91,7 +91,7 @@ export class AnalyticsService {
         const key = d.lostReason?.trim() || "";
         const r = reasons.get(key) ?? { deals: 0, amount: 0 };
         r.deals += 1;
-        r.amount += d.amount;
+        r.amount += d.baseAmount;
         reasons.set(key, r);
       }
 
@@ -111,7 +111,7 @@ export class AnalyticsService {
         if (!d.contactId || !sourceOf.has(d.contactId)) continue;
         const row = sourceRow(sourceOf.get(d.contactId)!);
         row.wonDeals += 1;
-        row.wonAmount += d.amount;
+        row.wonAmount += d.baseAmount;
       }
 
       const channels = new Map<string, number[]>();
@@ -184,7 +184,7 @@ export class AnalyticsService {
         ),
         tx.conversation.find({ ...base, assigneeId: { $in: ids }, createdAt: { $gte: start } }, { projection: { assigneeId: 1, firstResponseMs: 1 } }),
         tx.contact.find(and(base, owners.where, { deletedAt: null, createdAt: { $gte: trendStart } }), { projection: { createdAt: 1 } }),
-        tx.deal.find(and(base, owners.where, { stageId: { $in: wonStages }, closedAt: { $gte: trendStart, $ne: null } }), { projection: { amount: 1, closedAt: 1 } }),
+        tx.deal.find(and(base, owners.where, { stageId: { $in: wonStages }, closedAt: { $gte: trendStart, $ne: null } }), { projection: { baseAmount: 1, closedAt: 1 } }),
       ]);
 
       const perMember: MemberPerformance[] = ids.map((id) => {
@@ -200,7 +200,7 @@ export class AnalyticsService {
           dealsWon: w.length,
           dealsLost: l.length,
           winRate: rate(w.length, w.length + l.length),
-          revenue: w.reduce((a, d) => a + d.amount, 0),
+          revenue: w.reduce((a, d) => a + d.baseAmount, 0),
           avgCycleDays: round1(avg(w.map((d) => Math.max(0, d.closedAt!.getTime() - d.createdAt.getTime()) / DAY_MS))),
           tasksDone: done.length,
           onTimeRate: rate(dated.filter((t) => t.completedAt! <= t.dueAt!).length, dated.length),
@@ -220,7 +220,7 @@ export class AnalyticsService {
       for (const d of trendWon) {
         const row = months[monthIndex(d.closedAt!)]!;
         row.dealsWon += 1;
-        row.revenue += d.amount;
+        row.revenue += d.baseAmount;
       }
 
       return { period, scope: owners.scope, currency: tenant.currency, members: perMember, months };
@@ -242,13 +242,14 @@ export class AnalyticsService {
         // Quote everything; neutralise spreadsheet formulas
         return `"${(/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
       };
-      const header = ["id", "title", "amount", "currency", "stage", "result", "owner", "contact", "source", "created_at", "closed_at", "lost_reason"];
+      const header = ["id", "title", "amount", "currency", "base_amount", "stage", "result", "owner", "contact", "source", "created_at", "closed_at", "lost_reason"];
       const rows = deals.map((d) =>
         [
           d.id,
           d.title,
           (d.amount / 100).toFixed(2),
           d.currency,
+          ((d.baseAmount ?? d.amount) / 100).toFixed(2),
           d.stage.name,
           d.stage.kind,
           d.ownerId ? (refs.get(d.ownerId)?.name ?? "") : "",

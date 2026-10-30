@@ -140,7 +140,7 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
             {!narrow && (
               <div className="min-w-0 flex-1 leading-tight">
                 <p className="truncate text-sm font-medium">{session.user.fullName}</p>
-                <p className="truncate text-[11px] text-fg-subtle">{t.shell.roles[session.membership.role]}</p>
+                <p className="truncate text-[11px] text-fg-subtle">{session.membership.customRole?.name ?? t.shell.roles[session.membership.role]}</p>
               </div>
             )}
             <form action="/auth/logout" method="post">

@@ -22,7 +22,7 @@ for (const scheme of ["light", "dark"] as const) {
     await page.goto("/login");
     expect(await violations(page), "/login").toEqual([]);
     await signupCompany(page, `A11y ${scheme}`);
-    for (const path of ["/dashboard", "/inbox", "/crm", "/deals", "/tasks", "/chat", "/files", "/analytics", "/settings/billing"]) {
+    for (const path of ["/dashboard", "/inbox", "/crm", "/deals", "/tasks", "/chat", "/files", "/analytics", "/settings/billing", "/settings/crm", "/settings/roles", "/crm/import"]) {
       await page.goto(path);
       expect(await violations(page), path).toEqual([]);
     }

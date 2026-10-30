@@ -70,6 +70,8 @@ export interface Tenant {
   logoUrl: string | null;
   timezone: string;
   currency: string;
+  /** Company-currency value of one unit of another currency (CRM deals), e.g. { USD: 1.7 } */
+  fxRates: Record<string, number>;
   locale: Locale;
   status: TenantStatus;
   lockVersion: number;
@@ -90,6 +92,10 @@ export interface Plan {
   extraSeatPrice: number;
   extraStorageGbPrice: number;
   features: string[];
+  /** People and companies a tenant may keep; null = unlimited */
+  contactLimit: number | null;
+  /** Automation rules a tenant may keep; null = unlimited */
+  automationLimit: number | null;
   isPublic: boolean;
   sortOrder: number;
   createdAt: Date;
@@ -116,8 +122,23 @@ export interface Subscription {
   nextRetryAt: Date | null;
   trialReminderSentAt: Date | null;
   demoNextChargeFails: boolean;
+  /** Platform-set limits for this company in place of the plan's (a missing key = the plan's value) */
+  limitOverrides: LimitOverrides;
+  /** Features on top of the plan, optionally until a date */
+  featureGrants: { feature: string; until: Date | null }[];
+  /** Given for free by the platform: counts as no revenue */
+  complimentary: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface LimitOverrides {
+  seatLimit?: number;
+  storageMb?: number;
+  aiCredits?: number;
+  /** null = unlimited */
+  contactLimit?: number | null;
+  automationLimit?: number | null;
 }
 
 export interface Invoice {
@@ -177,6 +198,8 @@ export interface Membership {
   tenantId: string;
   userId: string;
   role: MemberRole;
+  /** Custom role: its permissions replace the built-in role's (`role` is then EMPLOYEE) */
+  roleId: string | null;
   status: MemberStatus;
   departmentId: string | null;
   title: string | null;
@@ -185,6 +208,17 @@ export interface Membership {
   invitedAt: Date | null;
   joinedAt: Date | null;
   createdAt: Date;
+}
+
+/** A company's own role: a named set of permissions. */
+export interface Role {
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string | null;
+  permissions: string[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Department {
@@ -204,6 +238,7 @@ export interface Contact {
   email: string | null;
   phone: string | null;
   companyName: string | null;
+  companyId: string | null;
   stage: LifecycleStage;
   source: string | null;
   tags: string[];
@@ -240,6 +275,9 @@ export interface Deal {
   title: string;
   amount: number;
   currency: string;
+  /** `amount` in the company currency, minor units — every report sums this */
+  baseAmount: number;
+  customFields: JsonValue;
   expectedClose: Date | null;
   closedAt: Date | null;
   lostReason: string | null;
@@ -520,6 +558,54 @@ export interface EmailMessage {
   sentAt: Date | null;
 }
 
+export interface FieldDefinition {
+  id: string;
+  tenantId: string;
+  entity: string;
+  label: string;
+  type: string;
+  options: string[];
+  required: boolean;
+  order: number;
+  archived: boolean;
+  createdAt: Date;
+}
+
+/** Unexpected server errors (API 500s, failed job runs), grouped by fingerprint. Platform-level. */
+export interface ErrorEvent {
+  id: string;
+  fingerprint: string;
+  source: string;
+  message: string;
+  stack: string | null;
+  /** "GET /v1/deals" for API errors, the job name for jobs */
+  where: string | null;
+  /** The company whose request failed — a reference only, the row is platform data */
+  tenantRef: string | null;
+  count: number;
+  firstSeenAt: Date;
+  lastSeenAt: Date;
+}
+
+/** One finished file import: what was asked, what happened, and the rows that weren't imported. */
+export interface ImportJob {
+  id: string;
+  tenantId: string;
+  entity: string;
+  fileName: string;
+  duplicates: string;
+  rows: number;
+  headers: string[];
+  mapping: string[];
+  summary: { create: number; update: number; skip: number; failed: number; companies: number };
+  issues: JsonValue;
+  issueRows: JsonValue;
+  /** Records the import created (for tracing them back, and a future undo) */
+  createdIds: string[];
+  byId: string | null;
+  createdAt: Date;
+}
+
 export interface Models {
   User: User;
   AdminSession: AdminSession;
@@ -533,6 +619,7 @@ export interface Models {
   Counter: Counter;
   PlatformExpense: PlatformExpense;
   Membership: Membership;
+  Role: Role;
   Department: Department;
   Contact: Contact;
   Pipeline: Pipeline;
@@ -560,6 +647,9 @@ export interface Models {
   AutomationRun: AutomationRun;
   PasswordReset: PasswordReset;
   EmailMessage: EmailMessage;
+  ErrorEvent: ErrorEvent;
+  FieldDefinition: FieldDefinition;
+  ImportJob: ImportJob;
 }
 export type ModelName = keyof Models;
 
@@ -568,20 +658,21 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   User: { passwordHash: null, avatarUrl: null, locale: "AZ", platformRole: "NONE", emailVerified: null, mfaSecret: null, mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [], lastLoginAt: null, createdAt: "now", updatedAt: "now" },
   AdminSession: { revokedAt: null, ip: null, userAgent: null, createdAt: "now" },
   Session: { userAgent: null, ip: null, rotatedAt: null, revokedAt: null, createdAt: "now" },
-  Tenant: { logoUrl: null, timezone: "Asia/Baku", currency: "AZN", locale: "AZ", status: "TRIALING", lockVersion: 0, createdAt: "now", updatedAt: "now" },
-  Plan: { currency: "AZN", aiCredits: 0, extraSeatPrice: 900, extraStorageGbPrice: 500, features: [], isPublic: true, sortOrder: 0, createdAt: "now", updatedAt: "now" },
-  Subscription: { status: "TRIALING", interval: "MONTH", extraSeats: 0, extraStorageMb: 0, trialEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false, scheduledPlanId: null, providerRef: null, paymentMethod: null, retryCount: 0, nextRetryAt: null, trialReminderSentAt: null, demoNextChargeFails: false, createdAt: "now", updatedAt: "now" },
+  Tenant: { logoUrl: null, timezone: "Asia/Baku", currency: "AZN", fxRates: {}, locale: "AZ", status: "TRIALING", lockVersion: 0, createdAt: "now", updatedAt: "now" },
+  Plan: { currency: "AZN", aiCredits: 0, extraSeatPrice: 900, extraStorageGbPrice: 500, features: [], contactLimit: null, automationLimit: null, isPublic: true, sortOrder: 0, createdAt: "now", updatedAt: "now" },
+  Subscription: { status: "TRIALING", interval: "MONTH", extraSeats: 0, extraStorageMb: 0, trialEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false, scheduledPlanId: null, providerRef: null, paymentMethod: null, retryCount: 0, nextRetryAt: null, trialReminderSentAt: null, demoNextChargeFails: false, limitOverrides: {}, featureGrants: [], complimentary: false, createdAt: "now", updatedAt: "now" },
   Invoice: { kind: "subscription", status: "OPEN", currency: "AZN", apply: null, paidAt: null, createdAt: "now" },
   Payment: { failureCode: null, createdAt: "now" },
   UsageCounter: { value: 0 },
   Counter: { value: 0 },
   PlatformExpense: { currency: "AZN", note: null, createdAt: "now" },
-  Membership: { role: "EMPLOYEE", status: "INVITED", departmentId: null, title: null, permissions: [], inviteToken: null, invitedAt: null, joinedAt: null, createdAt: "now" },
+  Membership: { role: "EMPLOYEE", roleId: null, status: "INVITED", departmentId: null, title: null, permissions: [], inviteToken: null, invitedAt: null, joinedAt: null, createdAt: "now" },
+  Role: { description: null, permissions: [], createdAt: "now", updatedAt: "now" },
   Department: { headId: null, parentId: null },
-  Contact: { ownerId: null, type: "person", email: null, phone: null, companyName: null, stage: "LEAD", source: null, tags: [], customFields: {}, createdAt: "now", updatedAt: "now", deletedAt: null },
+  Contact: { ownerId: null, type: "person", email: null, phone: null, companyName: null, companyId: null, stage: "LEAD", source: null, tags: [], customFields: {}, createdAt: "now", updatedAt: "now", deletedAt: null },
   Pipeline: { isDefault: false },
   PipelineStage: { probability: 0, kind: "open" },
-  Deal: { contactId: null, ownerId: null, amount: 0, currency: "AZN", expectedClose: null, closedAt: null, lostReason: null, position: 0, createdAt: "now", updatedAt: "now" },
+  Deal: { contactId: null, ownerId: null, amount: 0, currency: "AZN", baseAmount: 0, customFields: {}, expectedClose: null, closedAt: null, lostReason: null, position: 0, createdAt: "now", updatedAt: "now" },
   Activity: { contactId: null, dealId: null, actorId: null, createdAt: "now" },
   Project: { ownerId: null, archived: false, createdAt: "now" },
   Task: { projectId: null, parentId: null, description: null, status: "TODO", priority: "MEDIUM", assigneeId: null, dueAt: null, completedAt: null, overdueNotifiedAt: null, recurrence: null, contactId: null, dealId: null, position: 0, createdAt: "now", updatedAt: "now" },
@@ -604,10 +695,13 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   AutomationRun: { detail: null, createdAt: "now" },
   PasswordReset: { usedAt: null, ip: null, createdAt: "now" },
   EmailMessage: { tenantId: null, inboxMessageId: null, from: null, headers: {}, status: "queued", attempts: 0, error: null, createdAt: "now", sentAt: null },
+  FieldDefinition: { options: [], required: false, order: 0, archived: false, createdAt: "now" },
+  ImportJob: { issues: [], issueRows: [], createdIds: [], byId: null, createdAt: "now" },
+  ErrorEvent: { stack: null, where: null, tenantRef: null, count: 1, firstSeenAt: "now", lastSeenAt: "now" },
 };
 
 /** Models whose `updatedAt` is bumped on every update. */
-export const HAS_UPDATED_AT: ReadonlySet<ModelName> = new Set<ModelName>(["User", "Tenant", "Plan", "Subscription", "Contact", "Deal", "Task", "SupportTicket", "AutomationRule"]);
+export const HAS_UPDATED_AT: ReadonlySet<ModelName> = new Set<ModelName>(["User", "Tenant", "Plan", "Subscription", "Role", "Contact", "Deal", "Task", "SupportTicket", "AutomationRule"]);
 
 /** Models that carry `tenantId` (tenant-isolated by the repository layer). Session is not: refresh tokens are looked up by hash before any identity exists. */
-export const TENANT_MODELS: ReadonlySet<ModelName> = new Set<ModelName>(["Subscription", "Invoice", "Payment", "UsageCounter", "Membership", "Department", "Contact", "Pipeline", "PipelineStage", "Deal", "Activity", "Project", "Task", "TaskComment", "Channel", "Conversation", "Message", "CannedResponse", "ChatRoom", "ChatMember", "ChatMessage", "FileObject", "Notification", "AuditLog", "SupportTicket", "SupportTicketMessage", "AutomationRule", "AutomationEvent", "AutomationRun", "EmailMessage"]);
+export const TENANT_MODELS: ReadonlySet<ModelName> = new Set<ModelName>(["Subscription", "Invoice", "Payment", "UsageCounter", "Membership", "Role", "Department", "Contact", "Pipeline", "PipelineStage", "Deal", "Activity", "Project", "Task", "TaskComment", "Channel", "Conversation", "Message", "CannedResponse", "ChatRoom", "ChatMember", "ChatMessage", "FileObject", "Notification", "AuditLog", "SupportTicket", "SupportTicketMessage", "AutomationRule", "AutomationEvent", "AutomationRun", "EmailMessage", "FieldDefinition", "ImportJob"]);

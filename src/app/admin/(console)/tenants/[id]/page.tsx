@@ -4,8 +4,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { SubscriptionHistory } from "@/components/admin/SubscriptionHistory";
+import { SubscriptionManager } from "@/components/admin/SubscriptionManager";
 import { TenantActions } from "@/components/admin/TenantActions";
-import { getAdminMe, getAdminTenant } from "@/lib/api/admin";
+import { getAdminMe, getAdminPlans, getAdminTenant } from "@/lib/api/admin";
 import { ApiRequestError } from "@/lib/api/server";
 import { INVOICE_STATUS_STYLE } from "@/lib/billing";
 import { formatDate, formatDateTime, formatMoney, formatNumber } from "@/lib/format";
@@ -31,7 +33,7 @@ export default async function AdminTenantPage({ params }: Props) {
     if (e instanceof ApiRequestError && e.status === 404) notFound();
     throw e;
   });
-  const [{ t, locale }, me] = await Promise.all([getI18n(), getAdminMe()]);
+  const [{ t, locale }, me, plans] = await Promise.all([getI18n(), getAdminMe(), getAdminPlans()]);
   const k = t.admin.tenants;
   const s = d.subscription;
   const date = (iso: string | null) => (iso ? formatDate(iso, locale, "long") : k.none);
@@ -63,6 +65,10 @@ export default async function AdminTenantPage({ params }: Props) {
             {s.scheduledPlan && <Row label={k.scheduled}>{s.scheduledPlan}</Row>}
             <Row label={k.addons}>{interpolate(k.addonsValue, { seats: s.extraSeats, gb: s.extraStorageGb })}</Row>
             <Row label={k.paymentMethod}>{s.paymentMethod ? `${s.paymentMethod.brand} •••• ${s.paymentMethod.last4}` : k.none}</Row>
+            {d.complimentary && <Row label={k.complimentary}>✓</Row>}
+            <Row label={k.features}>
+              <span className="text-xs">{d.features.map((f) => t.billing.features[f as keyof typeof t.billing.features] ?? f).join(", ") || k.none}</span>
+            </Row>
             <Row label={k.owner}>{d.ownerEmail ?? k.none}</Row>
             <Row label={k.created}>{date(d.createdAt)}</Row>
           </dl>
@@ -77,7 +83,13 @@ export default async function AdminTenantPage({ params }: Props) {
             <Row label={k.storage}>
               {d.usage.storageMb.used} MB / {Math.round(d.usage.storageMb.limit / 1024)} GB
             </Row>
-            <Row label={k.contacts}>{formatNumber(d.usage.contacts, locale)}</Row>
+            <Row label={k.contacts}>
+              {formatNumber(d.usage.contacts, locale)} / {d.limits.contacts === null ? t.admin.subscription.unlimited : formatNumber(d.limits.contacts, locale)}
+            </Row>
+            <Row label={k.automations}>
+              {formatNumber(d.usage.automations, locale)} / {d.limits.automations === null ? t.admin.subscription.unlimited : formatNumber(d.limits.automations, locale)}
+            </Row>
+            <Row label={k.ai}>{formatNumber(d.limits.aiCredits, locale)}</Row>
             <Row label={k.deals}>{formatNumber(d.usage.deals, locale)}</Row>
             <Row label={k.tasks}>{formatNumber(d.usage.tasks, locale)}</Row>
             <Row label={k.conversations}>{formatNumber(d.usage.conversations, locale)}</Row>
@@ -87,6 +99,17 @@ export default async function AdminTenantPage({ params }: Props) {
         <section className="card p-5">
           <h2 className="mb-3 text-sm font-semibold">{k.actions}</h2>
           <TenantActions tenantId={d.id} name={d.name} status={d.status} canAct={me.role === "SUPER_ADMIN"} />
+        </section>
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <section className="card p-5">
+          <h2 className="mb-3 text-sm font-semibold">{t.admin.subscription.title}</h2>
+          <SubscriptionManager tenant={d} plans={plans} canAct={me.role === "SUPER_ADMIN"} />
+        </section>
+        <section className="card min-w-0">
+          <h2 className="px-5 pt-4 text-sm font-semibold">{t.admin.subscription.history}</h2>
+          <SubscriptionHistory items={d.history} />
         </section>
       </div>
 

@@ -7,7 +7,7 @@ export function tasksRoutes(router: Router, s: Services) {
   router.group("/v1", {}, (r) => {
     r.get("tasks", { query: taskListQuerySchema }, ({ query }) => s.tasks.list(query));
 
-    r.post("tasks", { body: taskCreateSchema }, ({ body }) => s.tasks.create(body));
+    r.post("tasks", { permission: "tasks.create", body: taskCreateSchema }, ({ body }) => s.tasks.create(body));
 
     r.get("tasks/:id", ({ params }) => s.tasks.get(params.id!));
 

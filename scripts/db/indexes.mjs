@@ -29,6 +29,8 @@ export const INDEXES = [
   ["Membership", { inviteToken: 1 }, { unique: true, ...nonNull("inviteToken") }],
   ["Membership", { tenantId: 1, departmentId: 1 }],
   ["Membership", { userId: 1 }],
+  ["Membership", { tenantId: 1, roleId: 1 }],
+  ["Role", { tenantId: 1, name: 1 }, { unique: true }],
   ["Department", { tenantId: 1, name: 1 }, { unique: true }],
   // CRM
   ["Contact", { tenantId: 1, stage: 1 }],
@@ -36,6 +38,10 @@ export const INDEXES = [
   ["Contact", { tenantId: 1, phone: 1 }],
   ["Contact", { tenantId: 1, email: 1 }],
   ["Contact", { tenantId: 1, createdAt: -1 }],
+  ["Contact", { tenantId: 1, companyId: 1 }],
+  ["Contact", { tenantId: 1, tags: 1 }],
+  ["FieldDefinition", { tenantId: 1, entity: 1, order: 1 }],
+  ["ImportJob", { tenantId: 1, createdAt: -1 }],
   ["PipelineStage", { pipelineId: 1, order: 1 }, { unique: true }],
   ["Deal", { tenantId: 1, stageId: 1 }],
   ["Deal", { tenantId: 1, ownerId: 1 }],
@@ -69,6 +75,8 @@ export const INDEXES = [
   ["PasswordReset", { userId: 1, createdAt: -1 }],
   ["EmailMessage", { status: 1, createdAt: 1 }],
   ["EmailMessage", { tenantId: 1, createdAt: -1 }],
+  ["ErrorEvent", { fingerprint: 1 }, { unique: true }],
+  ["ErrorEvent", { lastSeenAt: -1 }],
   // Inbox
   ["Channel", { type: 1, externalId: 1 }, { unique: true }],
   ["Conversation", { channelId: 1, externalThread: 1 }, { unique: true }],

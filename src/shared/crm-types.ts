@@ -1,4 +1,5 @@
 import type { LifecycleStage } from "./crm-schemas";
+import type { CustomFieldValues } from "./crm-settings";
 
 export interface MemberRefDto {
   id: string;
@@ -12,9 +13,12 @@ export interface ContactDto {
   email: string | null;
   phone: string | null;
   companyName: string | null;
+  /** Linked company contact (people only) */
+  companyId: string | null;
   stage: LifecycleStage;
   source: string | null;
   tags: string[];
+  customFields: CustomFieldValues;
   owner: MemberRefDto | null;
   openDeals: number;
   createdAt: string;
@@ -49,6 +53,8 @@ export interface DealDto {
   title: string;
   amount: number;
   currency: string;
+  /** The amount in the company currency (at the deal's last saved rate; closed deals keep theirs) */
+  baseAmount: number;
   pipelineId: string;
   stageId: string;
   position: number;
@@ -57,11 +63,14 @@ export interface DealDto {
   expectedClose: string | null;
   closedAt: string | null;
   lostReason: string | null;
+  customFields: CustomFieldValues;
   createdAt: string;
 }
 
 export interface ContactDetailDto extends ContactDto {
   deals: DealDto[];
+  /** Companies: the people linked to it (visible ones, at most 100) */
+  people: { id: string; name: string; email: string | null; phone: string | null }[];
 }
 
 /** Payload carries display names captured at write time, so history stays readable after renames. */

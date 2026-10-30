@@ -8,6 +8,7 @@ import { adminApi, api } from "@/lib/api/client";
 import { formatDateTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
+import { useHydrated } from "@/lib/use-hydrated";
 
 /**
  * A support ticket's conversation. `staff`: platform console (status/priority,
@@ -20,6 +21,7 @@ export function TicketThread({ ticket, staff }: { ticket: TicketDto; staff: bool
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string>();
+  const hydrated = useHydrated();
   const call = staff ? adminApi : api;
   const base = staff ? `/tickets/${ticket.id}` : `/support/tickets/${ticket.id}`;
 
@@ -86,7 +88,7 @@ export function TicketThread({ ticket, staff }: { ticket: TicketDto; staff: bool
         <textarea id="ticket-reply" name="body" rows={3} required maxLength={5000} placeholder={k.reply} className="input h-auto py-2" />
         <div className="mt-2 flex items-center justify-between gap-3">
           <p className="text-[11px] text-fg-subtle">{staff ? k.staffNote : ticket.status === "closed" ? s.reopenHint : ""}</p>
-          <button type="submit" disabled={pending} className="btn-primary">
+          <button type="submit" disabled={pending || !hydrated} className="btn-primary">
             {k.send}
           </button>
         </div>

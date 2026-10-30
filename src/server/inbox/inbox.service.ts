@@ -16,6 +16,7 @@ import { authedContext, type AuthedContext } from "../common/context";
 import { AppError, forbidden, notFound } from "../common/errors";
 import { sortNullsLast } from "../common/sort";
 import { addDays, startOfDay } from "../common/time";
+import { EntitlementsService } from "../billing/entitlements.service";
 import { ActivityService } from "../crm/activity.service";
 import { memberRefs, ownerScope } from "../crm/scope";
 import type { Database, Tx } from "../db/database";
@@ -37,7 +38,7 @@ type ConversationRow = Conversation & { channel: Channel; contact: { id: string;
  */
 export async function inboxScope(tx: Tx, ctx: AuthedContext): Promise<Filter> {
   if (ctx.permissions.includes("inbox.view_all")) return {};
-  if (ctx.role === "MANAGER") {
+  if (ctx.permissions.includes("records.view_department")) {
     const { memberIds } = await ownerScope(tx, ctx, "inbox.view_all");
     return {
       $or: [
@@ -78,6 +79,7 @@ export class InboxService {
     private readonly meta: MetaClient,
     private readonly activity: ActivityService,
     private readonly mail: MailService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(query: ConversationListQuery): Promise<ConversationListItemDto[]> {
@@ -267,6 +269,8 @@ export class InboxService {
           throw new AppError("VALIDATION_FAILED", "Unknown contact", { contactId: ["Unknown contact"] });
         }
       } else {
+        if (!ctx.permissions.includes("contacts.create")) throw forbidden("Requires permission contacts.create");
+        await this.entitlements.assertCapacity(tx, ctx.tenantId, "contacts");
         const isEmail = c.handle?.includes("@");
         const isPhone = c.handle && /^\+?\d{7,15}$/.test(c.handle.replace(/[\s()-]/g, ""));
         const created = await tx.contact.insertOne({

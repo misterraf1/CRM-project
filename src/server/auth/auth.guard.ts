@@ -27,21 +27,24 @@ export class AuthGuard {
     // One parallel round trip, outside a transaction: this runs before every API call
     const found = await this.db.read(
       async (tx) => {
-        const [session, membership, subscription] = await Promise.all([
+        const [session, [membership, role], subscription] = await Promise.all([
           tx.session.findOne({ id: payload.sid }),
-          tx.membership.findOne({ tenantId: payload.tid, userId: payload.sub, status: "ACTIVE" }),
+          // A custom role costs one more read, only for the members who have one
+          tx.membership
+            .findOne({ tenantId: payload.tid, userId: payload.sub, status: "ACTIVE" })
+            .then(async (m) => [m, m?.roleId ? await tx.role.findOne({ id: m.roleId, tenantId: payload.tid }) : null] as const),
           subscriptionOf(tx, payload.tid).catch(() => null),
         ]);
         if (!session || session.revokedAt || session.userId !== payload.sub || session.tenantId !== payload.tid) return null;
-        return membership && subscription ? { membership, subscription } : null;
+        return membership && subscription ? { membership, role, subscription } : null;
       },
       { tenantId: payload.tid, userId: payload.sub },
     );
     if (!found) throw new AppError("UNAUTHENTICATED", "Session is no longer valid");
-    const { membership, subscription } = found;
+    const { membership, role, subscription } = found;
     const features = this.entitlements.features(subscription);
 
-    const permissions = resolvePermissions(membership.role, membership.permissions);
+    const permissions = resolvePermissions(membership.role, membership.permissions, role?.permissions);
     Object.assign(currentContext(), {
       userId: payload.sub,
       tenantId: payload.tid,

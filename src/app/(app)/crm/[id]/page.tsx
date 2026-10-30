@@ -1,4 +1,5 @@
-import { ArrowLeft, Mail, Phone } from "lucide-react";
+import type { Permission } from "@/shared";
+import { ArrowLeft, Building2, Mail, Phone, Plus } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,7 +11,7 @@ import { StageBadge } from "@/components/crm/StageBadge";
 import { Timeline } from "@/components/crm/Timeline";
 import { TaskList } from "@/components/tasks/TaskList";
 import { TaskQuickAdd } from "@/components/tasks/TaskQuickAdd";
-import { getContact, getContactActivities, getConversations, getMembers, getPipelines, getSession, getTasks } from "@/lib/api";
+import { getContact, getContactActivities, getConversations, getFields, getMembers, getPipelines, getSession, getTasks } from "@/lib/api";
 import { ChannelIcon } from "@/components/ui/ChannelIcon";
 import { formatRelative } from "@/lib/format";
 import { ApiRequestError } from "@/lib/api/server";
@@ -25,7 +26,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function ContactPage({ params }: Props) {
   const { id } = await params;
-  const [{ t, locale }, me, members] = await Promise.all([getI18n(), getSession(), getMembers()]);
+  const [{ t, locale }, me, members, personFields, companyFields, dealFields] = await Promise.all([getI18n(), getSession(), getMembers(), getFields("contact"), getFields("company"), getFields("deal")]);
   // Deals are a PRO feature; without it the contact page simply has no deals block
   const pipelines = hasFeature(me, "deals.pipeline") ? await getPipelines() : [];
   const [contact, activities, tasks, conversations] = await Promise.all([
@@ -38,7 +39,10 @@ export default async function ContactPage({ params }: Props) {
     throw e;
   });
   const c = t.crm;
-  const openValue = contact.deals.filter((d) => !d.closedAt).reduce((a, d) => a + d.amount, 0);
+  const can = (p: Permission) => me.permissions.includes(p);
+  // Deals may be in several currencies: totals use the company-currency amount
+  const openDeals = contact.deals.filter((d) => !d.closedAt);
+  const openValue = openDeals.reduce((a, d) => a + d.baseAmount, 0);
 
   return (
     <div className="space-y-5">
@@ -54,7 +58,15 @@ export default async function ContactPage({ params }: Props) {
             <StageBadge stage={contact.stage} label={c.stages[contact.stage]} />
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
-            {contact.companyName && <span>{contact.companyName}</span>}
+            {contact.companyId ? (
+              // No prefetch: the company page lists its people, and a snapshot may predate this one
+              <Link href={`/crm/${contact.companyId}`} prefetch={false} className="inline-flex items-center gap-1 hover:text-accent">
+                <Building2 className="h-3.5 w-3.5" aria-hidden />
+                {contact.companyName}
+              </Link>
+            ) : (
+              contact.companyName && <span>{contact.companyName}</span>
+            )}
             {contact.phone && (
               <a href={`tel:${contact.phone}`} className="inline-flex items-center gap-1 hover:text-accent">
                 <Phone className="h-3.5 w-3.5" aria-hidden />
@@ -67,7 +79,7 @@ export default async function ContactPage({ params }: Props) {
                 {contact.email}
               </a>
             )}
-            {openValue > 0 && <span>{interpolate(t.deals.count, { n: contact.openDeals })} · {formatMoney(openValue, locale)}</span>}
+            {openValue > 0 && <span>{interpolate(t.deals.count, { n: openDeals.length })} · {formatMoney(openValue, locale, me.tenant.currency)}</span>}
           </div>
         </div>
         {me.permissions.includes("contacts.delete") && (
@@ -79,8 +91,42 @@ export default async function ContactPage({ params }: Props) {
         <div className="min-w-0 space-y-5">
           <section className="card p-5">
             <h2 className="mb-4 text-sm font-semibold">{c.details}</h2>
-            <ContactForm contact={contact} members={members} canAssign={me.permissions.includes("contacts.manage")} selfMemberId={me.membership.id} />
+            <ContactForm
+              contact={contact}
+              members={members}
+              canAssign={me.permissions.includes("contacts.manage")}
+              selfMemberId={me.membership.id}
+              fields={{ contact: personFields, company: companyFields }}
+              readOnly={!can("contacts.edit")}
+            />
           </section>
+          {contact.type === "company" && (
+            <section className="card">
+              <header className="flex items-center justify-between px-5 pt-4">
+                <h2 className="text-sm font-semibold">{c.people}</h2>
+                {can("contacts.create") && (
+                  <Link href={`/crm/new?company=${contact.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
+                    <Plus className="h-3.5 w-3.5" aria-hidden />
+                    {c.addPerson}
+                  </Link>
+                )}
+              </header>
+              {contact.people.length === 0 ? (
+                <p className="px-5 py-5 text-sm text-fg-muted">{c.noPeople}</p>
+              ) : (
+                <ul className="mt-2 divide-y divide-border border-t border-border">
+                  {contact.people.map((p) => (
+                    <li key={p.id}>
+                      <Link href={`/crm/${p.id}`} className="flex items-center justify-between gap-3 px-5 py-2.5 hover:bg-muted/50">
+                        <span className="truncate text-sm font-medium">{p.name}</span>
+                        <span className="shrink-0 truncate text-xs text-fg-muted">{p.phone ?? p.email}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
           {conversations.length > 0 && (
             <section className="card">
               <h2 className="px-5 pt-4 text-sm font-semibold">{t.inbox.title}</h2>
@@ -105,16 +151,18 @@ export default async function ContactPage({ params }: Props) {
             <div className="mt-2 border-t border-border">
               <TaskList tasks={tasks} compact />
             </div>
-            <div className="border-t border-border p-3">
-              <TaskQuickAdd members={members} selfMemberId={me.membership.id} defaults={{ contactId: contact.id }} compact />
-            </div>
+            {can("tasks.create") && (
+              <div className="border-t border-border p-3">
+                <TaskQuickAdd members={members} selfMemberId={me.membership.id} defaults={{ contactId: contact.id }} compact />
+              </div>
+            )}
           </section>
-          {pipelines[0] && <ContactDeals contactId={contact.id} deals={contact.deals} pipeline={pipelines[0]} />}
+          {pipelines[0] && <ContactDeals contactId={contact.id} deals={contact.deals} pipelines={pipelines} requiredFields={dealFields.filter((f) => f.required)} canCreate={can("deals.create")} />}
         </div>
         <section className="card min-w-0">
           <h2 className="px-5 pt-4 text-sm font-semibold">{c.timeline}</h2>
           <div className="mt-3 border-t border-border">
-            <NoteComposer contactId={contact.id} />
+            {can("contacts.edit") && <NoteComposer contactId={contact.id} />}
             <Timeline items={activities} t={t} locale={locale} />
           </div>
         </section>

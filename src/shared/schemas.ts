@@ -34,6 +34,8 @@ export const inviteSchema = z.object({
   email,
   fullName: fullName.optional(),
   role: z.enum(MEMBER_ROLES).default("EMPLOYEE"),
+  /** Custom role; the member then counts as an employee for everything role-based */
+  roleId: z.string().min(1).max(64).nullish(),
   departmentId: z.string().min(1).max(64).nullish(),
   title: z.string().trim().max(100).nullish(),
 });
@@ -48,6 +50,7 @@ export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;
 export const updateMemberSchema = z
   .object({
     role: z.enum(MEMBER_ROLES).optional(),
+    roleId: z.string().min(1).max(64).nullable().optional(),
     status: z.enum(["ACTIVE", "DISABLED"]).optional(),
     departmentId: z.string().min(1).max(64).nullable().optional(),
     title: z.string().trim().max(100).nullable().optional(),

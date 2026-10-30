@@ -11,23 +11,54 @@ import { interpolate } from "@/lib/i18n/locales";
 
 const MONEY = ["priceMonthly", "priceYearly", "extraSeatPrice", "extraStorageGbPrice"] as const;
 
-/** One plan's prices, limits and features. Only changed fields are sent. */
-export function PlanEditor({ plan, canEdit }: { plan: AdminPlanDto; canEdit: boolean }) {
+/** Defaults of the "new plan" form: a private plan, as gift and trial packages are. */
+const BLANK: AdminPlanDto = {
+  code: "",
+  name: "",
+  priceMonthly: 0,
+  priceYearly: 0,
+  currency: "AZN",
+  seatLimit: 3,
+  storageMb: 1024,
+  extraSeatPrice: 900,
+  extraStorageGbPrice: 500,
+  aiCredits: 0,
+  features: ["crm.basic", "tasks"],
+  contactLimit: null,
+  automationLimit: null,
+  isPublic: false,
+  sortOrder: 10,
+  tenants: 0,
+};
+
+/** Empty field = unlimited. */
+const optionalLimit = (raw: FormDataEntryValue | null) => (String(raw ?? "").trim() === "" ? null : Number(raw));
+
+/**
+ * One plan's prices, limits and features; without `plan` it creates a new one.
+ * Editing sends only changed fields.
+ */
+export function PlanEditor({ plan, canEdit }: { plan?: AdminPlanDto; canEdit: boolean }) {
   const { t } = useI18n();
   const k = t.admin.plans;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState(false);
+  const current = plan ?? BLANK;
 
   function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const f = new FormData(form);
     const next: PlanUpdateInput = {
       name: String(f.get("name")).trim(),
       seatLimit: Number(f.get("seatLimit")),
       aiCredits: Number(f.get("aiCredits")),
       storageMb: Math.round(Number(f.get("storageGb")) * 1024),
+      contactLimit: optionalLimit(f.get("contactLimit")),
+      automationLimit: optionalLimit(f.get("automationLimit")),
+      sortOrder: Number(f.get("sortOrder")),
       features: ALL_FEATURES.filter((feature) => f.get(`f:${feature}`) === "on"),
       isPublic: f.get("isPublic") === "on",
     };
@@ -35,6 +66,17 @@ export function PlanEditor({ plan, canEdit }: { plan: AdminPlanDto; canEdit: boo
       const v = parseMoneyInput(String(f.get(key)));
       if (v === null) return setError(t.errors.VALIDATION_FAILED);
       next[key] = v;
+    }
+    if (!plan) {
+      startTransition(async () => {
+        setError(undefined);
+        const res = await adminApi("/plans", "POST", { ...next, code: String(f.get("code")).trim() });
+        if (!res.ok) return setError(res.code === "CONFLICT" ? k.codeTaken : errorMessage(t, res.code, res.details));
+        form.reset();
+        setSaved(true);
+        router.refresh();
+      });
+      return;
     }
     const changed = Object.fromEntries(
       Object.entries(next).filter(([key, v]) => JSON.stringify(v) !== JSON.stringify(plan[key as keyof AdminPlanDto])),
@@ -50,52 +92,75 @@ export function PlanEditor({ plan, canEdit }: { plan: AdminPlanDto; canEdit: boo
     });
   }
 
-  const num = (name: string, label: string, value: string | number, step = "1") => (
+  const num = (name: string, label: string, value: string | number | null, opts: { optional?: boolean } = {}) => (
     <label className="field-label">
       {label}
-      <input name={name} defaultValue={value} inputMode="decimal" step={step} required className="input" />
+      <input name={name} defaultValue={value ?? ""} inputMode="decimal" required={!opts.optional} placeholder={opts.optional ? k.unlimited : undefined} className="input" />
     </label>
   );
 
   return (
-    <form onSubmit={save} className="card p-5" aria-label={plan.name}>
+    <form onSubmit={save} className={plan ? "card p-5" : "card border-dashed p-5"} aria-label={plan?.name ?? k.newPlan}>
       <fieldset disabled={!canEdit || pending} className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <label className="field-label flex-1">
-            <span className="font-mono text-xs text-fg-subtle">{plan.code}</span>
-            <input name="name" defaultValue={plan.name} required minLength={2} maxLength={40} className="input text-base font-semibold" />
-          </label>
-          <span className="text-xs text-fg-subtle">{interpolate(k.tenantsOn, { n: plan.tenants })}</span>
-        </div>
+        {plan ? (
+          <div className="flex items-center justify-between gap-3">
+            <label className="field-label flex-1">
+              <span className="font-mono text-xs text-fg-subtle">{plan.code}</span>
+              <input name="name" defaultValue={plan.name} required minLength={2} maxLength={40} className="input text-base font-semibold" />
+            </label>
+            <span className="text-xs text-fg-subtle">{interpolate(k.tenantsOn, { n: plan.tenants })}</span>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-sm font-semibold">{k.newPlan}</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="field-label">
+                {k.code}
+                <input name="code" required pattern="[A-Za-z0-9][A-Za-z0-9_\-]{1,19}" maxLength={20} placeholder="partner" className="input font-mono" aria-describedby="plan-code-hint" />
+              </label>
+              <label className="field-label">
+                {k.name}
+                <input name="name" required minLength={2} maxLength={40} className="input" />
+              </label>
+            </div>
+            <p id="plan-code-hint" className="text-[11px] text-fg-subtle">
+              {k.codeHint}
+            </p>
+          </>
+        )}
         <div className="grid grid-cols-2 gap-3">
-          {num("priceMonthly", k.monthly, moneyInputValue(plan.priceMonthly))}
-          {num("priceYearly", k.yearly, moneyInputValue(plan.priceYearly))}
-          {num("seatLimit", k.seatLimit, plan.seatLimit)}
-          {num("storageGb", k.storageGb, plan.storageMb / 1024)}
-          {num("extraSeatPrice", k.extraSeat, moneyInputValue(plan.extraSeatPrice))}
-          {num("extraStorageGbPrice", k.extraStorage, moneyInputValue(plan.extraStorageGbPrice))}
-          {num("aiCredits", k.ai, plan.aiCredits)}
+          {num("priceMonthly", k.monthly, moneyInputValue(current.priceMonthly))}
+          {num("priceYearly", k.yearly, moneyInputValue(current.priceYearly))}
+          {num("seatLimit", k.seatLimit, current.seatLimit)}
+          {num("storageGb", k.storageGb, current.storageMb / 1024)}
+          {num("extraSeatPrice", k.extraSeat, moneyInputValue(current.extraSeatPrice))}
+          {num("extraStorageGbPrice", k.extraStorage, moneyInputValue(current.extraStorageGbPrice))}
+          {num("aiCredits", k.ai, current.aiCredits)}
+          {num("sortOrder", k.sortOrder, current.sortOrder)}
+          {num("contactLimit", k.contactLimit, current.contactLimit, { optional: true })}
+          {num("automationLimit", k.automationLimit, current.automationLimit, { optional: true })}
         </div>
+        <p className="text-[11px] text-fg-subtle">{k.limitHint}</p>
         <fieldset>
           <legend className="text-xs font-medium text-fg-muted">{k.features}</legend>
           <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
             {ALL_FEATURES.map((feature) => (
               <label key={feature} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name={`f:${feature}`} defaultChecked={plan.features.includes(feature)} />
+                <input type="checkbox" name={`f:${feature}`} defaultChecked={current.features.includes(feature)} />
                 {t.billing.features[feature as keyof typeof t.billing.features] ?? feature}
               </label>
             ))}
           </div>
         </fieldset>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="isPublic" defaultChecked={plan.isPublic} />
+          <input type="checkbox" name="isPublic" defaultChecked={current.isPublic} />
           {k.public}
         </label>
         {error && <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{error}</p>}
-        {saved && <p role="status" className="text-xs text-success">{k.saved}</p>}
+        {saved && <p role="status" className="text-xs text-success">{plan ? k.saved : k.created}</p>}
         {canEdit && (
           <button type="submit" className="btn-primary">
-            {k.save}
+            {plan ? k.save : k.create}
           </button>
         )}
       </fieldset>

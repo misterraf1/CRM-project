@@ -1,8 +1,9 @@
 import { FlaskConical } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { DemoCheckout } from "@/components/billing/DemoCheckout";
-import { getInvoice } from "@/lib/api";
+import { getBilling, getInvoice } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { invoiceLineText } from "@/lib/billing";
 import { formatMoney } from "@/lib/format";
@@ -18,10 +19,13 @@ export default async function CheckoutPage({ params }: Props) {
   const { id } = await params;
   const { t, locale } = await getI18n();
   const k = t.checkout;
-  const inv = await getInvoice(id).catch((e) => {
+  const missing = (e: unknown) => {
     if (e instanceof ApiRequestError) return null;
     throw e;
-  });
+  };
+  const [inv, billing] = await Promise.all([getInvoice(id).catch(missing), getBilling().catch(missing)]);
+  // Only the demo provider has this page; with manual billing nothing is paid here
+  if (billing?.provider !== "demo") notFound();
   return (
     <main className="grid min-h-screen place-items-center bg-muted/40 px-4 py-10">
       <div className="w-full max-w-md space-y-4">

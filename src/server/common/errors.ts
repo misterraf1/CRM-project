@@ -24,6 +24,11 @@ const STATUS: Record<ErrorCode, number> = {
   TOKEN_INVALID: 400,
   AI_UNAVAILABLE: 503,
   AI_LIMIT: 402,
+  /** Contacts / automations over the plan's (or company's) limit */
+  PLAN_LIMIT: 402,
+  ROLE_IN_USE: 409,
+  /** Self-service payments are off: the platform manages subscriptions by hand */
+  BILLING_MANUAL: 409,
   RATE_LIMITED: 429,
   INTERNAL: 500,
 };

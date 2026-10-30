@@ -7,6 +7,7 @@ import { TenantGuardError } from "../db/repo";
 import { Logger } from "../common/logger";
 import type { AuthGuard } from "../auth/auth.guard";
 import type { AdminGuard } from "../admin/admin.guard";
+import type { ErrorReporter } from "../common/error-reporter";
 import type { HandlerContext, Route, Router } from "./router";
 import type { Throttler } from "./throttle";
 
@@ -69,11 +70,13 @@ export class ApiApp {
     private readonly throttler: Throttler,
     private readonly auth: AuthGuard,
     private readonly admin: AdminGuard,
+    private readonly errors?: ErrorReporter,
   ) {}
 
   handle(req: Request, client: ClientInfo = {}): Promise<Response> {
     const url = new URL(req.url);
     return requestContext.run({ method: req.method, ip: client.ip, userAgent: req.headers.get("user-agent")?.slice(0, 255) }, async () => {
+      let where = `${req.method} ${url.pathname}`;
       try {
         let found: ReturnType<Router["match"]>;
         try {
@@ -82,9 +85,12 @@ export class ApiApp {
           throw new AppError("VALIDATION_FAILED", "Malformed URL");
         }
         if (!found.route) throw new AppError("NOT_FOUND", `Cannot ${req.method} ${url.pathname}`);
+        where = found.route.id;
         return await this.run(found.route, found.params, req, url, client);
       } catch (e) {
-        return toErrorResponse(e);
+        const res = toErrorResponse(e);
+        if (res.status === 500) this.errors?.capture("api", e, where);
+        return res;
       }
     });
   }

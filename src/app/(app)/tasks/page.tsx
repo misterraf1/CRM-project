@@ -43,7 +43,7 @@ export default async function TasksPage({ searchParams }: Props) {
         <p className="mt-0.5 text-sm text-fg-muted">{k.subtitle}</p>
       </div>
 
-      <TaskQuickAdd members={members} selfMemberId={me.membership.id} />
+      {me.permissions.includes("tasks.create") && <TaskQuickAdd members={members} selfMemberId={me.membership.id} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <nav className="flex flex-wrap rounded-lg bg-muted p-0.5" aria-label={k.title}>

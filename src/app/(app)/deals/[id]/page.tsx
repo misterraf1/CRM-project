@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { DeleteButton } from "@/components/crm/DeleteButton";
 import { Timeline } from "@/components/crm/Timeline";
 import { DealEditor } from "@/components/deals/DealEditor";
-import { getContacts, getDeal, getMembers, getPipelines, getSession } from "@/lib/api";
+import { getContacts, getCurrencySettings, getDeal, getFields, getMembers, getPipelines, getSession } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatDate, formatMoney } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
@@ -24,12 +24,14 @@ export default async function DealPage({ params }: Props) {
     if (e instanceof ApiRequestError && e.status === 404) notFound();
     throw e;
   });
-  const [{ t, locale }, me, pipelines, members, contacts] = await Promise.all([
+  const [{ t, locale }, me, pipelines, members, contacts, currencies, fields] = await Promise.all([
     getI18n(),
     getSession(),
     getPipelines(),
     getMembers(),
     getContacts({ limit: "100" }),
+    getCurrencySettings(),
+    getFields("deal"),
   ]);
   const pipeline = pipelines.find((p) => p.id === deal.pipelineId)!;
   const stage = pipeline.stages.find((s) => s.id === deal.stageId)!;
@@ -64,7 +66,16 @@ export default async function DealPage({ params }: Props) {
       </div>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section className="card min-w-0 p-5">
-          <DealEditor deal={deal} pipeline={pipeline} contacts={contacts.items} members={members} canAssign={me.permissions.includes("contacts.manage")} />
+          <DealEditor
+            deal={deal}
+            pipeline={pipeline}
+            contacts={contacts.items}
+            members={members}
+            canAssign={me.permissions.includes("contacts.manage")}
+            readOnly={!me.permissions.includes("deals.edit")}
+            currencies={currencies.available}
+            fields={fields}
+          />
         </section>
         <section className="card min-w-0">
           <h2 className="px-5 pt-4 text-sm font-semibold">{d.history}</h2>

@@ -135,7 +135,8 @@ describe("Tenant isolation", () => {
       // Platform tables: finance is off-limits, plans are read-only
       await expect(unscoped().platformExpense.find()).rejects.toThrow(TenantGuardError);
       await expect(unscoped().plan.updateMany({}, { $set: { priceMonthly: 0 } })).rejects.toThrow(TenantGuardError);
-      expect(await unscoped().plan.count()).toBe(3);
+      // …but readable (the seeded three, plus any a spec created)
+      expect(await unscoped().plan.count()).toBeGreaterThanOrEqual(3);
 
       const stillB = await http().get("/v1/me").set(b.auth).expect(200);
       expect(stillB.body.tenant.name).toBe("Guard B");

@@ -95,9 +95,9 @@ export class DashboardService {
       ] = await Promise.all([
         tx.contact.count(and(base, scoped, { deletedAt: null, createdAt: { $gte: start } })),
         tx.contact.count(and(base, scoped, { deletedAt: null, createdAt: { $gte: prevStart, $lt: start } })),
-        sumOf(tx.deal, "amount", and(base, scoped, { stageId: { $in: openStages } })),
-        tx.deal.find(and(base, scoped, { stageId: { $in: wonStages }, closedAt: { $gte: start } }), { projection: { amount: 1, closedAt: 1, ownerId: 1 } }),
-        sumOf(tx.deal, "amount", and(base, scoped, { stageId: { $in: wonStages }, closedAt: { $gte: prevStart, $lt: start } })),
+        sumOf(tx.deal, "baseAmount", and(base, scoped, { stageId: { $in: openStages } })),
+        tx.deal.find(and(base, scoped, { stageId: { $in: wonStages }, closedAt: { $gte: start } }), { projection: { baseAmount: 1, closedAt: 1, ownerId: 1 } }),
+        sumOf(tx.deal, "baseAmount", and(base, scoped, { stageId: { $in: wonStages }, closedAt: { $gte: prevStart, $lt: start } })),
         teamStats,
         tx.task.count(and(openTask, taskWhere)),
         tx.task.count(and(openTask, taskWhere, { dueAt: { $lt: now, $ne: null } })),
@@ -117,7 +117,7 @@ export class DashboardService {
       }
       for (const d of won) {
         const idx = Math.min(points.length - 1, Math.floor((d.closedAt!.getTime() - start.getTime()) / (step * 86_400_000)));
-        points[idx]!.amount += d.amount;
+        points[idx]!.amount += d.baseAmount;
         points[idx]!.deals += 1;
       }
 
@@ -130,14 +130,14 @@ export class DashboardService {
         return {
           member: ref,
           dealsWon: mine.length,
-          revenue: mine.reduce((a, d) => a + d.amount, 0),
+          revenue: mine.reduce((a, d) => a + d.baseAmount, 0),
           tasksDone: doneByMember.get(m.id)?.count ?? 0,
           tasksOverdue: overdueByMember.get(m.id)?.count ?? 0,
           avgResponseMin: responseBy.get(m.id) ?? null,
         };
       });
 
-      const revenue = won.reduce((a, d) => a + d.amount, 0);
+      const revenue = won.reduce((a, d) => a + d.baseAmount, 0);
       return {
         period,
         generatedAt: now.toISOString(),

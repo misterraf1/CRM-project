@@ -26,6 +26,9 @@ type Sub = Subscription & { plan: Plan };
  *   PAST_DUE ─ retry ok ─▶ ACTIVE   ·   grace over ─▶ SUSPENDED (read-only)
  *   ACTIVE + cancelAtPeriodEnd ─ period ends ─▶ CANCELED (read-only)
  * Scheduled downgrades switch the plan right before the renewal charge.
+ * Manual billing (no self-service provider): nothing is charged; the period's end opens
+ * the renewal invoice and the grace period, and platform staff extend the subscription
+ * once the company pays — otherwise it is suspended when the grace period is over.
  */
 export class BillingJob {
   private timer?: NodeJS.Timeout;
@@ -119,6 +122,15 @@ export class BillingJob {
       lines: lines as unknown as Invoice["lines"],
       apply: { periodStart: periodStart.toISOString(), periodEnd: periodEnd.toISOString() } satisfies InvoiceApply as Invoice["apply"],
     });
+    if (!this.provider.selfService) {
+      await tx.subscription.update(
+        { id: sub.id },
+        { $set: { status: "PAST_DUE", graceEndsAt: new Date(now.getTime() + days(config().GRACE_DAYS)), retryCount: 0, nextRetryAt: null } },
+      );
+      await tx.tenant.update({ id: sub.tenantId }, { $set: { status: "PAST_DUE" } });
+      await this.notifications.notify(tx, sub.tenantId, await ownerIds(tx, sub.tenantId), "billing_period_ended", { invoiceId: invoice.id, number: invoice.number, amount: invoice.amount });
+      return;
+    }
     const charged = await this.charge(tx, { ...sub, plan }, invoice.id);
     if (!charged) {
       await tx.subscription.update(

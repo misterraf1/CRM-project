@@ -39,7 +39,7 @@ export default async function InvitePage({ params, searchParams }: Props) {
     <>
       <h1 className="text-xl font-semibold tracking-tight">{interpolate(a.inviteTitle, { company: invite.tenantName })}</h1>
       <p className="mt-1 text-sm text-fg-muted">
-        {interpolate(a.inviteSubtitle, { email: invite.email, role: t.shell.roles[invite.role] })}
+        {interpolate(a.inviteSubtitle, { email: invite.email, role: invite.customRole ?? t.shell.roles[invite.role] })}
       </p>
       <form action={`/auth/invite/${encodeURIComponent(token)}`} method="post" className="mt-6 space-y-4">
         <FormError message={errorMessage(t, error)} />

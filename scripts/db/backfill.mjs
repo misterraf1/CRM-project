@@ -11,6 +11,32 @@ export const BACKFILLS = [
   ["Invoice", { kind: "subscription", apply: null }],
   // Phase 8 — platform staff 2FA
   ["User", { mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [] }],
+  // v2 Stage B — custom fields, company links, currencies
+  ["Contact", { companyId: null }],
+  ["Deal", { customFields: {} }],
+  ["Tenant", { fxRates: {} }],
+  // v2 Stage D — custom roles, plan limits, manual subscriptions
+  ["Membership", { roleId: null }],
+  ["Plan", { contactLimit: null, automationLimit: null }],
+  ["Subscription", { limitOverrides: {}, featureGrants: [], complimentary: false }],
+];
+
+/**
+ * Backfills computed from other fields. Deals got `baseAmount` (company currency) in v2:
+ * amounts were always entered in the company currency, so the deal's currency becomes
+ * the company's (new deals used to be saved as "AZN" whatever the company currency was).
+ */
+const COMPUTED = [
+  async (db) => {
+    let touched = 0;
+    for await (const t of db.collection("Tenant").find({}, { projection: { _id: 1, currency: 1 } })) {
+      const res = await db
+        .collection("Deal")
+        .updateMany({ tenantId: t._id, baseAmount: { $exists: false } }, [{ $set: { baseAmount: "$amount", currency: t.currency ?? "AZN" } }]);
+      touched += res.modifiedCount;
+    }
+    return touched;
+  },
 ];
 
 export async function runBackfills(url) {
@@ -25,6 +51,7 @@ export async function runBackfills(url) {
         touched += res.modifiedCount;
       }
     }
+    for (const step of COMPUTED) touched += await step(db);
     return touched;
   } finally {
     await client.close();

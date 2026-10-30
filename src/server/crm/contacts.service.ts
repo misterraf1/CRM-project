@@ -10,13 +10,22 @@ import type {
   ContactUpdateInput,
 } from "@/shared";
 import { AuditService } from "../audit/audit.service";
+import { EntitlementsService } from "../billing/entitlements.service";
 import { authedContext, type AuthedContext } from "../common/context";
-import { notFound } from "../common/errors";
+import { AppError, notFound } from "../common/errors";
 import type { Database, Tx } from "../db/database";
 import { and, contains } from "../db/query";
 import { ActivityService, TIMELINE_ORDER } from "./activity.service";
 import { dealToDto, withContacts } from "./deals.service";
 import { memberRefs, ownerScope, resolveOwner } from "./scope";
+import { checkCustomFields, contactEntity, customFieldFilter } from "./settings.service";
+
+/** The company a person is linked to: a live company contact of the same tenant. */
+async function resolveCompany(tx: Tx, tenantId: string, companyId: string) {
+  const company = await tx.contact.findOne({ id: companyId, tenantId, type: "company", deletedAt: null }, { projection: { id: 1, name: 1 } });
+  if (!company) throw new AppError("VALIDATION_FAILED", "Unknown company", { companyId: ["Unknown company"] });
+  return company;
+}
 
 /** Open deals per contact (deals in an open stage). */
 async function openDealCounts(tx: Tx, tenantId: string, contactIds: string[]) {
@@ -29,26 +38,38 @@ async function openDealCounts(tx: Tx, tenantId: string, contactIds: string[]) {
   return new Map(rows.map((r) => [r._id, r.n]));
 }
 
+/** The contact list's filter (visibility plus the list's query), shared by the list and its export. */
+export async function contactListWhere(tx: Tx, ctx: AuthedContext, query: Omit<ContactListQuery, "cursor" | "limit">) {
+  const { where: scoped } = await ownerScope(tx, ctx, "contacts.view_all");
+  const q = query.q?.trim();
+  const fieldFilter = query.field && query.value ? await customFieldFilter(tx, ctx.tenantId, query.field, query.value) : {};
+  return and(
+    { tenantId: ctx.tenantId, deletedAt: null },
+    scoped,
+    query.stage ? { stage: query.stage } : {},
+    query.ownerId ? { ownerId: query.ownerId === "none" ? null : query.ownerId } : {},
+    query.type ? { type: query.type } : {},
+    query.source ? { source: query.source } : {},
+    query.tag ? { tags: query.tag } : {},
+    query.companyId ? { companyId: query.companyId } : {},
+    fieldFilter,
+    q ? { $or: [{ name: contains(q) }, { email: contains(q) }, { companyName: contains(q) }, { phone: contains(q.replace(/[\s()-]/g, ""), false) }] } : {},
+  );
+}
+
 export class ContactsService {
   constructor(
     private readonly db: Database,
     private readonly activity: ActivityService,
     private readonly audit: AuditService,
     private readonly automations: AutomationRunner,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(query: ContactListQuery): Promise<ContactListResponse> {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
-      const { where: scoped } = await ownerScope(tx, ctx, "contacts.view_all");
-      const q = query.q?.trim();
-      const where = and(
-        { tenantId: ctx.tenantId, deletedAt: null },
-        scoped,
-        query.stage ? { stage: query.stage } : {},
-        query.ownerId ? { ownerId: query.ownerId === "none" ? null : query.ownerId } : {},
-        q ? { $or: [{ name: contains(q) }, { email: contains(q) }, { companyName: contains(q) }, { phone: contains(q.replace(/[\s()-]/g, ""), false) }] } : {},
-      );
+      const where = await contactListWhere(tx, ctx, query);
       // Keyset pagination: rows after the cursor in (createdAt desc, id desc) order
       const cursor = query.cursor ? await tx.contact.findOne({ id: query.cursor, tenantId: ctx.tenantId }, { projection: { id: 1, createdAt: 1 } }) : null;
       const after = cursor ? { $or: [{ createdAt: { $lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { $lt: cursor.id } }] } : {};
@@ -69,27 +90,51 @@ export class ContactsService {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
       const contact = await this.findVisible(tx, ctx, id);
-      const deals = await withContacts(tx, ctx.tenantId, await tx.deal.find({ tenantId: ctx.tenantId, contactId: id }, { sort: { createdAt: -1 } }));
+      const { where: scoped } = await ownerScope(tx, ctx, "contacts.view_all");
+      const people =
+        contact.type === "company"
+          ? await tx.contact.find(and({ tenantId: ctx.tenantId, companyId: id, deletedAt: null }, scoped), {
+              sort: { name: 1 },
+              limit: 100,
+              projection: { id: 1, name: 1, email: 1, phone: 1 },
+            })
+          : [];
+      // A company's deals include those of its people
+      const dealContacts = [id, ...people.map((p) => p.id)];
+      const deals = await withContacts(
+        tx,
+        ctx.tenantId,
+        await tx.deal.find(and({ tenantId: ctx.tenantId, contactId: { $in: dealContacts } }, scoped), { sort: { createdAt: -1 } }),
+      );
       const refs = await memberRefs(tx, ctx.tenantId, [contact.ownerId, ...deals.map((d) => d.ownerId)]);
       const [dto] = await this.toDtos(tx, ctx.tenantId, [contact]);
-      return { ...dto!, deals: deals.map((d) => dealToDto(d, refs)) };
+      return {
+        ...dto!,
+        deals: deals.map((d) => dealToDto(d, refs)),
+        people: people.map((p) => ({ id: p.id, name: p.name, email: p.email, phone: p.phone })),
+      };
     });
   }
 
   async create(input: ContactCreateInput): Promise<ContactDto> {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
+      await this.entitlements.assertCapacity(tx, ctx.tenantId, "contacts");
       const ownerId = await resolveOwner(tx, ctx, input.ownerId, ctx.membershipId);
+      const company = input.type === "person" && input.companyId ? await resolveCompany(tx, ctx.tenantId, input.companyId) : null;
+      const customFields = await checkCustomFields(tx, ctx.tenantId, contactEntity(input.type), input.customFields, null);
       const contact = await tx.contact.insertOne({
         tenantId: ctx.tenantId,
         type: input.type,
         name: input.name,
         email: input.email ?? null,
         phone: input.phone ?? null,
-        companyName: input.companyName ?? null,
+        companyName: company?.name ?? (input.type === "person" ? (input.companyName ?? null) : null),
+        companyId: company?.id ?? null,
         stage: input.stage,
         source: input.source,
         tags: input.tags,
+        customFields: (customFields ?? {}) as Contact["customFields"],
         ownerId,
       });
       await this.activity.record(tx, { type: "contact_created", contactId: contact.id, payload: { contactName: contact.name } });
@@ -103,6 +148,26 @@ export class ContactsService {
     return this.db.scoped(async (tx) => {
       const current = await this.findVisible(tx, ctx, id);
       const ownerId = input.ownerId !== undefined ? await resolveOwner(tx, ctx, input.ownerId, null) : undefined;
+      const type = input.type ?? current.type;
+      if (type === "person" && current.type === "company" && (await tx.contact.count({ tenantId: ctx.tenantId, companyId: id, deletedAt: null }))) {
+        throw new AppError("CONFLICT", "People are linked to this company", { type: ["Has people"] });
+      }
+      // Company link: an explicit companyId wins; a typed name unlinks; companies have none
+      let company: { companyId?: string | null; companyName?: string | null } = {};
+      if (type === "company") company = { companyId: null, companyName: null };
+      else if (input.companyId) {
+        const c = await resolveCompany(tx, ctx.tenantId, input.companyId);
+        if (c.id === id) throw new AppError("VALIDATION_FAILED", "A contact can't be its own company", { companyId: ["Self"] });
+        company = { companyId: c.id, companyName: c.name };
+      } else if (input.companyId === null || input.companyName !== undefined) company = { companyId: null, companyName: input.companyName ?? null };
+      const entityChanged = contactEntity(type) !== contactEntity(current.type);
+      const customFields = await checkCustomFields(
+        tx,
+        ctx.tenantId,
+        contactEntity(type),
+        input.customFields ?? (entityChanged ? {} : undefined),
+        entityChanged ? null : (current.customFields as Record<string, unknown>),
+      );
       const updated = await tx.contact.update(
         { id },
         {
@@ -111,14 +176,19 @@ export class ContactsService {
             name: input.name,
             email: input.email,
             phone: input.phone,
-            companyName: input.companyName,
+            ...company,
             stage: input.stage,
             source: input.source,
             tags: input.tags,
+            customFields: customFields as Contact["customFields"] | undefined,
             ownerId,
           },
         },
       );
+      // People show their company's name; keep it in step with a rename
+      if (updated.type === "company" && input.name && input.name !== current.name) {
+        await tx.contact.updateMany({ tenantId: ctx.tenantId, companyId: id }, { $set: { companyName: updated.name } });
+      }
       if (input.stage && input.stage !== current.stage) {
         await this.activity.record(tx, {
           type: "contact_stage",
@@ -185,9 +255,11 @@ export class ContactsService {
         email: c.email,
         phone: c.phone,
         companyName: c.companyName,
+        companyId: c.companyId ?? null,
         stage: c.stage,
         source: c.source,
         tags: c.tags,
+        customFields: (c.customFields ?? {}) as ContactDto["customFields"],
         owner: owner ? { id: owner.id, name: owner.name } : null,
         openDeals: openDeals.get(c.id) ?? 0,
         createdAt: c.createdAt.toISOString(),

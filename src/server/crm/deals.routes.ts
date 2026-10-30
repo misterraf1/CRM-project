@@ -15,13 +15,13 @@ export function dealsRoutes(router: Router, s: Services) {
     // Declared before :id so "forecast" isn't captured as an id
     r.get("deals/forecast", { query: forecastQuery }, ({ query }) => s.deals.forecast(query.pipelineId));
 
-    r.post("deals", { body: dealCreateSchema }, ({ body }) => s.deals.create(body));
+    r.post("deals", { permission: "deals.create", body: dealCreateSchema }, ({ body }) => s.deals.create(body));
 
     r.get("deals/:id", ({ params }) => s.deals.get(params.id!));
 
-    r.patch("deals/:id", { body: dealUpdateSchema }, ({ params, body }) => s.deals.update(params.id!, body));
+    r.patch("deals/:id", { permission: "deals.edit", body: dealUpdateSchema }, ({ params, body }) => s.deals.update(params.id!, body));
 
-    r.post("deals/:id/move", { status: 200, body: dealMoveSchema }, ({ params, body }) => s.deals.move(params.id!, body));
+    r.post("deals/:id/move", { permission: "deals.edit", status: 200, body: dealMoveSchema }, ({ params, body }) => s.deals.move(params.id!, body));
 
     r.delete("deals/:id", { permission: "deals.delete", status: 204 }, ({ params }) => s.deals.remove(params.id!));
   });

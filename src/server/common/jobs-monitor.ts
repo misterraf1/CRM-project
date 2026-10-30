@@ -1,4 +1,5 @@
 import { Logger } from "../common/logger";
+import type { ErrorReporter } from "./error-reporter";
 import type { JobHealth } from "@/shared";
 
 /**
@@ -9,6 +10,8 @@ import type { JobHealth } from "@/shared";
 export class JobsMonitor {
   private readonly logger = new Logger("Jobs");
   private readonly jobs = new Map<string, JobHealth>();
+
+  constructor(private readonly errors?: ErrorReporter) {}
 
   register(name: string) {
     if (!this.jobs.has(name)) this.jobs.set(name, { name, runs: 0, lastRunAt: null, lastDurationMs: null, lastError: null });
@@ -25,6 +28,7 @@ export class JobsMonitor {
     } catch (e) {
       job.lastError = e instanceof Error ? e.message : String(e);
       this.logger.error(`${name}: ${e instanceof Error ? e.stack : String(e)}`);
+      this.errors?.capture("job", e, name);
     } finally {
       job.runs += 1;
       job.lastRunAt = new Date(started).toISOString();

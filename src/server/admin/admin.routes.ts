@@ -6,8 +6,11 @@ import {
   expenseSchema,
   extendTrialSchema,
   mfaCodeSchema,
+  planCreateSchema,
   planUpdateSchema,
+  subscriptionSetSchema,
   suspendSchema,
+  tenantLimitsSchema,
   ticketMessageSchema,
   ticketUpdateSchema,
   TICKET_STATUSES,
@@ -67,7 +70,17 @@ export function adminRoutes(router: Router, s: Services) {
       await s.admin.unsuspend(params.id!);
     });
 
+    r.post("tenants/:id/subscription", { superAdminOnly: true, status: 204, body: subscriptionSetSchema }, async ({ params, body }) => {
+      await s.admin.setSubscription(params.id!, body);
+    });
+
+    r.post("tenants/:id/limits", { superAdminOnly: true, status: 204, body: tenantLimitsSchema }, async ({ params, body }) => {
+      await s.admin.setLimits(params.id!, body);
+    });
+
     r.get("plans", () => s.admin.plans());
+
+    r.post("plans", { superAdminOnly: true, body: planCreateSchema }, ({ body }) => s.admin.createPlan(body));
 
     r.patch("plans/:code", { superAdminOnly: true, body: planUpdateSchema }, ({ params, body }) => s.admin.updatePlan(params.code!, body));
 

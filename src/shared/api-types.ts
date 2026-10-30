@@ -27,6 +27,9 @@ export type ErrorCode =
   | "TOKEN_INVALID"
   | "AI_UNAVAILABLE"
   | "AI_LIMIT"
+  | "PLAN_LIMIT"
+  | "ROLE_IN_USE"
+  | "BILLING_MANUAL"
   | "INTERNAL";
 
 export interface ApiError {
@@ -46,7 +49,7 @@ export type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED
 export interface MeResponse {
   user: { id: string; fullName: string; email: string; locale: "AZ" | "EN" | "RU" };
   tenant: { id: string; name: string; slug: string; currency: string; timezone: string };
-  membership: { id: string; role: MemberRole; title: string | null; departmentId: string | null };
+  membership: { id: string; role: MemberRole; customRole: { id: string; name: string } | null; title: string | null; departmentId: string | null };
   permissions: Permission[];
   subscription: {
     plan: string;
@@ -73,6 +76,8 @@ export interface MemberDto {
   fullName: string;
   email: string;
   role: MemberRole;
+  /** Custom role in place of the built-in role's permissions */
+  customRole: { id: string; name: string } | null;
   status: MemberStatus;
   title: string | null;
   departmentId: string | null;
@@ -94,6 +99,8 @@ export interface InvitePreview {
   email: string;
   fullName: string;
   role: MemberRole;
+  /** Name of the custom role, when the invite carries one */
+  customRole: string | null;
   /** False when the invitee already has an account: they confirm with their existing password. */
   needsAccount: boolean;
   expiresAt: string;

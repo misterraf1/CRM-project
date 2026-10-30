@@ -29,12 +29,42 @@ export default async function AdminSystemPage() {
         </div>
         <StatTile label={k.uptime} value={formatDuration(Math.round(s.uptimeSec / 60), locale)} hint={`${k.node} ${s.node}`} />
         <StatTile label={k.memory} value={`${formatNumber(s.memoryMb, locale)} MB`} />
-        <StatTile label={k.provider} value={s.billingProvider.toUpperCase()} hint={s.billingProvider === "demo" ? k.demoProvider : undefined} />
+        <StatTile label={k.provider} value={s.billingProvider.toUpperCase()} hint={s.billingProvider === "demo" ? k.demoProvider : s.billingProvider === "manual" ? k.manualProvider : undefined} />
+        <StatTile label={k.storage} value={s.storage.driver.toUpperCase()} />
       </div>
+
+      {!s.storage.persistent && <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{k.storageLost}</p>}
+
+      <section className="card relative overflow-x-auto">
+        <div className="px-5 pt-4">
+          <h2 className="text-sm font-semibold">{k.serverErrors}</h2>
+          <p className={clsx("mt-1 text-xs", s.errors.last24h ? "text-danger" : "text-fg-subtle")}>{interpolate(k.serverErrors24h, { n: s.errors.last24h })}</p>
+        </div>
+        {s.errors.recent.length === 0 ? (
+          <p className="px-5 pb-4 pt-2 text-xs text-fg-subtle">{k.noErrors}</p>
+        ) : (
+          <table className="mt-2 w-full min-w-[640px] text-sm">
+            <tbody className="divide-y divide-border">
+              {s.errors.recent.map((e) => (
+                <tr key={e.id}>
+                  <td className="whitespace-nowrap px-5 py-2 text-xs text-fg-subtle">{formatDateTime(e.lastSeenAt, locale)}</td>
+                  <td className="px-3 text-xs">{k.errorSources[e.source as keyof typeof k.errorSources] ?? e.source}</td>
+                  <td className="max-w-[200px] truncate px-3 font-mono text-xs text-fg-muted">{e.where}</td>
+                  <td className="max-w-[320px] truncate px-3 text-xs text-danger" title={e.message}>
+                    {e.message}
+                  </td>
+                  <td className="tabular whitespace-nowrap px-5 text-right text-xs">{interpolate(k.errorCount, { n: e.count })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
       <section className="card relative overflow-x-auto">
         <h2 className="px-5 pt-4 text-sm font-semibold">{k.jobs}</h2>
         {!s.jobsEnabled && <p className="mx-5 mt-2 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">{k.jobsDisabled}</p>}
+        {!s.cronConfigured && <p className="mx-5 mt-2 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">{k.cronMissing}</p>}
         <table className="mt-2 w-full min-w-[560px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs text-fg-subtle">

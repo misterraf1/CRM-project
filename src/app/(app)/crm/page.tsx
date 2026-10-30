@@ -1,11 +1,12 @@
-import { LIFECYCLE_STAGES, type LifecycleStage } from "@/shared";
+import { CONTACT_SOURCES, LIFECYCLE_STAGES, type LifecycleStage } from "@/shared";
 import clsx from "clsx";
-import { Building2, Plus, Search } from "lucide-react";
+import { Building2, Plus, Search, Upload } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ExportMenu } from "@/components/crm/ExportMenu";
 import { StageBadge } from "@/components/crm/StageBadge";
 import { Avatar } from "@/components/ui/Avatar";
-import { getContacts, getMembers, getSession } from "@/lib/api";
+import { getContacts, getFields, getMembers, getSession } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
 import { getI18n } from "@/lib/i18n/server";
@@ -17,19 +18,28 @@ type Props = { searchParams: Promise<Record<string, string | undefined>> };
 export default async function ContactsPage({ searchParams }: Props) {
   const params = await searchParams;
   const stage = LIFECYCLE_STAGES.includes(params.stage as LifecycleStage) ? params.stage : undefined;
-  const filters = { q: params.q, stage, ownerId: params.ownerId };
-  const [{ t, locale }, me, list, members] = await Promise.all([
+  const type = params.type === "person" || params.type === "company" ? params.type : undefined;
+  const source = (CONTACT_SOURCES as readonly string[]).includes(params.source ?? "") ? params.source : undefined;
+  // A custom field filter needs both parts
+  const [field, value] = params.field && params.value ? [params.field, params.value] : [undefined, undefined];
+  const filters = { q: params.q, stage, ownerId: params.ownerId, type, source, tag: params.tag || undefined, field, value };
+  const [{ t, locale }, me, list, members, fields] = await Promise.all([
     getI18n(),
     getSession(),
     getContacts({ ...filters, cursor: params.cursor, limit: "25" }),
     getMembers(),
+    getFields(),
   ]);
+  const filterFields = fields.filter((f) => f.entity !== "deal");
+  const filtered = Object.entries(filters).some(([k, v]) => k !== "stage" && k !== "q" && v);
   const c = t.crm;
   const canFilterOwner = me.permissions.includes("contacts.manage");
   const href = (patch: Record<string, string | undefined>) => {
     const qs = new URLSearchParams(Object.entries({ ...filters, ...patch }).filter((e): e is [string, string] => !!e[1]));
     return `/crm${qs.size ? `?${qs}` : ""}`;
   };
+  // The export takes exactly what the list shows (all pages)
+  const exportHref = `/api/v1/exports/contacts?${new URLSearchParams(Object.entries({ ...filters, lang: locale }).filter((e): e is [string, string] => !!e[1]))}`;
 
   return (
     <div className="space-y-5">
@@ -40,10 +50,21 @@ export default async function ContactsPage({ searchParams }: Props) {
             {c.subtitle} · {interpolate(c.total, { n: list.total })}
           </p>
         </div>
-        <Link href="/crm/new" className="btn-primary">
-          <Plus className="h-4 w-4" aria-hidden />
-          {c.new}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {me.permissions.includes("contacts.export") && <ExportMenu href={exportHref} label={t.imports.export} hint={t.imports.exportHint} />}
+          {me.permissions.includes("data.import") && (
+            <Link href={type ? `/crm/import?entity=${type}` : "/crm/import"} className="btn-ghost border border-border">
+              <Upload className="h-4 w-4" aria-hidden />
+              {t.imports.open}
+            </Link>
+          )}
+          {me.permissions.includes("contacts.create") && (
+            <Link href="/crm/new" className="btn-primary">
+              <Plus className="h-4 w-4" aria-hidden />
+              {c.new}
+            </Link>
+          )}
+        </div>
       </div>
 
       <section className="card">
@@ -63,6 +84,33 @@ export default async function ContactsPage({ searchParams }: Props) {
           {/* Plain GET form: filters live in the URL, so they survive reloads and can be shared */}
           <form className="flex min-w-[220px] flex-1 flex-wrap gap-2" action="/crm">
             {stage && <input type="hidden" name="stage" value={stage} />}
+            <select name="type" defaultValue={type ?? ""} aria-label={c.type} className="h-8 rounded-lg border border-border bg-surface px-2 text-xs">
+              <option value="">{c.all}</option>
+              <option value="person">{c.typePeople}</option>
+              <option value="company">{c.typeCompanies}</option>
+            </select>
+            <select name="source" defaultValue={source ?? ""} aria-label={c.source} className="h-8 rounded-lg border border-border bg-surface px-2 text-xs">
+              <option value="">{c.sourceAll}</option>
+              {CONTACT_SOURCES.map((x) => (
+                <option key={x} value={x}>
+                  {c.sources[x]}
+                </option>
+              ))}
+            </select>
+            <input name="tag" defaultValue={params.tag} placeholder={c.tag} aria-label={c.tag} maxLength={40} className="h-8 w-24 rounded-lg border border-border bg-surface px-2 text-xs outline-none focus:border-accent" />
+            {filterFields.length > 0 && (
+              <>
+                <select name="field" defaultValue={field ?? ""} aria-label={c.fieldFilter} className="h-8 max-w-40 rounded-lg border border-border bg-surface px-2 text-xs">
+                  <option value="">{c.fieldFilter}</option>
+                  {filterFields.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+                <input name="value" defaultValue={value} placeholder={c.fieldValue} aria-label={c.fieldValue} maxLength={200} className="h-8 w-28 rounded-lg border border-border bg-surface px-2 text-xs outline-none focus:border-accent" />
+              </>
+            )}
             <label className="relative min-w-[180px] flex-1">
               <span className="sr-only">{c.search}</span>
               <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-fg-subtle" aria-hidden />
@@ -84,6 +132,11 @@ export default async function ContactsPage({ searchParams }: Props) {
             <button type="submit" aria-label={c.search} title={c.search} className="grid h-8 w-8 place-items-center rounded-lg border border-border hover:bg-muted">
               <Search className="h-3.5 w-3.5" aria-hidden />
             </button>
+            {filtered && (
+              <Link href={stage ? `/crm?stage=${stage}` : "/crm"} className="inline-flex h-8 items-center px-1 text-xs font-medium text-accent hover:underline">
+                {c.resetFilters}
+              </Link>
+            )}
           </form>
         </div>
 

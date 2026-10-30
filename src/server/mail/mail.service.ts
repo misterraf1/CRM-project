@@ -1,6 +1,7 @@
 import { Logger } from "../common/logger";
 import nodemailer, { type Transporter } from "nodemailer";
 import { config } from "../config";
+import { afterResponse } from "../common/after-response";
 import { JobsMonitor } from "../common/jobs-monitor";
 import type { Database, Tx } from "../db/database";
 import { mailLocale, renderMail, type MailTemplate } from "./templates";
@@ -31,7 +32,6 @@ export class MailService {
   private readonly logger = new Logger("Mail");
   private transport?: Transporter;
   private sweep?: NodeJS.Timeout;
-  private soonTimer?: NodeJS.Timeout;
   private sending?: Promise<number>;
 
   constructor(
@@ -47,7 +47,6 @@ export class MailService {
 
   stop() {
     clearInterval(this.sweep);
-    clearTimeout(this.soonTimer);
     this.transport?.close();
   }
 
@@ -72,12 +71,12 @@ export class MailService {
   }
 
   private soon() {
-    if (!config().JOBS_ENABLED || this.soonTimer) return;
-    this.soonTimer = setTimeout(() => {
-      this.soonTimer = undefined;
-      void this.monitor.track("mail", () => this.send());
-    }, 250);
-    this.soonTimer.unref();
+    if (!config().JOBS_ENABLED) return;
+    // Wait out a pass already in flight: it may have looked before this mail committed
+    afterResponse(async () => {
+      await this.sending;
+      await this.monitor.track("mail", () => this.send());
+    });
   }
 
   /** Delivers queued mail; returns how many were handled. Concurrent calls share one pass. */

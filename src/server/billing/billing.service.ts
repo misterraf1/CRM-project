@@ -28,6 +28,8 @@ export function toPlanDto(p: Plan): PlanDto {
     extraSeatPrice: p.extraSeatPrice,
     extraStorageGbPrice: p.extraStorageGbPrice,
     aiCredits: p.aiCredits,
+    contactLimit: p.contactLimit ?? null,
+    automationLimit: p.automationLimit ?? null,
   };
 }
 
@@ -49,13 +51,15 @@ export class BillingService {
   async overview(): Promise<BillingOverviewDto> {
     const { tenantId } = authedContext();
     return this.db.scoped(async (tx) => {
-      const [sub, plans, invoices, seats, storage, tenant] = await Promise.all([
+      const [sub, plans, invoices, seats, storage, tenant, contacts, automations] = await Promise.all([
         this.subscription(tx, tenantId),
         tx.plan.find({ isPublic: true }, { sort: { sortOrder: 1 } }),
         tx.invoice.find({ tenantId, status: { $ne: "VOID" } }, { sort: { createdAt: -1 }, limit: 50 }).then((rows) => withPayments(tx, rows)),
         this.entitlements.seats(tx, tenantId),
         this.entitlements.storage(tx, tenantId),
         tx.tenant.get({ id: tenantId }, { projection: { name: 1 } }).then((t) => ({ name: t.name })),
+        this.entitlements.usage(tx, tenantId, "contacts"),
+        this.entitlements.usage(tx, tenantId, "automations"),
       ]);
       const scheduled = sub.scheduledPlanId ? plans.find((p) => p.id === sub.scheduledPlanId) : undefined;
       return {
@@ -75,7 +79,8 @@ export class BillingService {
           paymentMethod: (sub.paymentMethod as { brand: string; last4: string } | null) ?? null,
           demoNextChargeFails: sub.demoNextChargeFails,
         },
-        usage: { seats, storageMb: storage },
+        usage: { seats, storageMb: storage, contacts, automations },
+        features: this.entitlements.features(sub),
         plans: plans.map(toPlanDto),
         invoices: invoices.map(toInvoiceDto),
         company: tenant,
@@ -91,6 +96,7 @@ export class BillingService {
    * Cheaper plans go through `downgrade` (applied at period end).
    */
   async checkout(input: CheckoutInput): Promise<CheckoutResponse> {
+    this.assertSelfService();
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
       const sub = await this.subscription(tx, ctx.tenantId);
@@ -161,6 +167,7 @@ export class BillingService {
 
   /** Re-opens an unpaid invoice (e.g. a failed renewal) for payment on the hosted page. */
   async pay(invoiceId: string): Promise<CheckoutResponse> {
+    this.assertSelfService();
     const { tenantId } = authedContext();
     return this.db.scoped(async (tx) => {
       const invoice = await tx.invoice.findOne({ id: invoiceId, tenantId });
@@ -182,6 +189,7 @@ export class BillingService {
 
   /** Cheaper plan from the next period; members beyond the new limit must be disabled first. */
   async downgrade(planCode: string) {
+    this.assertSelfService();
     const { tenantId } = authedContext();
     await this.db.scoped(async (tx) => {
       const sub = await this.subscription(tx, tenantId);
@@ -215,14 +223,16 @@ export class BillingService {
    * increases are free during the trial and prorated on an active subscription.
    */
   async addons(input: AddonsInput): Promise<CheckoutResponse | { applied: true }> {
+    this.assertSelfService();
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
       const sub = await this.subscription(tx, ctx.tenantId);
       if (!["TRIALING", "ACTIVE"].includes(sub.status)) throw new AppError("SUBSCRIPTION_INACTIVE", "Reactivate the subscription first");
       await this.assertSeatsFit(tx, ctx.tenantId, sub.plan, input.extraSeats);
       const storage = await this.entitlements.storage(tx, ctx.tenantId);
-      if (storage.used > sub.plan.storageMb + input.extraStorageGb * 1024) {
-        throw new AppError("STORAGE_LIMIT", "Stored files exceed the new limit", { usedMb: storage.used, limitMb: sub.plan.storageMb + input.extraStorageGb * 1024 });
+      const baseMb = sub.limitOverrides?.storageMb ?? sub.plan.storageMb;
+      if (storage.used > baseMb + input.extraStorageGb * 1024) {
+        throw new AppError("STORAGE_LIMIT", "Stored files exceed the new limit", { usedMb: storage.used, limitMb: baseMb + input.extraStorageGb * 1024 });
       }
       const oldGb = storageGb(sub.extraStorageMb);
       const delta = addonsPrice(sub.plan, input.extraSeats, input.extraStorageGb, sub.interval) - addonsPrice(sub.plan, sub.extraSeats, oldGb, sub.interval);
@@ -340,8 +350,9 @@ export class BillingService {
   }
 
   private async assertSeatsFit(tx: Tx, tenantId: string, plan: Plan, extraSeats: number) {
-    const { used } = await this.entitlements.seats(tx, tenantId);
-    const limit = plan.seatLimit + extraSeats;
+    const [{ used }, sub] = await Promise.all([this.entitlements.seats(tx, tenantId), subscriptionOf(tx, tenantId)]);
+    // A seat count the platform set for this company stays whatever the plan
+    const limit = (sub.limitOverrides?.seatLimit ?? plan.seatLimit) + extraSeats;
     if (used > limit) {
       throw new AppError("SEAT_LIMIT", `This plan allows ${limit} members; ${used} are active or invited`, { used, limit });
     }
@@ -350,6 +361,11 @@ export class BillingService {
   private addonLine(code: "extra_seats" | "extra_storage", quantity: number, monthly: number, interval: BillingInterval): InvoiceLineDto {
     const unitAmount = interval === "YEAR" ? monthly * 10 : monthly;
     return { code, interval, quantity, unitAmount, amount: quantity * unitAmount };
+  }
+
+  /** With the manual provider the platform sets plans and records payments; companies only look. */
+  private assertSelfService() {
+    if (!this.provider.selfService) throw new AppError("BILLING_MANUAL", "Plans and payments are managed by the platform");
   }
 
   private assertDemo() {

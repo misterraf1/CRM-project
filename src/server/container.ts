@@ -14,17 +14,22 @@ import { AutomationsService } from "./automations/automations.service";
 import { BillingJob } from "./billing/billing.job";
 import { BillingService } from "./billing/billing.service";
 import { EntitlementsService } from "./billing/entitlements.service";
-import { DemoPaymentProvider, type PaymentProvider } from "./billing/provider";
+import { createPaymentProvider } from "./billing/provider";
 import { ChatService } from "./chat/chat.service";
 import { ChatEvents } from "./chat/events";
+import { ErrorReporter } from "./common/error-reporter";
 import { JobsMonitor } from "./common/jobs-monitor";
 import { JwtService } from "./common/jwt";
 import { config } from "./config";
 import { ActivityService } from "./crm/activity.service";
 import { ContactsService } from "./crm/contacts.service";
 import { DealsService } from "./crm/deals.service";
+import { CrmSettingsService } from "./crm/settings.service";
+import { ExportService } from "./crm/export.service";
+import { ImportService } from "./crm/import.service";
 import { DashboardService } from "./dashboard/dashboard.service";
 import { DepartmentsService } from "./departments/departments.service";
+import { RolesService } from "./roles/roles.service";
 import { ChannelsService } from "./inbox/channels.service";
 import { InboxEvents } from "./inbox/events";
 import { InboxService } from "./inbox/inbox.service";
@@ -35,7 +40,7 @@ import { MailService } from "./mail/mail.service";
 import { MembersService } from "./members/members.service";
 import { NotificationsService } from "./notifications/notifications.service";
 import { Database } from "./db/database";
-import { LocalFileStorage, type FileStorage } from "./storage/storage.service";
+import { createFileStorage } from "./storage/storage.service";
 import { SupportService } from "./support/support.service";
 import { FilesService } from "./tasks/files.service";
 import { OverdueJob } from "./tasks/overdue.job";
@@ -47,11 +52,12 @@ import { TeamService } from "./team/team.service";
 export function createServices() {
   const db = new Database(config().DATABASE_URL);
   const jwt = new JwtService(config().JWT_SECRET, "axis-api");
-  // Swap for a real provider (Payriff / Epoint) or S3 storage without touching callers
-  const provider: PaymentProvider = new DemoPaymentProvider();
-  const storage: FileStorage = new LocalFileStorage();
+  // BILLING_PROVIDER: manual (platform-managed) or demo; Payriff / Epoint plug in here without touching callers
+  const provider = createPaymentProvider();
+  const storage = createFileStorage();
 
-  const monitor = new JobsMonitor();
+  const errors = new ErrorReporter(db);
+  const monitor = new JobsMonitor(errors);
   const audit = new AuditService();
   const entitlements = new EntitlementsService();
   const activity = new ActivityService();
@@ -66,13 +72,15 @@ export function createServices() {
   const ingest = new IngestService(inboxEvents, automationRunner);
   const tasks = new TasksService(db, notifications, storage);
   const files = new FilesService(db, tasks, storage);
-  const inbox = new InboxService(db, inboxEvents, meta, activity, mail);
+  const inbox = new InboxService(db, inboxEvents, meta, activity, mail, entitlements);
   const billing = new BillingService(db, entitlements, notifications, audit, mail, provider);
   const adminAuth = new AdminAuthService(db, jwt);
+  const deals = new DealsService(db, activity, audit, automationRunner);
 
   const services = {
     db,
     jwt,
+    errors,
     monitor,
     audit,
     entitlements,
@@ -90,12 +98,17 @@ export function createServices() {
     inbox,
     billing,
     adminAuth,
+    storage,
     auth: new AuthService(db, tokens, audit, entitlements, ai),
     passwordReset: new PasswordResetService(db, mail),
     members: new MembersService(db, audit, entitlements, tokens, mail),
     departments: new DepartmentsService(db, audit),
-    contacts: new ContactsService(db, activity, audit, automationRunner),
-    deals: new DealsService(db, activity, audit, automationRunner),
+    roles: new RolesService(db, audit),
+    contacts: new ContactsService(db, activity, audit, automationRunner, entitlements),
+    imports: new ImportService(db, audit, entitlements),
+    exports: new ExportService(db, audit),
+    deals,
+    crmSettings: new CrmSettingsService(db, audit, deals),
     dashboard: new DashboardService(db, activity),
     projects: new ProjectsService(db),
     overdueJob: new OverdueJob(db, monitor, notifications, automationRunner),
@@ -107,8 +120,8 @@ export function createServices() {
     support: new SupportService(db, notifications, audit, entitlements, mail),
     analytics: new AnalyticsService(db),
     inboxAi: new InboxAiService(db, inbox, ai),
-    automations: new AutomationsService(db, audit),
-    admin: new AdminService(db, audit, monitor, ai, provider),
+    automations: new AutomationsService(db, audit, entitlements),
+    admin: new AdminService(db, audit, monitor, ai, provider, storage, entitlements, notifications),
     authGuard: new AuthGuard(tokens, db, entitlements),
     adminGuard: new AdminGuard(adminAuth),
   };

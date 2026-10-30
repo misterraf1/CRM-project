@@ -20,6 +20,7 @@ export default async function AdminPlansPage() {
         {plans.map((p) => (
           <PlanEditor key={p.code} plan={p} canEdit={canEdit} />
         ))}
+        {canEdit && <PlanEditor canEdit />}
       </div>
     </div>
   );

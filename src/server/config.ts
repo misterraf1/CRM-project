@@ -12,8 +12,25 @@ const schema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
   INVITE_TTL_DAYS: z.coerce.number().int().positive().default(7),
   TRIAL_DAYS: z.coerce.number().int().positive().default(14),
-  /** Where the local storage driver keeps uploads (S3 driver: Phase 7 deployment) */
+  /**
+   * Upload storage: "local" (disk, FILE_STORAGE_DIR) or "s3" (any S3-compatible store:
+   * Cloudflare R2, AWS S3, MinIO). Serverless hosts need "s3": their disk is not kept.
+   */
+  STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
+  /** Where the local storage driver keeps uploads */
   FILE_STORAGE_DIR: z.string().default(resolve(process.cwd(), ".data/files")),
+  S3_BUCKET: z.string().min(3).optional(),
+  /** R2: https://<account>.r2.cloudflarestorage.com · AWS: leave unset */
+  S3_ENDPOINT: z.string().url().optional(),
+  /** R2 uses "auto" */
+  S3_REGION: z.string().default("auto"),
+  S3_ACCESS_KEY_ID: z.string().min(8).optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(8).optional(),
+  /** MinIO and some self-hosted stores need path-style URLs */
+  S3_FORCE_PATH_STYLE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
   MAX_UPLOAD_MB: z.coerce.number().positive().default(10),
   /**
    * In-process background jobs (overdue notices, billing, mail, automations) on a long-running
@@ -33,10 +50,13 @@ const schema = z.object({
   META_VERIFY_TOKEN: z.string().min(8).optional(),
   META_GRAPH_URL: z.string().url().default("https://graph.facebook.com/v21.0"),
   /**
-   * Payment provider. Only "demo" exists today: a hosted page on our own web app,
-   * clearly labelled, that charges nothing. Payriff / Epoint plug in as providers.
+   * Payment provider.
+   * - "manual" (default): no online payments. Platform staff activate, change and extend
+   *   subscriptions from the console; companies see their plan but no checkout.
+   * - "demo": a hosted page on our own web app, clearly labelled, that charges nothing
+   *   (to try the self-service flow). Payriff / Epoint plug in as further providers.
    */
-  BILLING_PROVIDER: z.enum(["demo"]).default("demo"),
+  BILLING_PROVIDER: z.enum(["manual", "demo"]).default("manual"),
   GRACE_DAYS: z.coerce.number().int().positive().default(7),
   /** Platform staff must turn on 2FA before using the console. On by default in production. */
   PLATFORM_REQUIRE_MFA: z
@@ -70,6 +90,11 @@ const schema = z.object({
   AI_MODEL: z.string().optional(),
   /** Requests per minute per IP on auth endpoints */
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(10),
+}).superRefine((env, ctx) => {
+  if (env.STORAGE_DRIVER !== "s3") return;
+  for (const key of ["S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"] as const) {
+    if (!env[key]) ctx.addIssue({ code: "custom", path: [key], message: "Required when STORAGE_DRIVER=s3" });
+  }
 });
 
 export type Config = z.infer<typeof schema>;

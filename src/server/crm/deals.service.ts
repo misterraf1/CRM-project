@@ -19,6 +19,7 @@ import type { Database, Tx } from "../db/database";
 import { and, contains } from "../db/query";
 import { ActivityService, TIMELINE_ORDER } from "./activity.service";
 import { memberRefs, ownerScope, resolveOwner } from "./scope";
+import { checkCustomFields, toBaseAmount } from "./settings.service";
 
 type DealRow = Deal & { contact: { id: string; name: string } | null };
 
@@ -33,6 +34,7 @@ export function dealToDto(d: DealRow, refs: Map<string, { id: string; name: stri
     title: d.title,
     amount: d.amount,
     currency: d.currency,
+    baseAmount: d.baseAmount ?? d.amount,
     pipelineId: d.pipelineId,
     stageId: d.stageId,
     position: d.position,
@@ -41,6 +43,7 @@ export function dealToDto(d: DealRow, refs: Map<string, { id: string; name: stri
     expectedClose: d.expectedClose?.toISOString() ?? null,
     closedAt: d.closedAt?.toISOString() ?? null,
     lostReason: d.lostReason,
+    customFields: (d.customFields ?? {}) as DealDto["customFields"],
     createdAt: d.createdAt.toISOString(),
   };
 }
@@ -125,6 +128,9 @@ export class DealsService {
       if (stage.kind !== "open") throw new AppError("VALIDATION_FAILED", "New deals start in an open stage", { stageId: ["Closed stage"] });
       const contact = input.contactId ? await this.visibleContact(tx, ctx, input.contactId) : null;
       const ownerId = await resolveOwner(tx, ctx, input.ownerId, ctx.membershipId);
+      const tenant = await tx.tenant.get({ id: ctx.tenantId }, { projection: { currency: 1, fxRates: 1 } });
+      const currency = input.currency ?? tenant.currency;
+      const customFields = await checkCustomFields(tx, ctx.tenantId, "deal", input.customFields, null);
 
       const created = await tx.deal.insertOne({
         tenantId: ctx.tenantId,
@@ -132,6 +138,9 @@ export class DealsService {
         stageId: stage.id,
         title: input.title,
         amount: input.amount,
+        currency,
+        baseAmount: toBaseAmount(input.amount, currency, tenant),
+        customFields: (customFields ?? {}) as Deal["customFields"],
         contactId: contact?.id ?? null,
         ownerId,
         expectedClose: input.expectedClose ?? null,
@@ -152,14 +161,33 @@ export class DealsService {
   async update(id: string, input: DealUpdateInput): Promise<DealDto> {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
-      await this.findVisible(tx, ctx, id);
+      const current = await this.findVisible(tx, ctx, id);
       const contactId = input.contactId ? (await this.visibleContact(tx, ctx, input.contactId)).id : input.contactId;
       const ownerId = input.ownerId !== undefined ? await resolveOwner(tx, ctx, input.ownerId, null) : undefined;
-      const [deal] = await withContacts(
-        tx,
-        ctx.tenantId,
-        [await tx.deal.update({ id }, { $set: { title: input.title, amount: input.amount, contactId, ownerId, expectedClose: input.expectedClose } })],
-      );
+      const customFields = await checkCustomFields(tx, ctx.tenantId, "deal", input.customFields, (current.customFields ?? {}) as Record<string, unknown>);
+      // A new amount or currency is priced at today's rate
+      let baseAmount: number | undefined;
+      if (input.amount !== undefined || input.currency !== undefined) {
+        const tenant = await tx.tenant.get({ id: ctx.tenantId }, { projection: { currency: 1, fxRates: 1 } });
+        baseAmount = toBaseAmount(input.amount ?? current.amount, input.currency ?? current.currency, tenant);
+      }
+      const [deal] = await withContacts(tx, ctx.tenantId, [
+        await tx.deal.update(
+          { id },
+          {
+            $set: {
+              title: input.title,
+              amount: input.amount,
+              currency: input.currency,
+              baseAmount,
+              customFields: customFields as Deal["customFields"] | undefined,
+              contactId,
+              ownerId,
+              expectedClose: input.expectedClose,
+            },
+          },
+        ),
+      ]);
       return dealToDto(deal!, await memberRefs(tx, ctx.tenantId, [deal!.ownerId]));
     });
   }
@@ -181,6 +209,9 @@ export class DealsService {
       }
 
       const closing = to.kind !== "open";
+      // Closing fixes the company-currency amount at the day's rate (reports stay stable)
+      const reprice = closing && from.kind === "open";
+      const tenant = reprice ? await tx.tenant.get({ id: ctx.tenantId }, { projection: { currency: 1, fxRates: 1 } }) : null;
       const changed = await tx.deal.update(
         { id },
         {
@@ -189,6 +220,7 @@ export class DealsService {
             position: input.position ?? (to.id === from.id ? deal.position : await this.nextPosition(tx, to.id)),
             closedAt: closing ? (from.kind === to.kind ? deal.closedAt : new Date()) : null,
             lostReason: to.kind === "lost" ? (input.lostReason ?? deal.lostReason) : null,
+            baseAmount: tenant ? toBaseAmount(deal.amount, deal.currency, tenant) : undefined,
           },
         },
       );
@@ -228,7 +260,7 @@ export class DealsService {
       const monthStart = startOfMonth(new Date(), tenant.timezone);
       const deals = await tx.deal.find(
         and({ tenantId: ctx.tenantId, pipelineId: pipeline.id }, scoped, { $or: [{ closedAt: null }, { closedAt: { $gte: monthStart } }] }),
-        { projection: { amount: 1, stageId: 1, lostReason: 1 } },
+        { projection: { baseAmount: 1, stageId: 1, lostReason: 1 } },
       );
       const stageById = new Map(pipeline.stages.map((s) => [s.id, s]));
       const out: ForecastDto = {
@@ -243,14 +275,14 @@ export class DealsService {
         const stage = stageById.get(d.stageId)!;
         if (stage.kind === "open") {
           out.open.count++;
-          out.open.amount += d.amount;
-          out.weighted += Math.round((d.amount * stage.probability) / 100);
+          out.open.amount += d.baseAmount;
+          out.weighted += Math.round((d.baseAmount * stage.probability) / 100);
         } else if (stage.kind === "won") {
           out.wonThisMonth.count++;
-          out.wonThisMonth.amount += d.amount;
+          out.wonThisMonth.amount += d.baseAmount;
         } else {
           out.lostThisMonth.count++;
-          out.lostThisMonth.amount += d.amount;
+          out.lostThisMonth.amount += d.baseAmount;
           const r = d.lostReason ?? "other";
           reasons.set(r, (reasons.get(r) ?? 0) + 1);
         }

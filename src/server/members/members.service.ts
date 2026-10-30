@@ -1,5 +1,5 @@
 import { MailService } from "../mail/mail.service";
-import type { Membership, User } from "../db/models";
+import type { Membership, Role, User } from "../db/models";
 import {
   assignableRoles,
   type AcceptInviteInput,
@@ -19,16 +19,21 @@ import { authedContext } from "../common/context";
 import { AppError, forbidden, notFound } from "../common/errors";
 import { randomToken, sha256 } from "../common/ids";
 import type { Database, Tx } from "../db/database";
+import { assertWithinOwn } from "../roles/roles.service";
 
 const ROLE_ORDER = { OWNER: 0, ADMIN: 1, MANAGER: 2, EMPLOYEE: 3 } as const;
 
-function toDto(m: Membership & { user: User }): MemberDto {
+type RoleNames = Map<string, string>;
+
+function toDto(m: Membership & { user: User }, roles: RoleNames): MemberDto {
+  const roleName = m.roleId ? roles.get(m.roleId) : undefined;
   return {
     id: m.id,
     userId: m.userId,
     fullName: m.user.fullName,
     email: m.user.email,
     role: m.role,
+    customRole: m.roleId && roleName ? { id: m.roleId, name: roleName } : null,
     status: m.status,
     title: m.title,
     departmentId: m.departmentId,
@@ -52,6 +57,21 @@ async function withUsers(tx: Tx, rows: Membership[]): Promise<(Membership & { us
 
 const withUser = async (tx: Tx, m: Membership) => ({ ...m, user: await tx.user.get({ id: m.userId }) });
 
+async function roleNames(tx: Tx, tenantId: string): Promise<RoleNames> {
+  return new Map((await tx.role.find({ tenantId }, { projection: { id: 1, name: 1 } })).map((r) => [r.id, r.name]));
+}
+
+/**
+ * The custom role being assigned, checked: it exists in this company and carries
+ * nothing the acting member lacks. Its holders count as employees for role-based rules.
+ */
+async function assignableCustomRole(tx: Tx, ctx: ReturnType<typeof authedContext>, roleId: string): Promise<Role> {
+  const role = await tx.role.findOne({ id: roleId, tenantId: ctx.tenantId });
+  if (!role) throw new AppError("VALIDATION_FAILED", "Unknown role", { roleId: ["Unknown role"] });
+  assertWithinOwn(ctx, role.permissions);
+  return role;
+}
+
 const inviteExpiry = (invitedAt: Date) => new Date(invitedAt.getTime() + config().INVITE_TTL_DAYS * 86_400_000);
 
 export class MembersService {
@@ -65,22 +85,26 @@ export class MembersService {
 
   async list(): Promise<MemberDto[]> {
     const { tenantId } = authedContext();
-    const rows = await this.db.scoped(async (tx) =>
-      // Explicit tenant filter: the Membership policy also exposes the caller's
-      // memberships in *other* tenants (for the workspace switcher).
-      withUsers(tx, await tx.membership.find({ tenantId })),
+    const [rows, roles] = await this.db.scoped(async (tx) =>
+      Promise.all([
+        // Explicit tenant filter: the Membership policy also exposes the caller's
+        // memberships in *other* tenants (for the workspace switcher).
+        tx.membership.find({ tenantId }).then((found) => withUsers(tx, found)),
+        roleNames(tx, tenantId),
+      ]),
     );
     return rows
       .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.user.fullName.localeCompare(b.user.fullName))
-      .map(toDto);
+      .map((m) => toDto(m, roles));
   }
 
   async invite(input: InviteInput): Promise<InviteCreatedResponse> {
     const ctx = authedContext();
-    if (!assignableRoles(ctx.role).includes(input.role)) throw forbidden(`Cannot invite with role ${input.role}`);
+    if (!input.roleId && !assignableRoles(ctx.role).includes(input.role)) throw forbidden(`Cannot invite with role ${input.role}`);
 
     const secret = randomToken(24);
-    const member = await this.db.scoped(async (tx) => {
+    const [member, roles] = await this.db.scoped(async (tx) => {
+      const custom = input.roleId ? await assignableCustomRole(tx, ctx, input.roleId) : null;
       await this.assertDepartment(tx, ctx.tenantId, input.departmentId);
       const user = await tx.user.upsert({ email: input.email }, {}, { email: input.email, fullName: input.fullName ?? input.email.split("@")[0]! });
       const existing = await tx.membership.findOne({ tenantId: ctx.tenantId, userId: user.id });
@@ -90,7 +114,8 @@ export class MembersService {
       if (!existing) await this.entitlements.assertSeatAvailable(tx, ctx.tenantId);
 
       const data = {
-        role: input.role,
+        role: custom ? ("EMPLOYEE" as const) : input.role,
+        roleId: custom?.id ?? null,
         departmentId: input.departmentId ?? null,
         title: input.title ?? null,
         inviteToken: sha256(secret),
@@ -106,7 +131,7 @@ export class MembersService {
         action: existing ? "member.reinvited" : "member.invited",
         entityType: "membership",
         entityId: saved.id,
-        diff: { email: input.email, role: input.role },
+        diff: { email: input.email, role: custom ? custom.name : input.role },
       });
       const [tenant, inviter] = await Promise.all([
         tx.tenant.get({ id: ctx.tenantId }, { projection: { name: 1 } }),
@@ -119,11 +144,11 @@ export class MembersService {
         template: "invite",
         vars: { company: tenant.name, inviter: inviter.fullName, link: `${config().WEB_ORIGIN}/invite/${ctx.tenantId}.${secret}`, days: config().INVITE_TTL_DAYS },
       });
-      return saved;
+      return [saved, new Map(custom ? [[custom.id, custom.name]] : [])] as const;
     });
 
     return {
-      member: toDto(member),
+      member: toDto(member, roles),
       invitePath: `/invite/${ctx.tenantId}.${secret}`,
       expiresAt: inviteExpiry(member.invitedAt!).toISOString(),
       emailDelivery: this.mail.configured ? "queued" : "not_configured",
@@ -136,14 +161,20 @@ export class MembersService {
       const target = await tx.membership.findOne({ id, tenantId: ctx.tenantId });
       if (!target) throw notFound("Member");
 
-      const changesAccess = input.role !== undefined || input.status !== undefined;
+      const changesAccess = input.role !== undefined || input.roleId !== undefined || input.status !== undefined;
       if (changesAccess && target.id === ctx.membershipId) throw forbidden("You cannot change your own role or status");
       if (target.role === "OWNER" && ctx.role !== "OWNER") throw forbidden("Only an owner can modify another owner");
-      if (input.role && input.role !== target.role && !assignableRoles(ctx.role).includes(input.role)) {
-        throw forbidden(`Cannot assign role ${input.role}`);
+
+      // A custom role wins over `role`; a built-in role (or roleId: null) clears the custom one
+      const custom = input.roleId ? await assignableCustomRole(tx, ctx, input.roleId) : null;
+      const nextRole = custom ? "EMPLOYEE" : (input.role ?? target.role);
+      const nextRoleId = custom ? custom.id : input.role !== undefined || input.roleId === null ? null : target.roleId;
+      const leavesCustom = !!target.roleId && nextRoleId !== target.roleId;
+      if (!custom && (nextRole !== target.role || leavesCustom) && !assignableRoles(ctx.role).includes(nextRole)) {
+        throw forbidden(`Cannot assign role ${nextRole}`);
       }
 
-      const losesOwner = target.role === "OWNER" && ((input.role && input.role !== "OWNER") || input.status === "DISABLED");
+      const losesOwner = target.role === "OWNER" && (nextRole !== "OWNER" || input.status === "DISABLED");
       if (losesOwner) {
         // Writing the tenant document serialises concurrent owner changes: MongoDB aborts
         // one of two transactions touching it, and the retry sees the committed state
@@ -163,7 +194,8 @@ export class MembersService {
         { id: target.id },
         {
           $set: {
-            role: input.role,
+            role: nextRole,
+            roleId: nextRoleId,
             status: input.status,
             departmentId: input.departmentId,
             title: input.title,
@@ -177,14 +209,17 @@ export class MembersService {
         await tx.session.updateMany({ userId: target.userId, tenantId: ctx.tenantId, revokedAt: null }, { $set: { revokedAt: new Date() } });
       }
 
+      const roles = await roleNames(tx, ctx.tenantId);
+      const roleLabel = (role: string, roleId: string | null) => (roleId ? (roles.get(roleId) ?? roleId) : role);
       const diff: Record<string, { from: unknown; to: unknown }> = {};
-      for (const key of ["role", "status", "departmentId", "title"] as const) {
+      if (nextRole !== target.role || nextRoleId !== target.roleId) diff.role = { from: roleLabel(target.role, target.roleId), to: roleLabel(nextRole, nextRoleId) };
+      for (const key of ["status", "departmentId", "title"] as const) {
         if (input[key] !== undefined && input[key] !== target[key]) diff[key] = { from: target[key], to: input[key] };
       }
       if (Object.keys(diff).length) {
         await this.audit.log(tx, { action: "member.updated", entityType: "membership", entityId: target.id, diff: diff as never });
       }
-      return toDto(await withUser(tx, updated));
+      return toDto(await withUser(tx, updated), roles);
     });
   }
 
@@ -193,12 +228,13 @@ export class MembersService {
     return this.db.scoped(
       async (tx) => {
         const m = await this.findInvite(tx, tenantId, hash);
-        const tenant = await tx.tenant.get({ id: tenantId });
+        const [tenant, role] = await Promise.all([tx.tenant.get({ id: tenantId }), m.roleId ? tx.role.findOne({ id: m.roleId, tenantId }) : null]);
         return {
           tenantName: tenant.name,
           email: m.user.email,
           fullName: m.user.fullName,
           role: m.role,
+          customRole: role?.name ?? null,
           needsAccount: !m.user.passwordHash,
           expiresAt: inviteExpiry(m.invitedAt!).toISOString(),
         };

@@ -10,18 +10,20 @@ export function SettingsTabs() {
   const pathname = usePathname();
   const tabs = [
     { href: "/settings/members", label: t.members.title },
+    { href: "/settings/roles", label: t.roles.title },
     { href: "/settings/channels", label: t.channels.title },
+    { href: "/settings/crm", label: t.crmSettings.tab },
     { href: "/settings/billing", label: t.billing.title },
   ];
   return (
-    <nav aria-label={t.nav.settings} className="mb-5 flex gap-1 border-b border-border">
+    <nav aria-label={t.nav.settings} className="mb-5 flex gap-1 overflow-x-auto border-b border-border">
       {tabs.map((tab) => (
         <Link
           key={tab.href}
           href={tab.href}
           aria-current={pathname.startsWith(tab.href) ? "page" : undefined}
           className={clsx(
-            "-mb-px border-b-2 px-3 py-2 text-sm font-medium",
+            "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium",
             pathname.startsWith(tab.href) ? "border-accent text-accent" : "border-transparent text-fg-muted hover:text-fg",
           )}
         >

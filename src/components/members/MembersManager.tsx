@@ -1,6 +1,6 @@
 "use client";
 
-import { assignableRoles, MEMBER_ROLES, type DepartmentDto, type InviteCreatedResponse, type MeResponse, type MemberDto, type MemberRole, type MemberStatus } from "@/shared";
+import { assignableRoles, MEMBER_ROLES, type DepartmentDto, type InviteCreatedResponse, type MeResponse, type MemberDto, type MemberStatus, type RoleDto } from "@/shared";
 import clsx from "clsx";
 import { Check, Copy, Search, UserPlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -20,9 +20,14 @@ const STATUS_STYLE: Record<MemberStatus, string> = {
   DISABLED: "bg-muted text-fg-subtle",
 };
 
-const select = "h-8 rounded-lg border border-border bg-surface px-2 text-xs disabled:opacity-60";
+const select = "h-8 max-w-[11rem] rounded-lg border border-border bg-surface px-2 text-xs disabled:opacity-60";
 
-export function MembersManager({ me, members, departments }: { me: MeResponse; members: MemberDto[]; departments: DepartmentDto[] }) {
+/** One select covers both kinds of role: built-in codes as they are, custom roles as "custom:<id>". */
+const CUSTOM = "custom:";
+const roleValue = (x: Pick<MemberDto, "role" | "customRole">) => (x.customRole ? `${CUSTOM}${x.customRole.id}` : x.role);
+const rolePatch = (value: string) => (value.startsWith(CUSTOM) ? { roleId: value.slice(CUSTOM.length) } : { role: value });
+
+export function MembersManager({ me, members, departments, roles }: { me: MeResponse; members: MemberDto[]; departments: DepartmentDto[]; roles: RoleDto[] }) {
   const { t, locale } = useI18n();
   const m = t.members;
   const router = useRouter();
@@ -37,6 +42,8 @@ export function MembersManager({ me, members, departments }: { me: MeResponse; m
   const canInvite = me.permissions.includes("members.invite");
   const canManage = me.permissions.includes("members.manage");
   const roleOptions = assignableRoles(me.membership.role);
+  // Custom roles the current user may hand out: nothing beyond their own permissions (the API checks it too)
+  const customOptions = roles.filter((r) => r.permissions.every((p) => me.permissions.includes(p)));
   const deptName = new Map(departments.map((d) => [d.id, d.name]));
 
   const visible = useMemo(() => {
@@ -77,7 +84,7 @@ export function MembersManager({ me, members, departments }: { me: MeResponse; m
     const body = {
       email: String(form.get("email")),
       fullName: String(form.get("fullName") || "").trim() || undefined,
-      role: String(form.get("role")) as MemberRole,
+      ...rolePatch(String(form.get("role"))),
       departmentId: String(form.get("departmentId") || "") || null,
     };
     const target = e.currentTarget;
@@ -96,7 +103,7 @@ export function MembersManager({ me, members, departments }: { me: MeResponse; m
 
   const reinvite = (x: MemberDto) =>
     run(async () => {
-      const res = await api<InviteCreatedResponse>("/members/invites", "POST", { email: x.email, role: x.role, departmentId: x.departmentId });
+      const res = await api<InviteCreatedResponse>("/members/invites", "POST", { email: x.email, ...rolePatch(roleValue(x)), departmentId: x.departmentId });
       if (res.ok) showLink(res.data);
       return res;
     });
@@ -158,6 +165,15 @@ export function MembersManager({ me, members, departments }: { me: MeResponse; m
                   {t.shell.roles[r]} — {m.roleHelp[r]}
                 </option>
               ))}
+              {customOptions.length > 0 && (
+                <optgroup label={t.roles.customGroup}>
+                  {customOptions.map((r) => (
+                    <option key={r.id} value={`${CUSTOM}${r.id}`}>
+                      {r.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </label>
           <label className="text-xs font-medium">
@@ -235,7 +251,9 @@ export function MembersManager({ me, members, departments }: { me: MeResponse; m
           <tbody className="divide-y divide-border">
             {visible.map((x) => {
               const can = editable(x);
-              const roles = can ? [...new Set([x.role, ...roleOptions])] : [x.role];
+              const builtIn = can ? [...new Set([x.role, ...roleOptions])] : [x.role];
+              const custom = can ? customOptions : [];
+              const own = x.customRole && !custom.some((r) => r.id === x.customRole!.id) ? [{ id: x.customRole.id, name: x.customRole.name }] : [];
               return (
                 <tr key={x.id} className={clsx(x.status === "DISABLED" && "text-fg-subtle")}>
                   <td className="px-4 py-2.5">
@@ -253,16 +271,26 @@ export function MembersManager({ me, members, departments }: { me: MeResponse; m
                   <td className="px-3">
                     <select
                       aria-label={`${m.role}: ${x.fullName}`}
-                      value={x.role}
+                      value={roleValue(x)}
                       disabled={!can || pending || x.status === "DISABLED"}
-                      onChange={(e) => update(x.id, { role: e.target.value })}
+                      onChange={(e) => update(x.id, rolePatch(e.target.value))}
                       className={select}
                     >
-                      {MEMBER_ROLES.filter((r) => roles.includes(r)).map((r) => (
+                      {/* A member on a custom role is stored as an employee: list that only as a choice, not as their role */}
+                      {MEMBER_ROLES.filter((r) => builtIn.includes(r) && (can || !x.customRole)).map((r) => (
                         <option key={r} value={r}>
                           {t.shell.roles[r]}
                         </option>
                       ))}
+                      {[...own, ...custom].length > 0 && (
+                        <optgroup label={t.roles.customGroup}>
+                          {[...own, ...custom].map((r) => (
+                            <option key={r.id} value={`${CUSTOM}${r.id}`}>
+                              {r.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
                   </td>
                   <td className="px-3">

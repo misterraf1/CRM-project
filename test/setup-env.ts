@@ -6,3 +6,4 @@ process.env.CHANNEL_SECRET_KEY = Buffer.alloc(32, 7).toString("base64");
 process.env.META_APP_SECRET = "test-meta-app-secret";
 process.env.META_VERIFY_TOKEN = "test-verify-token";
 process.env.META_GRAPH_URL = "http://127.0.0.1:55990/v21.0";
+process.env.BILLING_PROVIDER = "demo";

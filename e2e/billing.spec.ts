@@ -8,6 +8,8 @@ const plan = (page: Page, name: string) => page.getByRole("article", { name, exa
 /** Demo checkout: one declined attempt, then a successful one. */
 async function payOnCheckout(page: Page) {
   await expect(page).toHaveURL(/\/billing\/checkout\//);
+  // A full page load: a click before its scripts run would be lost
+  await page.waitForLoadState("load");
   await expect(page.getByText("DEMO ödəniş səhifəsi")).toBeVisible();
   await page.getByRole("button", { name: "Kart rədd edilsin" }).click();
   await expect(page.getByText("Kart rədd edildi. Başqa kartla yenidən cəhd edin.")).toBeVisible();

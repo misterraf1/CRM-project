@@ -1,4 +1,4 @@
-import type { Plan, Subscription } from "../db/models";
+import type { Invoice, LimitOverrides, Plan, Subscription } from "../db/models";
 import type {
   AdminInvoiceListResponse,
   AdminOverviewDto,
@@ -10,19 +10,27 @@ import type {
   ExpenseCategory,
   ExpenseDto,
   ExpenseInput,
+  PlanCreateInput,
   PlanUpdateInput,
+  SubscriptionSetInput,
   SubscriptionStatus,
   SystemHealthDto,
+  TenantLimitsInput,
 } from "@/shared";
 import { AiService } from "../ai/ai.service";
 import { AuditService } from "../audit/audit.service";
 import { addonsPrice, days, planPrice } from "../billing/pricing";
-import { invalidatePlans, storageUsed } from "../billing/entitlements.service";
-import { toInvoiceDto, withPayments } from "../billing/invoices";
+import { ownerIds } from "../billing/billing.service";
+import { EntitlementsService, invalidatePlans, limitsOf, storageUsed } from "../billing/entitlements.service";
+import { nextInvoiceNumber, toInvoiceDto, withPayments } from "../billing/invoices";
 import type { PaymentProvider } from "../billing/provider";
 import { config } from "../config";
 import { AppError, notFound } from "../common/errors";
+import { randomToken } from "../common/ids";
+import { addDays, startOfDay } from "../common/time";
+import { NotificationsService } from "../notifications/notifications.service";
 import { JobsMonitor } from "../common/jobs-monitor";
+import type { FileStorage } from "../storage/storage.service";
 import type { Database, Tx } from "../db/database";
 import { contains, countBy, sumOf } from "../db/query";
 import type { Filter } from "../db/repo";
@@ -34,15 +42,20 @@ const PAYING = new Set<SubscriptionStatus>(["ACTIVE", "PAST_DUE"]);
 
 type Sub = Subscription & { plan: Plan };
 
-/** What a subscription brings in per month; yearly plans count as 1/12. */
+/** What a subscription brings in per month; yearly plans count as 1/12, gifts nothing. */
 export function monthlyValue(sub: Sub): number {
-  if (!PAYING.has(sub.status)) return 0;
+  if (!PAYING.has(sub.status) || sub.complimentary) return 0;
   const interval = sub.interval as BillingInterval;
   const total = planPrice(sub.plan, interval) + addonsPrice(sub.plan, sub.extraSeats, Math.round(sub.extraStorageMb / 1024), interval);
   return interval === "YEAR" ? Math.round(total / 12) : total;
 }
 
 const monthStart = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+
+/** A date picked in the console means "through that day" in the company's time zone. */
+const endOfDay = (date: string, timeZone: string) => new Date(addDays(startOfDay(new Date(`${date}T12:00:00Z`), timeZone), 1, timeZone).getTime() - 1);
+
+const MAX_PERIOD_DAYS = 3 * 366;
 
 /**
  * Platform (Super Admin) reads and actions. Everything here crosses tenants, so it
@@ -55,6 +68,9 @@ export class AdminService {
     private readonly jobs: JobsMonitor,
     private readonly ai: AiService,
     private readonly provider: PaymentProvider,
+    private readonly storage: Pick<FileStorage, "driver">,
+    private readonly entitlements: EntitlementsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private get sys(): Tx {
@@ -156,7 +172,7 @@ export class AdminService {
       plan: sub.plan.code,
       status: sub.status,
       interval: sub.interval as BillingInterval,
-      seats: { used: seatsUsed, limit: sub.plan.seatLimit + sub.extraSeats },
+      seats: { used: seatsUsed, limit: limitsOf(sub).seats },
       mrr: monthlyValue(sub),
       ownerEmail,
     };
@@ -167,24 +183,28 @@ export class AdminService {
     const t = await db.tenant.findOne({ id });
     const sub = t && (await this.subscriptions([id])).get(id);
     if (!t || !sub) throw notFound("Company");
-    const [memberRows, contacts, deals, tasks, conversations, filesBytes, invoices, activity, scheduled] = await Promise.all([
+    const [memberRows, contacts, deals, tasks, conversations, automations, filesBytes, invoices, activity, history, scheduled] = await Promise.all([
       db.membership.find({ tenantId: id }, { sort: { role: 1, createdAt: 1 } }),
-      db.contact.count({ tenantId: id }),
+      db.contact.count({ tenantId: id, deletedAt: null }),
       db.deal.count({ tenantId: id }),
       db.task.count({ tenantId: id }),
       db.conversation.count({ tenantId: id }),
+      db.automationRule.count({ tenantId: id }),
       storageUsed(db, id),
       db.invoice.find({ tenantId: id }, { sort: { createdAt: -1 }, limit: 20 }).then((rows) => withPayments(db, rows)),
       db.auditLog.find({ tenantId: id }, { sort: { createdAt: -1 }, limit: 20 }),
+      db.auditLog.find({ tenantId: id, action: { $regex: "^(platform|billing)\\." } }, { sort: { createdAt: -1 }, limit: 50 }),
       sub.scheduledPlanId ? db.plan.findOne({ id: sub.scheduledPlanId }) : null,
     ]);
     const users = new Map((await db.user.find({ id: { $in: memberRows.map((m) => m.userId) } })).map((u) => [u.id, u]));
     const members = memberRows.filter((m) => users.has(m.userId)).map((m) => ({ ...m, user: users.get(m.userId)! }));
-    const actorIds = [...new Set(activity.map((a) => a.actorId).filter((x): x is string => !!x))];
+    const actorIds = [...new Set([...activity, ...history].map((a) => a.actorId).filter((x): x is string => !!x))];
     const actors = await db.user.find({ id: { $in: actorIds } }, { projection: { id: 1, fullName: 1 } });
     const actorName = new Map(actors.map((a) => [a.id, a.fullName]));
     const seatsUsed = members.filter((m) => m.status === "ACTIVE" || m.status === "INVITED").length;
     const owner = members.find((m) => m.role === "OWNER" && m.status === "ACTIVE");
+    const limits = limitsOf(sub);
+    const now = new Date();
 
     return {
       ...this.row(t, sub, seatsUsed, owner?.user.email ?? null),
@@ -206,8 +226,15 @@ export class AdminService {
         deals,
         tasks,
         conversations,
-        storageMb: { used: Math.ceil(filesBytes / 1048576), limit: sub.plan.storageMb + sub.extraStorageMb },
+        automations,
+        storageMb: { used: Math.ceil(filesBytes / 1048576), limit: limits.storageMb },
       },
+      limits,
+      overrides: sub.limitOverrides ?? {},
+      featureGrants: (sub.featureGrants ?? []).map((g) => ({ feature: g.feature, until: g.until?.toISOString() ?? null, active: !g.until || g.until > now })),
+      features: this.entitlements.features(sub),
+      complimentary: !!sub.complimentary,
+      history: history.map((a) => ({ id: a.id, action: a.action, actor: a.actorId ? (actorName.get(a.actorId) ?? null) : null, diff: a.diff, createdAt: a.createdAt.toISOString() })),
       members: members.map((m) => ({
         id: m.id,
         fullName: m.user.fullName,
@@ -281,9 +308,135 @@ export class AdminService {
       extraStorageGbPrice: p.extraStorageGbPrice,
       aiCredits: p.aiCredits,
       features: p.features,
+      contactLimit: p.contactLimit ?? null,
+      automationLimit: p.automationLimit ?? null,
       isPublic: p.isPublic,
+      sortOrder: p.sortOrder,
       tenants,
     };
+  }
+
+  /** New plans start hidden unless asked otherwise: gift and trial packages are just private plans. */
+  async createPlan(input: PlanCreateInput): Promise<AdminPlanDto> {
+    const plan = await this.db.systemTx(async (tx) => {
+      if (await tx.plan.count({ code: input.code })) throw new AppError("CONFLICT", "A plan with this code exists", { code: ["Taken"] });
+      const row = await tx.plan.insertOne({ ...input, currency: "AZN" });
+      await this.audit.log(tx, { action: "platform.plan_created", entityType: "plan", entityId: row.id, tenantId: undefined, diff: { code: row.code, name: row.name } });
+      return row;
+    });
+    invalidatePlans();
+    return this.planDto(plan, 0);
+  }
+
+  /**
+   * Sets a company's subscription by hand (no online payment): plan, interval and the
+   * paid-through date. A received payment is recorded as a paid invoice; amount 0 is a
+   * gift (no revenue). Open invoices are voided — this payment settles them.
+   */
+  async setSubscription(tenantId: string, input: SubscriptionSetInput) {
+    const now = new Date();
+    const tenant = await this.sys.tenant.findOne({ id: tenantId }, { projection: { timezone: 1 } });
+    if (!tenant) throw notFound("Company");
+    const periodEnd = endOfDay(input.periodEnd, tenant.timezone);
+    if (periodEnd <= now || periodEnd.getTime() - now.getTime() > days(MAX_PERIOD_DAYS)) {
+      throw new AppError("VALIDATION_FAILED", "The period must end in the future, within 3 years", { periodEnd: ["Out of range"] });
+    }
+    await this.db.systemTx(async (tx) => {
+      const sub = (await this.subscriptions([tenantId])).get(tenantId);
+      if (!sub) throw notFound("Company");
+      const plan = await tx.plan.findOne({ code: input.planCode });
+      if (!plan) throw new AppError("VALIDATION_FAILED", "Unknown plan", { planCode: ["Unknown plan"] });
+      const seatsUsed = await tx.membership.count({ tenantId, status: { $in: ["ACTIVE", "INVITED"] } });
+      const seatLimit = limitsOf({ ...sub, plan }).seats;
+      if (seatsUsed > seatLimit) throw new AppError("SEAT_LIMIT", `This plan allows ${seatLimit} members; ${seatsUsed} are active or invited`, { used: seatsUsed, limit: seatLimit });
+
+      await tx.invoice.updateMany({ tenantId, status: { $in: ["OPEN", "FAILED"] } }, { $set: { status: "VOID" } });
+      const gift = input.amount === 0;
+      const invoice = await tx.invoice.insertOne({
+        tenantId,
+        number: await nextInvoiceNumber(tx, now),
+        kind: gift ? "gift" : "manual",
+        status: "PAID",
+        amount: input.amount,
+        currency: plan.currency,
+        periodStart: now,
+        periodEnd,
+        lines: [{ code: "plan", plan: plan.code, interval: input.interval, quantity: 1, unitAmount: input.amount, amount: input.amount }] as unknown as Invoice["lines"],
+        paidAt: now,
+      });
+      if (!gift) {
+        await tx.payment.insertOne({ tenantId, invoiceId: invoice.id, provider: "manual", providerRef: `manual_${randomToken(8)}`, amount: input.amount, status: "succeeded" });
+      }
+      // Extending the same running plan keeps the period's start (proration and reports stay right)
+      const continues = sub.status === "ACTIVE" && sub.planId === plan.id && sub.currentPeriodEnd > now;
+      await tx.subscription.update(
+        { id: sub.id },
+        {
+          $set: {
+            planId: plan.id,
+            interval: input.interval,
+            status: "ACTIVE",
+            currentPeriodStart: continues ? sub.currentPeriodStart : now,
+            currentPeriodEnd: periodEnd,
+            trialEndsAt: null,
+            graceEndsAt: null,
+            retryCount: 0,
+            nextRetryAt: null,
+            cancelAtPeriodEnd: false,
+            scheduledPlanId: null,
+            complimentary: gift,
+          },
+        },
+      );
+      await tx.tenant.update({ id: tenantId }, { $set: { status: "ACTIVE" } });
+      await this.audit.log(tx, {
+        action: "platform.subscription_set",
+        entityType: "subscription",
+        entityId: sub.id,
+        tenantId,
+        diff: {
+          plan: { from: sub.plan.code, to: plan.code },
+          status: { from: sub.status, to: "ACTIVE" },
+          periodEnd: { from: sub.currentPeriodEnd.toISOString(), to: periodEnd.toISOString() },
+          interval: input.interval,
+          amount: input.amount,
+          invoice: invoice.number,
+          ...(input.reference ? { reference: input.reference } : {}),
+          ...(input.note ? { note: input.note } : {}),
+        },
+      });
+      if (!gift) {
+        await this.notifications.notify(tx, tenantId, await ownerIds(tx, tenantId), "billing_paid", { invoiceId: invoice.id, number: invoice.number, amount: invoice.amount });
+      }
+    });
+  }
+
+  /** Company-specific limits and extra (optionally temporary) features. */
+  async setLimits(tenantId: string, input: TenantLimitsInput) {
+    const overrides: LimitOverrides = {};
+    if (input.seatLimit !== null) overrides.seatLimit = input.seatLimit;
+    if (input.storageMb !== null) overrides.storageMb = input.storageMb;
+    if (input.aiCredits !== null) overrides.aiCredits = input.aiCredits;
+    if (input.contactLimit !== "plan") overrides.contactLimit = input.contactLimit;
+    if (input.automationLimit !== "plan") overrides.automationLimit = input.automationLimit;
+    const tenant = await this.sys.tenant.findOne({ id: tenantId }, { projection: { timezone: 1 } });
+    if (!tenant) throw notFound("Company");
+    const grants = [...new Map(input.featureGrants.map((g) => [g.feature, { feature: g.feature, until: g.until ? endOfDay(g.until, tenant.timezone) : null }])).values()];
+    await this.db.systemTx(async (tx) => {
+      const sub = await tx.subscription.findOne({ tenantId });
+      if (!sub) throw notFound("Company");
+      await tx.subscription.update({ id: sub.id }, { $set: { limitOverrides: overrides, featureGrants: grants } });
+      await this.audit.log(tx, {
+        action: "platform.limits_set",
+        entityType: "subscription",
+        entityId: sub.id,
+        tenantId,
+        diff: {
+          overrides: { from: (sub.limitOverrides ?? {}) as never, to: overrides as never },
+          features: grants.map((g) => (g.until ? `${g.feature} → ${g.until.toISOString().slice(0, 10)}` : g.feature)),
+        },
+      });
+    });
   }
 
   /** New prices apply to the next invoice; periods already paid keep their price. */
@@ -392,6 +545,12 @@ export class AdminService {
           db.channel.find({ status: "error" }, { limit: 20 }),
         ])
       : [0, 0, [], 0, []];
+    const [errors24h, recentServerErrors] = dbOk
+      ? await Promise.all([
+          db.errorEvent.count({ lastSeenAt: { $gte: since } }),
+          db.errorEvent.find({}, { sort: { lastSeenAt: -1 }, limit: 15, projection: { id: 1, source: 1, message: 1, where: 1, count: 1, lastSeenAt: 1 } }),
+        ])
+      : [0, []];
     const errorTenants = new Map((await db.tenant.find({ id: { $in: erroredRows.map((c) => c.tenantId) } }, { projection: { id: 1, name: 1 } })).map((t) => [t.id, t.name]));
     const errored = erroredRows.map((c) => ({ ...c, tenant: { name: errorTenants.get(c.tenantId) ?? "" } }));
     return {
@@ -400,7 +559,14 @@ export class AdminService {
       memoryMb: Math.round(process.memoryUsage().rss / 1048576),
       node: process.version,
       jobsEnabled: config().JOBS_ENABLED,
+      // A long-running server runs jobs on its own timers; serverless needs the cron secret
+      cronConfigured: !!config().CRON_SECRET || !process.env.VERCEL,
       jobs: this.jobs.list(),
+      storage: { driver: this.storage.driver, persistent: this.storage.driver !== "local" || !process.env.VERCEL },
+      errors: {
+        last24h: errors24h,
+        recent: recentServerErrors.map((e) => ({ id: e.id, source: e.source, message: e.message, where: e.where, count: e.count, lastSeenAt: e.lastSeenAt.toISOString() })),
+      },
       webhooks: {
         received24h,
         failed24h,

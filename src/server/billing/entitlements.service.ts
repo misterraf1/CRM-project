@@ -31,10 +31,44 @@ export async function subscriptionOf(tx: Tx, tenantId: string): Promise<Subscrip
   return { ...sub, plan: await planOf(tx, sub.planId) };
 }
 
+export interface Limits {
+  /** Plan (or company override) plus purchased extra seats */
+  seats: number;
+  storageMb: number;
+  aiCredits: number;
+  /** null = unlimited */
+  contacts: number | null;
+  automations: number | null;
+}
+
+/**
+ * Limits in effect: the platform's per-company override wins over the plan; purchased
+ * add-ons come on top. Subscriptions from before overrides existed have none.
+ */
+export function limitsOf(sub: SubscriptionWithPlan): Limits {
+  const o = sub.limitOverrides ?? {};
+  const pick = <K extends "contactLimit" | "automationLimit">(key: K) => (o[key] !== undefined ? o[key]! : (sub.plan[key] ?? null));
+  return {
+    seats: (o.seatLimit ?? sub.plan.seatLimit) + sub.extraSeats,
+    storageMb: (o.storageMb ?? sub.plan.storageMb) + sub.extraStorageMb,
+    aiCredits: o.aiCredits ?? sub.plan.aiCredits,
+    contacts: pick("contactLimit"),
+    automations: pick("automationLimit"),
+  };
+}
+
+/** Features granted on top of the plan that haven't run out. */
+export function activeGrants(sub: Pick<Subscription, "featureGrants">, now = new Date()) {
+  return (sub.featureGrants ?? []).filter((g) => !g.until || g.until > now).map((g) => g.feature);
+}
+
+export type CountedResource = "contacts" | "automations";
+
 /** Plan limits and features. The trial unlocks every feature so all of it can be tried. */
 export class EntitlementsService {
   features(sub: SubscriptionWithPlan): string[] {
-    return sub.status === "TRIALING" ? [...ALL_FEATURES] : sub.plan.features;
+    if (sub.status === "TRIALING") return [...ALL_FEATURES];
+    return [...new Set([...sub.plan.features, ...activeGrants(sub)])];
   }
 
   async seats(tx: Tx, tenantId: string) {
@@ -43,12 +77,29 @@ export class EntitlementsService {
       // Pending invites hold a seat so the limit can't be bypassed by mass-inviting
       tx.membership.count({ tenantId, status: { $in: ["ACTIVE", "INVITED"] } }),
     ]);
-    return { used, limit: subscription.plan.seatLimit + subscription.extraSeats };
+    return { used, limit: limitsOf(subscription).seats };
   }
 
   async storage(tx: Tx, tenantId: string) {
     const [subscription, usedBytes] = await Promise.all([subscriptionOf(tx, tenantId), storageUsed(tx, tenantId)]);
-    return { used: Math.ceil(usedBytes / 1048576), limit: subscription.plan.storageMb + subscription.extraStorageMb };
+    return { used: Math.ceil(usedBytes / 1048576), limit: limitsOf(subscription).storageMb };
+  }
+
+  /** How many contacts (people + companies) or automation rules a tenant has, against its limit. */
+  async usage(tx: Tx, tenantId: string, resource: CountedResource) {
+    const [subscription, used] = await Promise.all([
+      subscriptionOf(tx, tenantId),
+      resource === "contacts" ? tx.contact.count({ tenantId, deletedAt: null }) : tx.automationRule.count({ tenantId }),
+    ]);
+    return { used, limit: limitsOf(subscription)[resource] };
+  }
+
+  /** Throws PLAN_LIMIT when adding `adding` records would go over the limit. */
+  async assertCapacity(tx: Tx, tenantId: string, resource: CountedResource, adding = 1) {
+    const { used, limit } = await this.usage(tx, tenantId, resource);
+    if (limit !== null && used + adding > limit) {
+      throw new AppError("PLAN_LIMIT", `The ${resource} limit of the plan is reached (${used}/${limit})`, { resource, used, limit, adding });
+    }
   }
 
   async assertSeatAvailable(tx: Tx, tenantId: string) {

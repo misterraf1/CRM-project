@@ -502,5 +502,51 @@ Səbəb: bu funksiyalar paketlərdə satılırdı (PRO: əsas analitika; BUSINES
 
 Qeyd: pulsuz modellər OpenRouter-də gün/dəqiqə limitlidir və keyfiyyət Claude-dan aşağıdır (arabir rus sözü qarışa bilər); qaralamalar onsuz da göndərilməzdən əvvəl işçi tərəfindən yoxlanır.
 
+### v2 Mərhələ A — Production fundamenti ✅ (2026-10-30, kod; konfiqurasiya sahibdə)
+Tam audit və v2 planı: `docs/AUDIT-2026-10.md`. Əməliyyat runbook-u: `docs/OPERATIONS.md`.
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| S3-uyğun fayl saxlama (`STORAGE_DRIVER=s3`) | ✅ | R2/S3/MinIO; `npm run storage:migrate` köhnə faylları köçürür |
+| Avtomatlaşdırma/email `after()` ilə | ✅ | Serverless-də cavabdan sonra da tamamlanır |
+| Server xətaları jurnalı (`ErrorEvent`) | ✅ | `/admin/system`; storage və `CRON_SECRET` xəbərdarlıqları |
+| R2 bucket, `CRON_SECRET`, 5 dəq. scheduler, Atlas backup, staging | ⏳ | Sahibin hesablarında edilir (runbook §1–5) |
+
+### v2 Mərhələ B — CRM məlumat modeli ✅ (2026-10-30)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Əlavə sahələr (`FieldDefinition`, `customFields`) | ✅ | Şəxs/şirkət/satış; 7 tip; məcburi; sıra; arxiv; siyahı filtri |
+| Şəxs ↔ şirkət (`Contact.companyId`) | ✅ | Şirkət kartında şəxslər və onların satışları |
+| Satış prosesləri və mərhələlər | ✅ | `/settings/crm`; satışı olan mərhələ silinmir və növü dəyişmir |
+| Çoxvalyutalı satışlar (`Deal.baseAmount`, `Tenant.fxRates`) | ✅ | Hesabatlar şirkət valyutasında; bağlanmış satışlar bağlanma məzənnəsində qalır |
+| Yeni icazə `crm.configure` | ✅ | Sahib və admin |
+| Düzəliş: yeni satışlar şirkət valyutası əvəzinə həmişə AZN ilə yaranırdı | ✅ | Backfill köhnə satışları şirkət valyutasına keçirir |
+
+Deploy: `npm run db:indexes` (indekslər + backfill: `baseAmount`, `companyId`, `fxRates`) kod yayımlanmazdan **əvvəl** işə salınır.
+
+### v2 Mərhələ C — Import və export ✅ (2026-10-30)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| CSV/XLSX oxuma və yazma (`src/server/common/tabular.ts`) | ✅ | Asılılıqsız; CSV ayırıcısı (`,` `;` tab) və kodlaşdırma (UTF-8, 1251, 1254) avtomatik; XLSX-in ilk vərəqi, tarix formatları |
+| Import (`/crm/import`, `ImportService`) | ✅ | Şəxs, şirkət, satış. Sütunlar AZ/EN/RU adlarından tanınır; önizləmə; dublikat: ötür / yenilə / yenə yarat; şirkətlər avtomatik yaradılıb bağlanır; hamısı bir tranzaksiyada |
+| Import tarixçəsi (`ImportJob`) | ✅ | Xülasə, xətalar və import olunmayan sətirlər (1000-ə qədər) yüklənə bilir; yaradılan id-lər saxlanılır |
+| Export (`ExportService`) | ✅ | Müştərilər (siyahı filtrləri ilə) və satış prosesi, CSV və Excel; sütun adları importla uyğundur; hər export audit jurnalına yazılır |
+| Yeni icazələr `data.import`, `contacts.export` | ✅ | Sahib və admin; `deals.export` satış export-una da aiddir |
+
+Hədlər: fayl 5 MB, 5000 sətir, 60 sütun; export 50 000 sətir. Import avtomatlaşdırmaları işə salmır və hər kart üçün tarixçə qeydi yazmır.
+
+### v2 Mərhələ D — Rollar v2 və əl ilə abunəlik ✅ (2026-10-30)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Şirkətin öz rolları (`Role`, `/settings/roles`, `/v1/roles`) | ✅ | Ad + icazə dəsti; hazır rollar dəyişmir, köçürülə bilir. Rolun icazələri hazır rolun icazələrini əvəz edir; `Membership.roleId`, `role` = EMPLOYEE (rola bağlı qaydalar üçün) |
+| Entity üzrə icazələr | ✅ | `contacts.create/edit`, `deals.create/edit`, `tasks.create` (bütün hazır rollarda var — davranış dəyişmir); UI icazəsiz düymələri gizlədir |
+| Şöbə scope-u icazə ilə | ✅ | `records.view_department` (əvvəl `role === MANAGER` idi) — öz rolu da daşıya bilər |
+| Eskalasiyaya qarşı | ✅ | Heç kim özündə olmayan icazəni rola qoya və ya rolu təyin edə bilməz; `billing.manage` heç bir rola daxil ola bilməz; istifadədə olan rol silinmir |
+| `BILLING_PROVIDER=manual` (default) | ✅ | Şirkətdə checkout/əlavə/downgrade yoxdur (`BILLING_MANUAL`); dövr bitəndə yenilənmə fakturası açılır, güzəşt, sonra dayandırma. `demo` saxlanılıb |
+| Super Admin: əl ilə abunəlik | ✅ | Paket, dövr, "bu tarixədək" (şirkət saat qurşağında günün sonu), alınan məbləğ (0 = hədiyyə, MRR-ə düşmür), sənəd №; açıq fakturalar bağlanır; audit + tarixçə |
+| Paket yaratma, kontakt/avtomatlaşdırma limitləri | ✅ | `Plan.contactLimit/automationLimit` (null = limitsiz); gizli paketlər hədiyyə/sınaq üçün |
+| Şirkətə fərdi limitlər və müvəqqəti funksiyalar | ✅ | `Subscription.limitOverrides`, `featureGrants` (tarixə qədər); `PLAN_LIMIT` yaratma, import və inbox-dan kontakt yaradanda yoxlanılır |
+
+Maliyyə icazəsi (təklif/faktura) E mərhələsində, həmin modullarla gəlir. Yeni sahələr `npm run db:indexes` backfill-i ilə doldurulur.
+
 ### Növbəti
-Production-a çıxış: real ödəniş provayderi (Payriff / Epoint — seçim və müqavilə), SMTP provayderi, `ANTHROPIC_API_KEY`, domen (`axis.az`, `admin.axis.az`), monitorinq. Sonra: şirkət işçiləri üçün 2FA, mobil tətbiq.
+v2 Mərhələ E: məhsul kataloqu → təklif → faktura (PDF, e-poçt, portal linki, ödəniş qeydi), maliyyə icazəsi.

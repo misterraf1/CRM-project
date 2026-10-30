@@ -1,11 +1,12 @@
 "use client";
 
-import { LOST_REASONS, type DealDto, type PipelineDto, type StageDto } from "@/shared";
+import { LOST_REASONS, type DealDto, type FieldDefinitionDto, type PipelineDto, type StageDto } from "@/shared";
 import clsx from "clsx";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type DragEvent, type FormEvent } from "react";
+import { CustomFieldInputs, readCustomFields } from "@/components/crm/CustomFieldInputs";
 import { Avatar } from "@/components/ui/Avatar";
 import { api } from "@/lib/api/client";
 import { formatMoney, parseMoneyInput } from "@/lib/format";
@@ -29,7 +30,19 @@ interface PendingMove {
   position?: number;
 }
 
-export function Board({ pipeline, deals: initial }: { pipeline: PipelineDto; deals: DealDto[] }) {
+interface BoardProps {
+  pipeline: PipelineDto;
+  deals: DealDto[];
+  /** The company currency — column totals add up company-currency amounts */
+  currency: string;
+  /** Required deal fields, asked for in the quick-add form */
+  requiredFields: FieldDefinitionDto[];
+  /** The member's role allows adding deals / moving them between stages */
+  canCreate: boolean;
+  canMove: boolean;
+}
+
+export function Board({ pipeline, deals: initial, currency, requiredFields, canCreate, canMove }: BoardProps) {
   const { t, locale } = useI18n();
   const d = t.deals;
   const router = useRouter();
@@ -50,7 +63,7 @@ export function Board({ pipeline, deals: initial }: { pipeline: PipelineDto; dea
     () =>
       pipeline.stages.map((stage) => {
         const items = deals.filter((x) => x.stageId === stage.id).sort((a, b) => a.position - b.position);
-        return { stage, items, total: items.reduce((a, x) => a + x.amount, 0) };
+        return { stage, items, total: items.reduce((a, x) => a + x.baseAmount, 0) };
       }),
     [deals, pipeline.stages],
   );
@@ -91,11 +104,14 @@ export function Board({ pipeline, deals: initial }: { pipeline: PipelineDto; dea
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const amount = parseMoneyInput(String(f.get("amount") || "0"));
-    if (amount === null) return setError(t.errors.VALIDATION_FAILED);
+    const custom = readCustomFields(f, requiredFields);
+    if (amount === null || "invalid" in custom) return setError(t.errors.VALIDATION_FAILED);
     const form = e.currentTarget;
     startTransition(async () => {
-      const res = await api<DealDto>("/deals", "POST", { title: String(f.get("title")), amount, pipelineId: pipeline.id });
+      const res = await api<DealDto>("/deals", "POST", { title: String(f.get("title")), amount, pipelineId: pipeline.id, customFields: custom.values });
       if (!res.ok) return setError(errorMessage(t, res.code));
+      // Shown at once; the refresh (forecast, totals) may lag behind a fresh navigation
+      setDeals((all) => [...all, res.data]);
       form.reset();
       setCreating(false);
       router.refresh();
@@ -105,11 +121,15 @@ export function Board({ pipeline, deals: initial }: { pipeline: PipelineDto; dea
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => setCreating((v) => !v)} className="btn-primary h-8 text-xs">
-          <Plus className="h-4 w-4" aria-hidden />
-          {d.new}
-        </button>
-        <p className="text-xs text-fg-subtle">{d.closedHint}</p>
+        {canCreate && (
+          <button type="button" onClick={() => setCreating((v) => !v)} className="btn-primary h-8 text-xs">
+            <Plus className="h-4 w-4" aria-hidden />
+            {d.new}
+          </button>
+        )}
+        <p className="text-xs text-fg-subtle">
+          {d.closedHint} {d.totalsHint}.
+        </p>
       </div>
       {creating && (
         <form onSubmit={create} className="card grid gap-2 p-3 sm:grid-cols-[1fr_160px_auto_auto]">
@@ -121,6 +141,11 @@ export function Board({ pipeline, deals: initial }: { pipeline: PipelineDto; dea
           <button type="button" onClick={() => setCreating(false)} className="btn-ghost">
             {d.cancel}
           </button>
+          {requiredFields.length > 0 && (
+            <div className="grid gap-2 sm:col-span-4 sm:grid-cols-2">
+              <CustomFieldInputs fields={requiredFields} />
+            </div>
+          )}
         </form>
       )}
       {error && (
@@ -164,7 +189,7 @@ export function Board({ pipeline, deals: initial }: { pipeline: PipelineDto; dea
                   {stage.kind === "open" && <span className="text-[11px] text-fg-subtle">{stage.probability}%</span>}
                 </div>
                 <p className="tabular mt-0.5 text-xs text-fg-muted">
-                  {interpolate(d.count, { n: items.length })} · {formatMoney(total, locale)}
+                  {interpolate(d.count, { n: items.length })} · {formatMoney(total, locale, currency)}
                 </p>
               </header>
               <ol className="flex min-h-24 flex-1 flex-col gap-2 p-2">
@@ -172,7 +197,7 @@ export function Board({ pipeline, deals: initial }: { pipeline: PipelineDto; dea
                 {items.map((deal) => (
                   <li
                     key={deal.id}
-                    draggable
+                    draggable={canMove}
                     onDragStart={(e) => {
                       dragged.current = deal.id;
                       e.dataTransfer.setData("text/plain", deal.id);

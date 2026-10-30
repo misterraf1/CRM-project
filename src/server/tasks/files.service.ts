@@ -3,7 +3,7 @@ import { authedContext } from "../common/context";
 import { AppError, forbidden, notFound } from "../common/errors";
 import { newId } from "../common/ids";
 import { memberRefs } from "../crm/scope";
-import { storageUsed, subscriptionOf } from "../billing/entitlements.service";
+import { limitsOf, storageUsed, subscriptionOf } from "../billing/entitlements.service";
 import type { Database } from "../db/database";
 import { and, contains } from "../db/query";
 import type { Filter } from "../db/repo";
@@ -46,9 +46,9 @@ export class FilesService {
     const key = `tenants/${ctx.tenantId}/${id}`;
 
     const record = await this.db.scoped(async (tx) => {
-      // Storage quota = plan + purchased add-on
+      // Storage quota = plan (or the company override) + purchased add-on
       const [sub, usedBytes] = await Promise.all([subscriptionOf(tx, ctx.tenantId), storageUsed(tx, ctx.tenantId)]);
-      const limit = (sub.plan.storageMb + sub.extraStorageMb) * 1024 * 1024;
+      const limit = limitsOf(sub).storageMb * 1024 * 1024;
       if (usedBytes + file.size > limit) {
         throw new AppError("STORAGE_LIMIT", "Storage limit reached", { usedMb: Math.ceil(usedBytes / 1048576), limitMb: Math.floor(limit / 1048576) });
       }
@@ -100,7 +100,7 @@ export class FilesService {
       }
       return f;
     });
-    return { file, stream: this.storage.read(file.key) };
+    return { file, stream: await this.storage.read(file.key) };
   }
 
   async remove(id: string) {
@@ -190,7 +190,7 @@ export class FilesService {
       return {
         items,
         total,
-        storage: { usedMb: Math.ceil(used / 1048576), limitMb: sub.plan.storageMb + sub.extraStorageMb },
+        storage: { usedMb: Math.ceil(used / 1048576), limitMb: limitsOf(sub).storageMb },
       };
     });
   }

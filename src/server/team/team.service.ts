@@ -68,7 +68,7 @@ export class TeamService {
       countBy(tx.task, "assigneeId", { ...base, ...OPEN_TASK, assigneeId: { $in: ids } }),
       countBy(tx.task, "assigneeId", { ...base, ...OPEN_TASK, assigneeId: { $in: ids }, dueAt: { $lt: now, $ne: null } }),
       countBy(tx.task, "assigneeId", { ...base, status: "DONE", assigneeId: { $in: ids }, completedAt: { $gte: start } }),
-      countBy(tx.deal, "ownerId", { tenantId: ctx.tenantId, ownerId: { $in: ids }, stageId: { $in: wonStages }, closedAt: { $gte: start } }, "amount"),
+      countBy(tx.deal, "ownerId", { tenantId: ctx.tenantId, ownerId: { $in: ids }, stageId: { $in: wonStages }, closedAt: { $gte: start } }, "baseAmount"),
       countBy(tx.deal, "ownerId", { tenantId: ctx.tenantId, ownerId: { $in: ids }, stageId: { $in: openStages } }),
     ]);
     const count = (rows: Map<string, { count: number }>, id: string) => rows.get(id)?.count ?? 0;

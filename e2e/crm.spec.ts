@@ -33,7 +33,7 @@ test("signup → contact → note → deal → kanban → won makes a customer",
   // Deal from the contact card
   await page.getByRole("button", { name: "Satış əlavə et" }).click();
   await page.getByLabel("Satışın adı").fill("CRM lisenziyası");
-  await page.getByLabel("Məbləğ, ₼").fill("4 800");
+  await page.getByLabel("Məbləğ", { exact: true }).fill("4 800");
   await page.getByRole("button", { name: "Yarat" }).click();
   await expect(page.getByRole("link", { name: /CRM lisenziyası/ })).toBeVisible();
 
@@ -66,7 +66,7 @@ test("dragging to lost asks for a reason; cancelling keeps the deal open", async
   await page.goto("/deals");
   await page.getByRole("button", { name: "Yeni satış" }).click();
   await page.getByLabel("Satışın adı").fill("Bahalı layihə");
-  await page.getByLabel("Məbləğ, ₼").fill("1000");
+  await page.getByLabel("Məbləğ", { exact: true }).fill("1000");
   await page.getByRole("button", { name: "Yarat" }).click();
   const card = dealCard(page, "Yeni", "Bahalı layihə");
   await expect(card).toBeVisible();

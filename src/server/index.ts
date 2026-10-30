@@ -8,8 +8,11 @@ import { chatRoutes } from "./chat/chat.routes";
 import { createServices, jobsOf, type Services } from "./container";
 import { contactsRoutes } from "./crm/contacts.routes";
 import { dealsRoutes } from "./crm/deals.routes";
+import { crmSettingsRoutes } from "./crm/settings.routes";
+import { dataRoutes } from "./crm/data.routes";
 import { dashboardRoutes } from "./dashboard/dashboard.routes";
 import { departmentsRoutes } from "./departments/departments.routes";
+import { rolesRoutes } from "./roles/roles.routes";
 import { healthRoutes } from "./health.routes";
 import { ApiApp, type ClientInfo } from "./http/app";
 import { Router } from "./http/router";
@@ -42,9 +45,12 @@ export function createApi(): ApiServer {
     authRoutes,
     membersRoutes,
     departmentsRoutes,
+    rolesRoutes,
     auditRoutes,
     contactsRoutes,
     dealsRoutes,
+    crmSettingsRoutes,
+    dataRoutes,
     dashboardRoutes,
     tasksRoutes,
     notificationsRoutes,
@@ -61,7 +67,7 @@ export function createApi(): ApiServer {
   ]) {
     register(router, services);
   }
-  const app = new ApiApp(router, new Throttler(services.jwt), services.authGuard, services.adminGuard);
+  const app = new ApiApp(router, new Throttler(services.jwt), services.authGuard, services.adminGuard, services.errors);
   const jobs = jobsOf(services);
   for (const job of jobs) job.start();
 
@@ -77,6 +83,7 @@ export function createApi(): ApiServer {
     },
     async close() {
       for (const job of jobs) job.stop();
+      await services.errors.flush();
       await services.db.close();
     },
   };

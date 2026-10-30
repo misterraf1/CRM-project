@@ -7,16 +7,16 @@ export function contactsRoutes(router: Router, s: Services) {
   router.group("/v1/contacts", {}, (r) => {
     r.get("", { query: contactListQuerySchema }, ({ query }) => s.contacts.list(query));
 
-    r.post("", { body: contactCreateSchema }, ({ body }) => s.contacts.create(body));
+    r.post("", { permission: "contacts.create", body: contactCreateSchema }, ({ body }) => s.contacts.create(body));
 
     r.get(":id", ({ params }) => s.contacts.get(params.id!));
 
-    r.patch(":id", { body: contactUpdateSchema }, ({ params, body }) => s.contacts.update(params.id!, body));
+    r.patch(":id", { permission: "contacts.edit", body: contactUpdateSchema }, ({ params, body }) => s.contacts.update(params.id!, body));
 
     r.delete(":id", { permission: "contacts.delete", status: 204 }, ({ params }) => s.contacts.remove(params.id!));
 
     r.get(":id/activities", ({ params }) => s.contacts.activities(params.id!));
 
-    r.post(":id/notes", { body: noteSchema }, ({ params, body }) => s.contacts.addNote(params.id!, body.body));
+    r.post(":id/notes", { permission: "contacts.edit", body: noteSchema }, ({ params, body }) => s.contacts.addNote(params.id!, body.body));
   });
 }

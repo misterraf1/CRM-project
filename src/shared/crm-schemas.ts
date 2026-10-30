@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CURRENCIES, customFieldValuesSchema } from "./crm-settings";
 
 export const LIFECYCLE_STAGES = ["LEAD", "QUALIFIED", "CUSTOMER", "CHURNED"] as const;
 export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
@@ -39,10 +40,13 @@ export const contactCreateSchema = z.object({
   email,
   phone,
   companyName: optionalText(150),
+  /** The company contact a person works at (sets companyName from it) */
+  companyId: z.string().min(1).max(64).nullish(),
   stage: z.enum(LIFECYCLE_STAGES).default("LEAD"),
   source: z.enum(CONTACT_SOURCES).default("manual"),
   ownerId: z.string().min(1).max(64).nullish(),
   tags: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
+  customFields: customFieldValuesSchema.optional(),
 });
 export type ContactCreateInput = z.infer<typeof contactCreateSchema>;
 
@@ -55,6 +59,14 @@ export const contactListQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   stage: z.enum(LIFECYCLE_STAGES).optional(),
   ownerId: z.string().min(1).max(64).optional(),
+  type: z.enum(["person", "company"]).optional(),
+  source: z.enum(CONTACT_SOURCES).optional(),
+  tag: z.string().trim().min(1).max(40).optional(),
+  /** People of one company */
+  companyId: z.string().min(1).max(64).optional(),
+  /** Custom field filter: field id + value (text: contains; select/multiselect: has option; checkbox: "true"/"false") */
+  field: z.string().min(1).max(64).optional(),
+  value: z.string().trim().min(1).max(200).optional(),
   cursor: z.string().min(1).max(64).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
@@ -70,6 +82,9 @@ export const dealCreateSchema = z.object({
   contactId: z.string().min(1).max(64).nullish(),
   ownerId: z.string().min(1).max(64).nullish(),
   expectedClose: z.coerce.date().nullish(),
+  /** Defaults to the company currency */
+  currency: z.enum(CURRENCIES).optional(),
+  customFields: customFieldValuesSchema.optional(),
 });
 export type DealCreateInput = z.infer<typeof dealCreateSchema>;
 
@@ -80,6 +95,8 @@ export const dealUpdateSchema = z
     contactId: z.string().min(1).max(64).nullable(),
     ownerId: z.string().min(1).max(64).nullable(),
     expectedClose: z.coerce.date().nullable(),
+    currency: z.enum(CURRENCIES),
+    customFields: customFieldValuesSchema,
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update" });

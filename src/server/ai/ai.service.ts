@@ -4,7 +4,7 @@ import type { AiTextDto } from "@/shared";
 import { config } from "../config";
 import { authedContext } from "../common/context";
 import { AppError } from "../common/errors";
-import { subscriptionOf } from "../billing/entitlements.service";
+import { limitsOf, subscriptionOf } from "../billing/entitlements.service";
 import type { Database, Tx } from "../db/database";
 
 const METRIC = "ai_credits";
@@ -140,7 +140,7 @@ const monthStart = (d = new Date()) => new Date(Date.UTC(d.getUTCFullYear(), d.g
 
 /**
  * Metered access to the assistant: each request takes one credit from the plan's
- * monthly allowance (Plan.aiCredits); a failed request gives it back.
+ * monthly allowance (Plan.aiCredits or the company override); a failed request gives it back.
  */
 export class AiService {
   private readonly logger = new Logger("AI");
@@ -165,7 +165,7 @@ export class AiService {
       subscriptionOf(tx, tenantId).catch(() => null),
       tx.usageCounter.findOne({ tenantId, metric: METRIC, period: monthStart() }),
     ]);
-    return { used: counter?.value ?? 0, limit: sub?.plan.aiCredits ?? 0 };
+    return { used: counter?.value ?? 0, limit: sub ? limitsOf(sub).aiCredits : 0 };
   }
 
   /** Takes a credit (atomically, so parallel requests can't overspend), runs `fn`, refunds on failure. */

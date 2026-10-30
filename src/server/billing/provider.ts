@@ -1,5 +1,6 @@
 import type { Invoice, Subscription } from "../db/models";
 import { config } from "../config";
+import { AppError } from "../common/errors";
 import { randomToken } from "../common/ids";
 
 export interface ChargeResult {
@@ -14,7 +15,9 @@ export interface ChargeResult {
  * charging the saved card for renewals. Card data never touches our servers.
  */
 export interface PaymentProvider {
-  readonly name: "demo";
+  readonly name: "demo" | "manual";
+  /** Whether companies pay by themselves (checkout, add-ons, plan changes) */
+  readonly selfService: boolean;
   checkoutUrl(invoice: Invoice): string;
   chargeSaved(subscription: Subscription, invoice: Invoice): Promise<ChargeResult>;
 }
@@ -26,6 +29,7 @@ export interface PaymentProvider {
  */
 export class DemoPaymentProvider implements PaymentProvider {
   readonly name = "demo" as const;
+  readonly selfService = true;
 
   checkoutUrl(invoice: Invoice) {
     return `${config().WEB_ORIGIN}/billing/checkout/${invoice.id}`;
@@ -36,4 +40,25 @@ export class DemoPaymentProvider implements PaymentProvider {
     if (subscription.demoNextChargeFails) return { ok: false, providerRef: `demo_${randomToken(8)}`, failureCode: "card_declined" };
     return { ok: true, providerRef: `demo_${randomToken(8)}` };
   }
+}
+
+/**
+ * No online payments: platform staff record payments (bank transfer, cash…) and set
+ * the period from the console. Nothing is ever charged automatically.
+ */
+export class ManualPaymentProvider implements PaymentProvider {
+  readonly name = "manual" as const;
+  readonly selfService = false;
+
+  checkoutUrl(): string {
+    throw new AppError("BILLING_MANUAL", "Payments are recorded by the platform");
+  }
+
+  async chargeSaved(): Promise<ChargeResult> {
+    return { ok: false, providerRef: "", failureCode: "manual" };
+  }
+}
+
+export function createPaymentProvider(): PaymentProvider {
+  return config().BILLING_PROVIDER === "demo" ? new DemoPaymentProvider() : new ManualPaymentProvider();
 }

@@ -2,6 +2,7 @@ import type { AutomationAction, AutomationConditions, AutomationTrigger } from "
 import type { AutomationEvent, AutomationRule } from "../db/models";
 import { EntitlementsService, subscriptionOf } from "../billing/entitlements.service";
 import { config } from "../config";
+import { afterResponse } from "../common/after-response";
 import { JobsMonitor } from "../common/jobs-monitor";
 import { InboxEvents } from "../inbox/events";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -44,7 +45,6 @@ interface Subject {
  */
 export class AutomationRunner {
   private sweep?: NodeJS.Timeout;
-  private soonTimer?: NodeJS.Timeout;
   private draining?: Promise<number>;
 
   constructor(
@@ -63,7 +63,6 @@ export class AutomationRunner {
 
   stop() {
     clearInterval(this.sweep);
-    clearTimeout(this.soonTimer);
   }
 
   /** Records an event if the tenant has an enabled rule for it. Call inside the change's transaction. */
@@ -73,14 +72,14 @@ export class AutomationRunner {
     this.soon();
   }
 
-  /** Runs shortly after the surrounding transaction commits (the sweep catches anything missed). */
+  /** Runs once the surrounding request has committed (the sweep / cron catches anything missed). */
   private soon() {
-    if (!config().JOBS_ENABLED || this.soonTimer) return;
-    this.soonTimer = setTimeout(() => {
-      this.soonTimer = undefined;
-      void this.monitor.track("automations", () => this.drain());
-    }, 250);
-    this.soonTimer.unref();
+    if (!config().JOBS_ENABLED) return;
+    // Wait out a pass already in flight: it may have looked before this event committed
+    afterResponse(async () => {
+      await this.draining;
+      await this.monitor.track("automations", () => this.drain());
+    });
   }
 
   /** Processes pending events; returns how many were handled. Concurrent calls share one pass. */
@@ -143,7 +142,8 @@ export class AutomationRunner {
         title: deal.title,
         links: { dealId: deal.id, ...(deal.contactId ? { contactId: deal.contactId } : {}) },
         stageId: deal.stageId,
-        amount: deal.amount,
+        // Conditions compare in the company currency
+        amount: deal.baseAmount ?? deal.amount,
       };
     }
     if (trigger === "contact.created") {

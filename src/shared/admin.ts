@@ -114,7 +114,17 @@ export interface AdminTenantDetail extends AdminTenantRow {
     extraStorageGb: number;
     paymentMethod: { brand: string; last4: string } | null;
   };
-  usage: { contacts: number; deals: number; tasks: number; conversations: number; storageMb: { used: number; limit: number } };
+  usage: { contacts: number; deals: number; tasks: number; conversations: number; automations: number; storageMb: { used: number; limit: number } };
+  /** Limits in effect (plan, company override, add-ons); null = unlimited */
+  limits: { seats: number; storageMb: number; aiCredits: number; contacts: number | null; automations: number | null };
+  /** What the platform set for this company in place of the plan's values */
+  overrides: { seatLimit?: number; storageMb?: number; aiCredits?: number; contactLimit?: number | null; automationLimit?: number | null };
+  featureGrants: { feature: string; until: string | null; active: boolean }[];
+  /** Features in effect now */
+  features: string[];
+  complimentary: boolean;
+  /** Subscription changes: by the platform and by the company */
+  history: { id: string; action: string; actor: string | null; diff: unknown; createdAt: string }[];
   members: { id: string; fullName: string; email: string; role: string; status: string; lastLoginAt: string | null }[];
   invoices: InvoiceDto[];
   activity: { id: string; action: string; actor: string | null; createdAt: string }[];
@@ -129,6 +139,8 @@ export const adminTenantQuerySchema = z.object({
 export const extendTrialSchema = z.object({ days: z.number().int().min(1).max(60) });
 export const suspendSchema = z.object({ reason: z.string().trim().min(3).max(500) });
 
+const limit = z.number().int().min(0).max(10_000_000);
+
 export const planUpdateSchema = z
   .object({
     name: z.string().trim().min(2).max(40),
@@ -140,10 +152,55 @@ export const planUpdateSchema = z
     extraStorageGbPrice: z.number().int().min(0).max(1_000_000),
     aiCredits: z.number().int().min(0).max(1_000_000),
     features: z.array(z.enum(ALL_FEATURES as [string, ...string[]])).max(50),
+    /** null = unlimited */
+    contactLimit: limit.nullable(),
+    automationLimit: limit.nullable(),
     isPublic: z.boolean(),
+    sortOrder: z.number().int().min(0).max(1000),
   })
   .partial();
 export type PlanUpdateInput = z.infer<typeof planUpdateSchema>;
+
+/** New plan: a code (permanent, in URLs and invoices) plus everything editable. */
+export const planCreateSchema = planUpdateSchema.required().extend({
+  code: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z0-9][a-z0-9_-]{1,19}$/, "2–20 letters, digits, - or _"),
+});
+export type PlanCreateInput = z.infer<typeof planCreateSchema>;
+
+/**
+ * Manual subscription (no online payment): the platform sets plan and period after
+ * the company paid by transfer — or gives the period for free (amount 0).
+ */
+export const subscriptionSetSchema = z.object({
+  planCode: z.string().trim().min(1).max(20),
+  interval: z.enum(["MONTH", "YEAR"]),
+  /** Last day of the paid period (inclusive), YYYY-MM-DD */
+  periodEnd: z.string().date(),
+  /** Received amount in minor units; 0 = gift */
+  amount: z.number().int().min(0).max(100_000_000),
+  /** Bank transfer number, receipt… */
+  reference: z.string().trim().max(120).optional(),
+  note: z.string().trim().max(500).optional(),
+});
+export type SubscriptionSetInput = z.infer<typeof subscriptionSetSchema>;
+
+/** Per-company limits instead of the plan's (null key = back to the plan) and extra features. */
+export const tenantLimitsSchema = z.object({
+  seatLimit: z.number().int().min(1).max(10_000).nullable(),
+  storageMb: z.number().int().min(100).max(10_000_000).nullable(),
+  aiCredits: limit.nullable(),
+  /** "plan" = the plan's value, null = unlimited */
+  contactLimit: z.union([limit, z.literal("plan")]).nullable(),
+  automationLimit: z.union([limit, z.literal("plan")]).nullable(),
+  featureGrants: z
+    .array(z.object({ feature: z.enum(ALL_FEATURES as [string, ...string[]]), until: z.string().date().nullable() }))
+    .max(ALL_FEATURES.length),
+});
+export type TenantLimitsInput = z.infer<typeof tenantLimitsSchema>;
 
 export interface AdminPlanDto {
   code: string;
@@ -157,7 +214,10 @@ export interface AdminPlanDto {
   extraStorageGbPrice: number;
   aiCredits: number;
   features: string[];
+  contactLimit: number | null;
+  automationLimit: number | null;
   isPublic: boolean;
+  sortOrder: number;
   /** Tenants currently on this plan */
   tenants: number;
 }
@@ -224,7 +284,13 @@ export interface SystemHealthDto {
   memoryMb: number;
   node: string;
   jobsEnabled: boolean;
+  /** False on a serverless host without CRON_SECRET: /api/cron rejects every call, so jobs never run */
+  cronConfigured: boolean;
   jobs: JobHealth[];
+  /** persistent=false: local disk on a serverless host — uploads are lost */
+  storage: { driver: string; persistent: boolean };
+  /** Unexpected server errors (API 500s, failed jobs), grouped */
+  errors: { last24h: number; recent: { id: string; source: string; message: string; where: string | null; count: number; lastSeenAt: string }[] };
   webhooks: { received24h: number; failed24h: number; recentErrors: { id: string; provider: string; error: string; receivedAt: string }[] };
   channels: { connected: number; error: number; errors: { id: string; tenant: string; name: string; type: string }[] };
   billingProvider: string;

@@ -12,15 +12,7 @@ import { isDuplicateKey } from "../db/errors";
 import { hashPassword, verifyPassword } from "./password";
 import { slugify } from "./slug";
 import { TokensService } from "./tokens.service";
-
-const DEFAULT_STAGES = [
-  { name: "Yeni", probability: 10, kind: "open" },
-  { name: "Kvalifikasiya", probability: 25, kind: "open" },
-  { name: "Təklif", probability: 50, kind: "open" },
-  { name: "Danışıqlar", probability: 75, kind: "open" },
-  { name: "Qazanıldı", probability: 100, kind: "won" },
-  { name: "İtirildi", probability: 0, kind: "lost" },
-];
+import { insertPipeline } from "../crm/settings.service";
 
 export class AuthService {
   constructor(
@@ -52,8 +44,7 @@ export class AuthService {
           await tx.tenant.insertOne({ id: tenantId, slug, name: input.companyName, status: "TRIALING" });
           await tx.subscription.insertOne({ tenantId, planId: plan.id, status: "TRIALING", trialEndsAt: trialEnd, currentPeriodStart: now, currentPeriodEnd: trialEnd });
           await tx.membership.insertOne({ tenantId, userId, role: "OWNER", status: "ACTIVE", joinedAt: now });
-          const pipeline = await tx.pipeline.insertOne({ tenantId, name: "Satış", isDefault: true });
-          await tx.pipelineStage.insertMany(DEFAULT_STAGES.map((s, order) => ({ ...s, order, tenantId, pipelineId: pipeline.id })));
+          await insertPipeline(tx, tenantId, "Satış", true);
           await this.audit.log(tx, { action: "tenant.created", entityType: "tenant", entityId: tenantId, tenantId, actorId: userId });
           return this.tokens.issue(tx, userId, tenantId);
         },
@@ -142,12 +133,19 @@ export class AuthService {
           .then(async (rows) => [rows, new Map((await tx.tenant.find({ id: { $in: rows.map((m) => m.tenantId) } })).map((t) => [t.id, t]))] as const),
         this.ai.usage(tx, ctx.tenantId),
       ]);
+      const role = membership.roleId ? await tx.role.findOne({ id: membership.roleId, tenantId: ctx.tenantId }) : null;
       const memberships = rows.filter((m) => tenants.has(m.tenantId)).map((m) => ({ ...m, tenant: tenants.get(m.tenantId)! }));
       return {
         user: { id: user.id, fullName: user.fullName, email: user.email, locale: user.locale },
         tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, currency: tenant.currency, timezone: tenant.timezone },
-        membership: { id: membership.id, role: membership.role, title: membership.title, departmentId: membership.departmentId },
-        permissions: resolvePermissions(membership.role, membership.permissions),
+        membership: {
+          id: membership.id,
+          role: membership.role,
+          customRole: role ? { id: role.id, name: role.name } : null,
+          title: membership.title,
+          departmentId: membership.departmentId,
+        },
+        permissions: resolvePermissions(membership.role, membership.permissions, role?.permissions),
         subscription: {
           plan: subscription.plan.code,
           status: subscription.status,

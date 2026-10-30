@@ -2,7 +2,7 @@
 
 import type { BillingInterval, BillingOverviewDto, CheckoutResponse, PlanDto } from "@/shared";
 import clsx from "clsx";
-import { Check, CreditCard, FlaskConical, Undo2 } from "lucide-react";
+import { Check, CreditCard, FlaskConical, Info, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
@@ -17,17 +17,18 @@ import { interpolate } from "@/lib/i18n/locales";
 
 const price = (p: PlanDto, interval: BillingInterval) => (interval === "YEAR" ? p.priceYearly : p.priceMonthly);
 
-function Meter({ label, used, limit, unit }: { label: string; used: number; limit: number; unit: string }) {
+/** `limit` null = unlimited: the bar stays empty and says so. */
+function Meter({ label, used, limit, unit, unlimited }: { label: string; used: number; limit: number | null; unit: string; unlimited?: string }) {
   const pct = limit ? Math.min(100, (used / limit) * 100) : 0;
   return (
     <div>
       <div className="flex justify-between text-xs">
         <span className="text-fg-muted">{label}</span>
         <span className="tabular font-medium">
-          {used} / {limit} {unit}
+          {used} / {limit ?? unlimited} {limit !== null && unit}
         </span>
       </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" role="meter" aria-label={label} aria-valuenow={used} aria-valuemax={limit}>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" role="meter" aria-label={label} aria-valuenow={used} aria-valuemin={0} aria-valuemax={limit ?? undefined}>
         <div className={clsx("h-full rounded-full", pct >= 90 ? "bg-danger" : pct >= 70 ? "bg-warning" : "bg-accent")} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -68,6 +69,8 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
 
   const active = sub.status === "ACTIVE";
   const currentMonthly = sub.plan.priceMonthly;
+  // The platform manages the subscription: no checkout, no card, plan changes through support
+  const manual = data.provider === "manual";
 
   function planAction(p: PlanDto) {
     const isCurrent = p.code === sub.plan.code && (!active || interval === sub.interval);
@@ -94,6 +97,17 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
           {b.demoBanner}
         </p>
       )}
+      {manual && (
+        <p className="flex items-start gap-2 rounded-lg border border-accent/30 bg-accent-soft/60 px-3 py-2 text-sm">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden />
+          <span>
+            {b.manualBanner}{" "}
+            <Link href="/support" className="font-medium text-accent hover:underline">
+              {b.contactSupport}
+            </Link>
+          </span>
+        </p>
+      )}
       {notice && <p role="status" className="rounded-lg bg-success/10 px-3 py-2 text-sm text-success">{notice}</p>}
       {error && <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
 
@@ -114,12 +128,14 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
             {sub.status === "TRIALING" && sub.trialEndsAt
               ? interpolate(b.trialEnds, { date: date(sub.trialEndsAt) })
               : sub.status === "PAST_DUE" && sub.graceEndsAt
-                ? interpolate(b.graceUntil, { date: date(sub.graceEndsAt) })
+                ? interpolate(manual ? b.manualGrace : b.graceUntil, { date: date(sub.graceEndsAt) })
                 : sub.status === "SUSPENDED" || sub.status === "CANCELED"
-                  ? b.suspendedHint
+                  ? manual
+                    ? b.manualSuspended
+                    : b.suspendedHint
                   : sub.cancelAtPeriodEnd
                     ? interpolate(b.endsOn, { date: date(sub.currentPeriodEnd) })
-                    : interpolate(b.renews, { date: date(sub.currentPeriodEnd) })}
+                    : interpolate(manual ? b.paidUntil : b.renews, { date: date(sub.currentPeriodEnd) })}
           </p>
           {sub.scheduledPlan && (
             <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-fg-muted">
@@ -130,7 +146,7 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
               </button>
             </p>
           )}
-          <div className="mt-4 flex items-center gap-2 text-sm">
+          <div className={manual ? "hidden" : "mt-4 flex items-center gap-2 text-sm"}>
             <CreditCard className="h-4 w-4 text-fg-subtle" aria-hidden />
             <span className="text-fg-muted">{b.paymentMethod}:</span>
             {sub.paymentMethod ? (
@@ -165,12 +181,15 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
           <h2 className="text-sm font-semibold">{b.usage}</h2>
           <Meter label={b.seats} used={data.usage.seats.used} limit={data.usage.seats.limit} unit="" />
           <Meter label={b.storage} used={Math.round(data.usage.storageMb.used / 102.4) / 10} limit={Math.round(data.usage.storageMb.limit / 1024)} unit="GB" />
+          <Meter label={b.contactsUsage} used={data.usage.contacts.used} limit={data.usage.contacts.limit} unit="" unlimited={b.unlimited} />
+          <Meter label={b.automationsUsage} used={data.usage.automations.used} limit={data.usage.automations.limit} unit="" unlimited={b.unlimited} />
         </section>
       </div>
 
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">{b.seePlans}</h2>
+          {manual && <p className="w-full text-xs text-fg-muted sm:order-last">{b.manualPlans}</p>}
           <div role="radiogroup" aria-label={`${b.monthly} / ${b.yearly}`} className="flex rounded-lg bg-muted p-0.5 text-xs font-medium">
             {(["MONTH", "YEAR"] as const).map((i) => (
               <button
@@ -201,6 +220,16 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
                   {interpolate(b.seatsLimit, { n: p.seatLimit })} · {interpolate(b.storageLimit, { n: formatNumber(p.storageMb / 1024, locale) })}
                 </p>
                 {p.aiCredits > 0 && <p className="mt-0.5 text-xs text-fg-subtle">{interpolate(b.aiCredits, { n: formatNumber(p.aiCredits, locale) })}</p>}
+                {(p.contactLimit !== null || p.automationLimit !== null) && (
+                  <p className="mt-0.5 text-xs text-fg-subtle">
+                    {[
+                      p.contactLimit !== null && interpolate(b.contactLimit, { n: formatNumber(p.contactLimit, locale) }),
+                      p.automationLimit !== null && interpolate(b.automationLimit, { n: formatNumber(p.automationLimit, locale) }),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                )}
                 <ul className="mt-3 flex-1 space-y-1.5 text-sm">
                   {p.features.map((f) => (
                     <li key={f} className="flex items-start gap-1.5">
@@ -209,29 +238,32 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
                     </li>
                   ))}
                 </ul>
-                <button
-                  type="button"
-                  disabled={pending || action.disabled}
-                  onClick={() => {
-                    if (action.kind === "downgrade") {
-                      if (window.confirm(interpolate(b.confirmDowngrade, { plan: p.name, date: date(sub.currentPeriodEnd) }))) {
-                        run(() => api("/billing/downgrade", "POST", { planCode: p.code }));
+                {mine && manual && <p className="mt-4 text-center text-xs font-medium text-accent">{b.current}</p>}
+                {!manual && (
+                  <button
+                    type="button"
+                    disabled={pending || action.disabled}
+                    onClick={() => {
+                      if (action.kind === "downgrade") {
+                        if (window.confirm(interpolate(b.confirmDowngrade, { plan: p.name, date: date(sub.currentPeriodEnd) }))) {
+                          run(() => api("/billing/downgrade", "POST", { planCode: p.code }));
+                        }
+                      } else if (action.kind === "checkout") {
+                        run(() => api<CheckoutResponse>("/billing/checkout", "POST", { planCode: p.code, interval }), go);
                       }
-                    } else if (action.kind === "checkout") {
-                      run(() => api<CheckoutResponse>("/billing/checkout", "POST", { planCode: p.code, interval }), go);
-                    }
-                  }}
-                  className={clsx("mt-4", action.kind === "checkout" ? "btn-primary" : "btn-ghost border border-border")}
-                >
-                  {action.label}
-                </button>
+                    }}
+                    className={clsx("mt-4", action.kind === "checkout" ? "btn-primary" : "btn-ghost border border-border")}
+                  >
+                    {action.label}
+                  </button>
+                )}
               </article>
             );
           })}
         </div>
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className={manual ? "hidden" : "grid gap-5 lg:grid-cols-2"}>
         <section className="card p-5">
           <h2 className="text-sm font-semibold">{b.addons}</h2>
           <form onSubmit={addons} className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
@@ -312,7 +344,7 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-5 text-right">
-                      {(inv.status === "OPEN" || inv.status === "FAILED") && (
+                      {!manual && (inv.status === "OPEN" || inv.status === "FAILED") && (
                         <button type="button" onClick={() => run(() => api<CheckoutResponse>(`/billing/invoices/${inv.id}/pay`, "POST"), go)} className="mr-3 text-xs font-medium text-accent hover:underline">
                           {b.payNow}
                         </button>
