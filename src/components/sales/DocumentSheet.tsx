@@ -33,6 +33,11 @@ export function DocumentSheet({ doc, t, locale, nested = false }: { doc: PublicD
       )}
       <header className="flex flex-wrap items-start justify-between gap-6">
         <div className="min-w-0">
+          {c.logo && (
+            // A data: URI chosen by the company (validated PNG/JPEG/WebP); next/image doesn't apply
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={c.logo} alt={c.legalName ?? c.name} className="mb-2 max-h-14 max-w-[12rem] object-contain" />
+          )}
           <p className="text-xl font-semibold">{c.legalName ?? c.name}</p>
           {c.taxId && <p className="text-xs text-fg-muted">{interpolateTax(k.taxId, c.taxId)}</p>}
           {c.address && <p className="text-xs text-fg-muted">{c.address}</p>}

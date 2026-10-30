@@ -1,12 +1,13 @@
 "use client";
 
-import { CONTACT_SOURCES, LIFECYCLE_STAGES, type ContactDto, type ContactListResponse, type FieldDefinitionDto, type MemberDto } from "@/shared";
+import { CONTACT_SOURCES, LIFECYCLE_STAGES, type ContactDto, type ContactListResponse, type DuplicateMatchesDto, type FieldDefinitionDto, type MemberDto } from "@/shared";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { api } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
+import { interpolate } from "@/lib/i18n/locales";
 import { CustomFieldInputs, readCustomFields } from "./CustomFieldInputs";
 
 interface Props {
@@ -36,6 +37,16 @@ export function ContactForm({ contact, members, canAssign, selfMemberId, fields,
     contact ? { id: contact.companyId, name: contact.companyName ?? "" } : { id: defaultCompany?.id ?? null, name: defaultCompany?.name ?? "" },
   );
   const activeFields = type === "company" ? fields.company : fields.contact;
+  const [dupes, setDupes] = useState<DuplicateMatchesDto | null>(null);
+
+  /** Warns (doesn't block) when the email or phone is already on a contact. */
+  async function checkDuplicates(form: HTMLFormElement | null) {
+    if (!form) return;
+    const f = new FormData(form);
+    const qs = new URLSearchParams({ email: String(f.get("email") ?? "").trim(), phone: String(f.get("phone") ?? "").trim(), ...(contact ? { excludeId: contact.id } : {}) });
+    const res = await api<DuplicateMatchesDto>(`/contacts/duplicates?${qs}`);
+    setDupes(res.ok && (res.data.items.length || res.data.hidden) ? res.data : null);
+  }
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -113,12 +124,32 @@ export function ContactForm({ contact, members, canAssign, selfMemberId, fields,
         </label>
         <label className="field-label">
           {c.phone}
-          <input name="phone" type="tel" inputMode="tel" placeholder="+994 50 123 45 67" defaultValue={contact?.phone ?? ""} {...invalid("phone")} />
+          <input name="phone" type="tel" inputMode="tel" placeholder="+994 50 123 45 67" defaultValue={contact?.phone ?? ""} onBlur={(e) => void checkDuplicates(e.currentTarget.form)} {...invalid("phone")} />
         </label>
         <label className="field-label">
           {c.email}
-          <input name="email" type="email" defaultValue={contact?.email ?? ""} {...invalid("email")} />
+          <input name="email" type="email" defaultValue={contact?.email ?? ""} onBlur={(e) => void checkDuplicates(e.currentTarget.form)} {...invalid("email")} />
         </label>
+        {dupes && (
+          <div role="status" className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm sm:col-span-2">
+            {dupes.items.length > 0 && (
+              <>
+                <p className="font-medium">{c.duplicateFound}</p>
+                <ul className="mt-1 space-y-0.5">
+                  {dupes.items.map((d) => (
+                    <li key={d.id} className="flex flex-wrap items-center gap-x-2">
+                      <Link href={`/crm/${d.id}`} className="font-medium text-accent hover:underline">
+                        {d.name}
+                      </Link>
+                      <span className="text-xs text-fg-muted">{d.match === "email" ? d.email : d.phone}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {dupes.hidden > 0 && <p className="text-xs text-fg-muted">{interpolate(c.duplicateHidden, { n: dupes.hidden })}</p>}
+          </div>
+        )}
         {type === "person" && <CompanyPicker value={company} onChange={setCompany} invalid={error.fields.includes("companyId")} selfId={contact?.id} />}
         <label className="field-label">
           {c.colStage}

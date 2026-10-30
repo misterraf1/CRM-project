@@ -4,6 +4,7 @@ import { config } from "../config";
 import { JobsMonitor } from "../common/jobs-monitor";
 import { NotificationsService } from "../notifications/notifications.service";
 import type { Database } from "../db/database";
+import type { SalesDocsService } from "../sales/docs.service";
 
 const EVERY_MS = 5 * 60_000;
 const BATCH = 200;
@@ -22,6 +23,7 @@ export class OverdueJob {
     private readonly monitor: JobsMonitor,
     private readonly notifications: NotificationsService,
     private readonly automations: AutomationRunner,
+    private readonly docs?: SalesDocsService,
   ) {}
 
   start() {
@@ -62,6 +64,7 @@ export class OverdueJob {
         { tenantId },
       );
     }
+    if (this.docs) sent += await this.docs.notifyOverdue();
     if (sent) this.logger.log(`Sent ${sent} overdue notice(s)`);
     return sent;
   }

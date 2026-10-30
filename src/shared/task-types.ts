@@ -83,6 +83,12 @@ export type NotificationType =
   | "billing_period_ended"
   | "quote_accepted"
   | "quote_rejected"
+  | "invoice_overdue"
+  | "discount_approval_requested"
+  | "discount_approved"
+  | "discount_rejected"
+  | "order_step_assigned"
+  | "order_done"
   | "support_reply"
   | "automation";
 

@@ -133,7 +133,7 @@ describe("Custom roles", () => {
     expect(inUse.body.error).toMatchObject({ code: "ROLE_IN_USE", details: { members: 1 } });
 
     await http().patch(`/v1/members/${m.memberId}`).set(owner.auth).send({ roleId: null }).expect(200);
-    expect((await http().get("/v1/me").set(m.auth)).body.permissions).toEqual(["contacts.create", "contacts.edit", "deals.create", "deals.edit", "quotes.manage", "inbox.reply", "tasks.create", "members.view"]);
+    expect((await http().get("/v1/me").set(m.auth)).body.permissions).toEqual(["contacts.create", "contacts.edit", "deals.create", "deals.edit", "quotes.manage", "orders.manage", "inbox.reply", "tasks.create", "members.view"]);
     await http().delete(`/v1/roles/${r.id}`).set(owner.auth).expect(204);
     expect((await http().get("/v1/roles").set(owner.auth)).body).toEqual([]);
   });

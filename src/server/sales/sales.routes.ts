@@ -1,4 +1,19 @@
-import { docInputSchema, docListQuerySchema, docSendSchema, docSettingsSchema, paymentSchema, productSchema, quoteResponseSchema } from "@/shared";
+import {
+  approvalActionSchema,
+  docInputSchema,
+  docListQuerySchema,
+  docSendSchema,
+  docSettingsSchema,
+  logoSchema,
+  orderCreateSchema,
+  orderListQuerySchema,
+  orderStepInputSchema,
+  orderStepUpdateSchema,
+  orderUpdateSchema,
+  paymentSchema,
+  productSchema,
+  quoteResponseSchema,
+} from "@/shared";
 import { z } from "zod";
 import type { Services } from "../container";
 import type { Router } from "../http/router";
@@ -38,6 +53,10 @@ export function salesRoutes(router: Router, s: Services) {
 
     r.post(":id/respond", { status: 200, body: respondBody }, ({ params, body }) => s.docs.respond(params.id!, body.decision));
 
+    r.post(":id/approval", { status: 200, body: approvalActionSchema }, ({ params, body }) => s.docs.approval(params.id!, body.action, body.note ?? null));
+
+    r.post(":id/remind", { status: 200, body: docSendSchema }, ({ params, body }) => s.docs.send(params.id!, { to: body.to, email: true, reminder: true }));
+
     r.post(":id/invoice", ({ params }) => s.docs.toInvoice(params.id!));
 
     r.post(":id/payments", { body: paymentSchema }, ({ params, body }) => s.docs.addPayment(params.id!, body));
@@ -51,6 +70,26 @@ export function salesRoutes(router: Router, s: Services) {
     r.get("", () => s.crmSettings.docSettings());
 
     r.patch("", { permission: "crm.configure", body: docSettingsSchema }, ({ body }) => s.crmSettings.updateDocSettings(body));
+
+    r.post("logo", { permission: "crm.configure", status: 200, body: logoSchema }, ({ body }) => s.crmSettings.updateLogo(body.dataUrl));
+  });
+
+  router.group("/v1/orders", { permission: "orders.manage" }, (r) => {
+    r.get("", { query: orderListQuerySchema }, ({ query }) => s.orders.list(query));
+
+    r.post("", { body: orderCreateSchema }, ({ body }) => s.orders.create(body));
+
+    r.get(":id", ({ params }) => s.orders.get(params.id!));
+
+    r.patch(":id", { body: orderUpdateSchema }, ({ params, body }) => s.orders.update(params.id!, body));
+
+    r.delete(":id", { status: 204 }, ({ params }) => s.orders.remove(params.id!));
+
+    r.post(":id/steps", { body: orderStepInputSchema }, ({ params, body }) => s.orders.addStep(params.id!, body));
+
+    r.patch(":id/steps/:stepId", { body: orderStepUpdateSchema }, ({ params, body }) => s.orders.updateStep(params.id!, params.stepId!, body));
+
+    r.delete(":id/steps/:stepId", { status: 200 }, ({ params }) => s.orders.removeStep(params.id!, params.stepId!));
   });
 
   // The customer's page: the secret in the link is the only credential

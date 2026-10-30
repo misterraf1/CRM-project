@@ -562,5 +562,31 @@ Maliyyə icazəsi (təklif/faktura) E mərhələsində, həmin modullarla gəlir
 
 PDF: server tərəfdə fayl yaradılmır — çapa uyğun səhifə brauzerin "PDF kimi saxla" funksiyası ilə əsl PDF verir (ə/ş/₼ yoxlanılıb). Server PDF (e-poçta qoşma) yeni kitabxana + şrift tələb edir, ayrıca qərar.
 
+### v2 Mərhələ E1 — Satış nəzarəti ✅ (2026-10-30)
+"Online CRM sistemi" konsepsiyasından ilk partiya (müqayisə: `docs/AUDIT-2026-10.md` §4).
+
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| "Diqqət tələb edir" (`/v1/dashboard/attention`) | ✅ | Qaydalar: 2 saat cavabsız müştəri, gecikən faktura, 2 gün ərzində bitən təklif, 2 gündür növbəti addımı olmayan təklif, 7 gündür hərəkətsiz satış. Açıq tapşırıq "növbəti addım" sayılır. Görünmə qaydalarına tabedir |
+| Gözlənilən ödənişlər (dashboard) | ✅ | Açıq fakturaların qalığı və gecikən hissə, şirkət valyutasında; yalnız `finance.view` |
+| Təkrarlanan müştəri xəbərdarlığı | ✅ | E-poçt və ya telefonun son 9 rəqəmi; başqasının müştərisinin adı göstərilmir, yalnız sayı |
+| Gecikən faktura bildirişi | ✅ | Gecikmə job-u fakturanın məsuluna bir dəfə bildiriş göndərir |
+| Lead mənbələri | ✅ | Facebook, Telegram, Reklam |
+| Eyni adla eyni anda qeydiyyat | ✅ düzəliş | Ünvan (slug) yarışını itirən növbəti boş ünvanı alır |
+
+### v2 Mərhələ E2 — Sifarişlər, təsdiq, loqo, paketlər ✅ (2026-10-30)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Sifarişlər (`Order`, `/orders`) | ✅ | Təklifdən və ya əl ilə; nömrə S-2026-0001; icra addımları (məsul, son tarix, kim/nə vaxt bitirdi); status addımlardan: yeni → icrada → tamamlanıb, əl ilə ləğv/yenidən açma; addım təyin olunanda bildiriş, tamamlananda tarixçə |
+| Müştəri sifarişi izləyir | ✅ | Təklif linkində addımların adı və tarixləri (icraçıların adları yox) |
+| Endirim limiti və təsdiq | ✅ | Rekvizitlərdə limit (%); limitdən böyük endirimli təklif `discounts.approve` sahibi (sahib/admin/rəhbər) təsdiqləmədən göndərilmir (`APPROVAL_REQUIRED`); sorğu → bildiriş → təsdiq/rədd; sətirlər dəyişəndə təsdiq sıfırlanır |
+| Loqo | ✅ | PNG/JPEG/WebP ≤200 KB, faylın ilk baytları yoxlanılır (SVG qəbul olunmur); data URI kimi saxlanılır, sənəddə və müştəri linkində |
+| Məhsul paketləri | ✅ | Paket = adi məhsulların siyahısı, öz qiyməti ilə bir sətir; tərkibi sətrin təsvirinə yazılır; iç-içə paket yoxdur |
+| Ödəniş xatırlatması | ✅ | Çıxarılmış fakturada düymə: müştəriyə qalıq məbləğ ilə yeni link göndərilir |
+| "Diqqət tələb edir" | ✅ | + gecikən sifariş (sifariş və ya addım tarixi), + təsdiq gözləyən endirim |
+| Müştəri üçün daxili məlumatın gizliliyi | ✅ | Müştəri səhifəsi `DocCompany` alır — endirim limiti və standart addımlar heç vaxt getmir |
+
+Yol üstündə: qrupdan çıxandan sonra siyahı köhnə qalırdı (client cache) — tam yükləmə ilə düzəldildi.
+
 ### Növbəti
-v2 Mərhələ F: kanallar — Telegram, inbox media, WhatsApp media + şablonlar, operator statusu, SLA, iş saatları.
+v2 Mərhələ F: kanallar — Telegram, inbox media, WhatsApp şablonları və razılıq, operator statusu, iş saatları.

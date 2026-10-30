@@ -21,6 +21,8 @@ export const BACKFILLS = [
   ["Subscription", { limitOverrides: {}, featureGrants: [], complimentary: false }],
   // v2 Stage E — quotes and invoices
   ["Tenant", { docSettings: {} }],
+  ["SalesDoc", { overdueNotifiedAt: null, approval: null }],
+  ["Product", { components: [] }],
 ];
 
 /**

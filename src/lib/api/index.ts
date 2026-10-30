@@ -1,5 +1,6 @@
 import "server-only";
 import type {
+  AttentionItemDto,
   ActivityDto,
   BillingOverviewDto,
   InvoiceDto,
@@ -35,7 +36,7 @@ import type {
   AutomationRunDto,
   FileListResponse,
 } from "@/shared";
-import type { CurrencySettingsDto, DocDto, DocKind, DocSettings, DocSummaryDto, FieldDefinitionDto, FieldEntity, ProductDto, RoleDto } from "@/shared";
+import type { CurrencySettingsDto, OrderDto, OrderSummaryDto, DocDto, DocKind, DocSettings, DocSummaryDto, FieldDefinitionDto, FieldEntity, ProductDto, RoleDto } from "@/shared";
 import { cache } from "react";
 import { apiFetch } from "./server";
 import { PERIODS, type Period, type ShellSummary } from "./types";
@@ -63,12 +64,21 @@ export const getDealDocs = (dealId: string) => apiFetch<DocSummaryDto[]>(`/v1/do
 
 export const getDocSettings = () => apiFetch<DocSettings>("/v1/settings/documents");
 
+export function getOrders(params: { status?: string; dealId?: string } = {}) {
+  const qs = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1]));
+  return apiFetch<OrderSummaryDto[]>(`/v1/orders?${qs}`);
+}
+
+export const getOrder = (id: string) => apiFetch<OrderDto>(`/v1/orders/${encodeURIComponent(id)}`);
+
 export const getShellSummary = cache(async (): Promise<ShellSummary> => {
   const s = await apiFetch<ShellSummaryDto>("/v1/me/summary");
   return { awaiting: s.awaitingConversations, overdue: s.overdueTasks, unreadNotifications: s.unreadNotifications, unreadChat: s.unreadChat };
 });
 
 export const getDashboard = (period: Period) => apiFetch<DashboardCrmDto>(`/v1/dashboard?period=${period}`);
+
+export const getAttention = () => apiFetch<AttentionItemDto[]>("/v1/dashboard/attention");
 
 export function getContacts(params: Record<string, string | undefined>) {
   const qs = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1]));

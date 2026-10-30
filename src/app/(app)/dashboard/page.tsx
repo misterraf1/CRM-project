@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
+import { AttentionList } from "@/components/dashboard/AttentionList";
+import { PaymentsCard } from "@/components/dashboard/PaymentsCard";
 import { AwaitingInbox } from "@/components/dashboard/AwaitingInbox";
 import { KpiGrid } from "@/components/dashboard/KpiGrid";
 import { OverdueTasks } from "@/components/dashboard/OverdueTasks";
@@ -7,7 +9,7 @@ import { PeriodFilter } from "@/components/dashboard/PeriodFilter";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import { TeamPerformance } from "@/components/dashboard/TeamPerformance";
 import { CardHeader } from "@/components/ui/Card";
-import { getDashboard, getSession, parsePeriod } from "@/lib/api";
+import { getAttention, getDashboard, getSession, parsePeriod } from "@/lib/api";
 import { getI18n } from "@/lib/i18n/server";
 import { interpolate } from "@/lib/i18n/locales";
 
@@ -17,7 +19,7 @@ type Props = { searchParams: Promise<{ period?: string | string[] }> };
 
 export default async function DashboardPage({ searchParams }: Props) {
   const period = parsePeriod((await searchParams).period);
-  const [{ t, locale }, session, data] = await Promise.all([getI18n(), getSession(), getDashboard(period)]);
+  const [{ t, locale }, session, data, attention] = await Promise.all([getI18n(), getSession(), getDashboard(period), getAttention()]);
   const now = new Date(data.generatedAt);
   const firstName = session.user.fullName.split(" ")[0] ?? session.user.fullName;
   const r = t.dashboard.revenue;
@@ -43,6 +45,8 @@ export default async function DashboardPage({ searchParams }: Props) {
           <TeamPerformance rows={data.team} currency={data.currency} canViewTeam={session.permissions.includes("members.view")} />
         </div>
         <div className="min-w-0 space-y-5">
+          <AttentionList items={attention} t={t} locale={locale} />
+          {data.payments && <PaymentsCard payments={data.payments} currency={data.currency} t={t} locale={locale} />}
           <AwaitingInbox inbox={data.inbox} now={now} t={t} locale={locale} />
           <OverdueTasks tasks={data.tasks.overdueItems} now={now} t={t} locale={locale} />
           <ActivityFeed items={data.activity} now={now} t={t} locale={locale} />

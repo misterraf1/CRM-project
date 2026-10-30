@@ -184,10 +184,10 @@ describe("Products, quotes and invoices", () => {
     const emp = await addMember(app, owner, "EMPLOYEE");
     const body = { legalName: "Rekvizit MMC", taxId: "1234567891", address: "Bakı, Nizami küç. 1", bankDetails: "Kapital Bank\nAZ00 0000", terms: "Ödəniş 5 iş günü ərzində" };
     await http().patch("/v1/settings/documents").set(emp.auth).send(body).expect(403);
-    expect((await http().patch("/v1/settings/documents").set(owner.auth).send(body).expect(200)).body).toEqual(body);
+    expect((await http().patch("/v1/settings/documents").set(owner.auth).send(body).expect(200)).body).toEqual({ ...body, logo: null, maxDiscountBp: null, orderSteps: [] });
     const c = await contact(owner, { name: "Rekvizit müştərisi" });
     const q = (await createDoc(owner, { kind: "quote", contactId: c.id, currency: "AZN", lines }).expect(201)).body as DocDto;
     const shared = (await http().post(`/v1/docs/${q.id}/send`).set(owner.auth).send({ email: false }).expect(200)).body as DocShareResponse;
-    expect((await http().get(`/v1/public/docs/${tokenOf(shared)}`).expect(200)).body.company).toEqual({ name: "Rekvizit MMC", ...body });
+    expect((await http().get(`/v1/public/docs/${tokenOf(shared)}`).expect(200)).body.company).toEqual({ name: "Rekvizit MMC", ...body, logo: null });
   });
 });

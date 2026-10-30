@@ -9,7 +9,8 @@ export type MailTemplate =
   | { template: "invoice_paid"; vars: { company: string; number: string; amount: string; link: string } }
   | { template: "support_reply"; vars: { subject: string; link: string } }
   | { template: "quote_sent"; vars: { company: string; number: string; amount: string; link: string } }
-  | { template: "invoice_sent"; vars: { company: string; number: string; amount: string; link: string } };
+  | { template: "invoice_sent"; vars: { company: string; number: string; amount: string; link: string } }
+  | { template: "invoice_reminder"; vars: { company: string; number: string; amount: string; link: string } };
 
 type Copy = { subject: string; lines: string[]; action: string };
 
@@ -101,6 +102,23 @@ const COPY: Record<MailTemplate["template"], Record<MailLocale, (v: never) => Co
     ru: (v: { company: string; number: string; amount: string }) => ({
       subject: `${v.company}: счёт ${v.number}`,
       lines: [`${v.company} выставил(а) вам счёт ${v.number} на сумму ${v.amount}.`, "По ссылке его можно посмотреть и сохранить в PDF."],
+      action: "Открыть счёт",
+    }),
+  },
+  invoice_reminder: {
+    az: (v: { company: string; number: string; amount: string }) => ({
+      subject: `Xatırlatma: ${v.number} hesab-fakturası`,
+      lines: [`${v.company} xatırladır: ${v.number} nömrəli hesab-faktura üzrə ${v.amount} ödənilməyib.`, "Ödəniş etmisinizsə, bu məktubu nəzərə almayın. Təşəkkür edirik!"],
+      action: "Fakturaya bax",
+    }),
+    en: (v: { company: string; number: string; amount: string }) => ({
+      subject: `Reminder: invoice ${v.number}`,
+      lines: [`${v.company} reminds you that ${v.amount} is still due on invoice ${v.number}.`, "If you've already paid, please ignore this email. Thank you!"],
+      action: "View the invoice",
+    }),
+    ru: (v: { company: string; number: string; amount: string }) => ({
+      subject: `Напоминание: счёт ${v.number}`,
+      lines: [`${v.company} напоминает: по счёту ${v.number} не оплачено ${v.amount}.`, "Если вы уже оплатили, просто проигнорируйте письмо. Спасибо!"],
       action: "Открыть счёт",
     }),
   },

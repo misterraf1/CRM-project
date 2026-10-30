@@ -87,7 +87,9 @@ export type ActivityType =
   | "quote_accepted"
   | "quote_rejected"
   | "invoice_issued"
-  | "invoice_paid";
+  | "invoice_paid"
+  | "order_created"
+  | "order_done";
 
 export interface ActivityDto {
   id: string;
@@ -115,11 +117,38 @@ export interface Comparable {
 }
 
 /** Dashboard figures: CRM, tasks and inbox. */
+export interface DuplicateMatchesDto {
+  /** Matches the caller may open */
+  items: { id: string; name: string; email: string | null; phone: string | null; match: "email" | "phone" }[];
+  /** Matches owned by colleagues outside the caller's view (names withheld) */
+  hidden: number;
+}
+
+/**
+ * "Needs attention": work that is about to be forgotten, each with the concrete reason.
+ * unanswered — a customer waits for a reply · quote_no_followup — quote sent, nothing planned
+ * deal_stale — open deal untouched · invoice_overdue — unpaid past due · quote_expiring — answer due soon
+ */
+export type AttentionReason = "unanswered" | "quote_no_followup" | "deal_stale" | "invoice_overdue" | "quote_expiring" | "order_late" | "approval_pending";
+
+export interface AttentionItemDto {
+  reason: AttentionReason;
+  title: string;
+  href: string;
+  /** Hours (unanswered) or days (the rest) */
+  age: number;
+  amount: { value: number; currency: string } | null;
+  owner: MemberRefDto | null;
+  since: string;
+}
+
 export interface DashboardCrmDto {
   period: "7d" | "30d" | "90d";
   generatedAt: string;
   scope: "all" | "department" | "own";
   currency: string;
+  /** Open invoices in the company currency; null without finance rights */
+  payments: { due: number; overdue: number; count: number; overdueCount: number } | null;
   kpis: {
     newContacts: Comparable;
     activeDeals: { value: number; pipelineValue: number };

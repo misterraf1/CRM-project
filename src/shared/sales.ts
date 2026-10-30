@@ -37,6 +37,11 @@ export const productSchema = z.object({
   currency: z.enum(CURRENCIES),
   taxBp: rate.default(0),
   active: z.boolean().default(true),
+  /** Bundle contents (each a catalog product); empty for a plain product */
+  components: z
+    .array(z.object({ productId: z.string().min(1).max(64), quantity: z.number().positive().max(100_000) }))
+    .max(30)
+    .default([]),
 });
 export type ProductInput = z.infer<typeof productSchema>;
 
@@ -105,8 +110,35 @@ export const docSettingsSchema = z.object({
   bankDetails: text(1000),
   /** Default terms shown under every document */
   terms: text(2000),
+  /** Highest discount (basis points) a quote may carry without a manager's approval; null = no limit */
+  maxDiscountBp: rate.nullish(),
+  /** Default execution steps for new orders */
+  orderSteps: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
 });
-export type DocSettings = z.infer<typeof docSettingsSchema>;
+export type DocSettingsInput = z.infer<typeof docSettingsSchema>;
+export type DocSettings = DocSettingsInput & {
+  /** data: URI of the logo (uploaded separately) */
+  logo: string | null;
+};
+
+export interface DocCompany {
+  name: string;
+  legalName: string | null;
+  taxId: string | null;
+  address: string | null;
+  bankDetails: string | null;
+  terms: string | null;
+  logo: string | null;
+}
+
+/** Logo for documents: PNG, JPEG or WebP, at most 200 KB, as a data: URI. */
+export const logoSchema = z.object({ dataUrl: z.string().max(280_000).nullable() });
+export const LOGO_MAX_BYTES = 200 * 1024;
+
+export const approvalActionSchema = z.object({ action: z.enum(["request", "approve", "reject"]), note: text(500) });
+
+/** Largest line discount of a document, basis points. */
+export const maxLineDiscount = (lines: { discountBp?: number | null }[]) => lines.reduce((m, l) => Math.max(m, l.discountBp ?? 0), 0);
 
 // ─── Totals (the same arithmetic in the browser and the API) ───
 
@@ -142,6 +174,7 @@ export interface ProductDto {
   currency: string;
   taxBp: number;
   active: boolean;
+  components: { productId: string; name: string; quantity: number }[];
 }
 
 export interface DocLineDto extends LineTotals {
@@ -201,6 +234,11 @@ export interface DocDto extends DocSummaryDto {
   payments: DocPaymentDto[];
   /** Whether a customer link exists (the link itself is only shown when created) */
   shared: boolean;
+  /** A line's discount is over the company limit: the quote needs a manager's approval to go out */
+  needsApproval: boolean;
+  approval: { status: "pending" | "approved" | "rejected"; requestedBy: string | null; decidedBy: string | null; at: string; note: string | null } | null;
+  /** Orders made from this quote */
+  orders: { id: string; number: string; status: string }[];
 }
 
 export interface DocShareResponse {
@@ -216,7 +254,8 @@ export interface PublicDocDto {
   number: string | null;
   status: DocStatus;
   expired: boolean;
-  company: { name: string } & DocSettings;
+  /** Seller details printed on the document — never the internal settings (discount limit, order steps) */
+  company: DocCompany;
   customer: { name: string; email: string | null; phone: string | null; companyName: string | null };
   currency: string;
   lines: DocLineDto[];
@@ -230,4 +269,6 @@ export interface PublicDocDto {
   notes: string | null;
   response: { decision: "accept" | "reject"; name: string; at: string } | null;
   locale: string;
+  /** Progress of the order made from this quote, if any */
+  order: import("./orders").PublicOrderDto | null;
 }

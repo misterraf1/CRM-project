@@ -1,5 +1,5 @@
 import type { ActivityDto, ActivityType, LifecycleStage } from "@/shared";
-import { CheckCircle2, FileCheck2, FileText, FileX2, Handshake, MoveRight, Receipt, StickyNote, UserCog, UserPlus, Wallet, XCircle, type LucideIcon } from "lucide-react";
+import { CheckCircle2, FileCheck2, PackageCheck, PackagePlus, FileText, FileX2, Handshake, MoveRight, Receipt, StickyNote, UserCog, UserPlus, Wallet, XCircle, type LucideIcon } from "lucide-react";
 import { formatMoney, formatMoneyExact } from "./format";
 import type { Dictionary } from "./i18n/dictionaries/az";
 import { interpolate, type Locale } from "./i18n/locales";
@@ -18,6 +18,8 @@ export const ACTIVITY_ICONS: Record<ActivityType, { icon: LucideIcon; className:
   quote_rejected: { icon: FileX2, className: "text-danger" },
   invoice_issued: { icon: Receipt, className: "text-accent" },
   invoice_paid: { icon: Wallet, className: "text-success" },
+  order_created: { icon: PackagePlus, className: "text-accent" },
+  order_done: { icon: PackageCheck, className: "text-success" },
 };
 
 /** One-line, localized description. Names come from the payload captured at write time. */

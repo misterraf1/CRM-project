@@ -4,7 +4,7 @@ import { addDays, startOfDay } from "../common/time";
 import { ActivityService, TIMELINE_ORDER } from "../crm/activity.service";
 import { stageIds } from "../crm/deals.service";
 import { memberRefs, ownerScope } from "../crm/scope";
-import type { Database } from "../db/database";
+import type { Database, Tx } from "../db/database";
 import { and, countBy, sumOf } from "../db/query";
 import { computeInboxMetrics, inboxScope } from "../inbox/inbox.service";
 import { taskScope } from "../tasks/tasks.service";
@@ -138,11 +138,13 @@ export class DashboardService {
       });
 
       const revenue = won.reduce((a, d) => a + d.baseAmount, 0);
+      const payments = ctx.permissions.includes("finance.view") ? await this.payments(tx, ctx.tenantId, now) : null;
       return {
         period,
         generatedAt: now.toISOString(),
         scope,
         currency: tenant.currency,
+        payments,
         kpis: {
           newContacts: { value: newContacts, previous: prevContacts },
           activeDeals: { value: openDeals.count, pipelineValue: openDeals.sum },
@@ -177,5 +179,22 @@ export class DashboardService {
         activity,
       };
     });
+  }
+
+  /** What customers still owe on issued invoices, in the company currency (each invoice's own rate). */
+  private async payments(tx: Tx, tenantId: string, now: Date) {
+    const open = await tx.salesDoc.find({ tenantId, kind: "invoice", status: "issued" }, { projection: { total: 1, paidAmount: 1, baseTotal: 1, dueDate: 1 }, limit: 5000 });
+    let due = 0;
+    let overdue = 0;
+    let overdueCount = 0;
+    for (const i of open) {
+      const left = i.total ? Math.round((i.baseTotal * (i.total - i.paidAmount)) / i.total) : 0;
+      due += left;
+      if (i.dueDate && i.dueDate < now) {
+        overdue += left;
+        overdueCount++;
+      }
+    }
+    return { due, overdue, count: open.length, overdueCount };
   }
 }

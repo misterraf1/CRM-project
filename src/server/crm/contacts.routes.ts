@@ -1,4 +1,4 @@
-import { contactCreateSchema, contactListQuerySchema, contactUpdateSchema, noteSchema } from "@/shared";
+import { contactCreateSchema, contactListQuerySchema, contactUpdateSchema, noteSchema, duplicateQuerySchema } from "@/shared";
 import type { Services } from "../container";
 import type { Router } from "../http/router";
 
@@ -6,6 +6,9 @@ import type { Router } from "../http/router";
 export function contactsRoutes(router: Router, s: Services) {
   router.group("/v1/contacts", {}, (r) => {
     r.get("", { query: contactListQuerySchema }, ({ query }) => s.contacts.list(query));
+
+    // Declared before :id so "duplicates" isn't taken for an id
+    r.get("duplicates", { query: duplicateQuerySchema }, ({ query }) => s.contacts.duplicates(query));
 
     r.post("", { permission: "contacts.create", body: contactCreateSchema }, ({ body }) => s.contacts.create(body));
 

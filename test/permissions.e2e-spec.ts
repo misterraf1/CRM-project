@@ -12,6 +12,8 @@ describe("Role permission matrix", () => {
       "deals.create",
       "deals.edit",
       "quotes.manage",
+      "orders.manage",
+      "discounts.approve",
       "inbox.reply",
       "inbox.assign",
       "tasks.create",
@@ -22,7 +24,7 @@ describe("Role permission matrix", () => {
   });
 
   it("employee", () => {
-    expect(resolvePermissions("EMPLOYEE")).toEqual(["contacts.create", "contacts.edit", "deals.create", "deals.edit", "quotes.manage", "inbox.reply", "tasks.create", "members.view"]);
+    expect(resolvePermissions("EMPLOYEE")).toEqual(["contacts.create", "contacts.edit", "deals.create", "deals.edit", "quotes.manage", "orders.manage", "inbox.reply", "tasks.create", "members.view"]);
   });
 
   it("admin has everything except billing; owner has everything", () => {
@@ -48,6 +50,7 @@ describe("Role permission matrix", () => {
       "deals.edit",
       "deals.export",
       "quotes.manage",
+      "orders.manage",
       "tasks.create",
       "members.view",
     ]);

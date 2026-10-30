@@ -1,4 +1,5 @@
 import type { PublicDocDto } from "@/shared";
+import { CheckCircle2, Circle } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PrintButton } from "@/components/billing/PrintButton";
@@ -31,6 +32,26 @@ export default async function PublicDocPage({ params }: Props) {
           <PrintButton label={k.printPdf} />
         </div>
         <DocumentSheet doc={doc} t={t} locale={locale} />
+        {doc.order && (
+          <section className="card p-5 print:hidden" aria-labelledby="order-progress">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 id="order-progress" className="text-sm font-semibold">
+                {t.orders.publicTitle} <span className="font-mono text-xs text-fg-muted">{doc.order.number}</span>
+              </h2>
+              <span className="text-xs font-medium text-accent">{t.orders.statuses[doc.order.status]}</span>
+            </div>
+            {doc.order.deliveryDate && <p className="mt-1 text-xs text-fg-muted">{interpolate(t.orders.publicDelivery, { date: formatDate(doc.order.deliveryDate, locale, "long") })}</p>}
+            <ol className="mt-3 space-y-2">
+              {doc.order.steps.map((s, i) => (
+                <li key={i} className="flex items-center gap-2 text-sm">
+                  {s.done ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-label={t.orders.done} /> : <Circle className="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden />}
+                  <span className={s.done ? "text-fg-muted" : ""}>{s.title}</span>
+                  {s.dueDate && !s.done && <span className="ml-auto text-xs text-fg-subtle">{formatDate(s.dueDate, locale, "short")}</span>}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
         <div className="print:hidden">
           {open && <QuoteResponseForm token={token} />}
           {doc.response && (

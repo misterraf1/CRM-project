@@ -2,7 +2,9 @@ import type {
   CurrencySettingsDto,
   CurrencySettingsInput,
   CustomFieldValues,
+  DocCompany,
   DocSettings,
+  DocSettingsInput,
   FieldCreateInput,
   FieldDefinitionDto,
   FieldEntity,
@@ -11,6 +13,7 @@ import type {
   PipelineDto,
   StageInput,
 } from "@/shared";
+import { LOGO_MAX_BYTES } from "@/shared";
 import { AuditService } from "../audit/audit.service";
 import { authedContext } from "../common/context";
 import { AppError, notFound } from "../common/errors";
@@ -340,11 +343,33 @@ export class CrmSettingsService {
     return docSettingsDto(await this.db.scoped((tx) => tx.tenant.get({ id: tenantId }, { projection: { docSettings: 1 } })));
   }
 
-  async updateDocSettings(input: DocSettings): Promise<DocSettings> {
+  async updateDocSettings(input: DocSettingsInput): Promise<DocSettings> {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
-      const updated = await tx.tenant.update({ id: ctx.tenantId }, { $set: { docSettings: docSettingsDto({ docSettings: input }) } });
+      const current = await tx.tenant.get({ id: ctx.tenantId }, { projection: { docSettings: 1 } });
+      // The logo has its own endpoint and stays as it is
+      const next = { ...docSettingsDto({ docSettings: { ...input, maxDiscountBp: input.maxDiscountBp ?? null } }), logo: current.docSettings?.logo ?? null };
+      const updated = await tx.tenant.update({ id: ctx.tenantId }, { $set: { docSettings: next } });
       await this.audit.log(tx, { action: "documents.settings_updated", entityType: "tenant", entityId: ctx.tenantId });
+      return docSettingsDto(updated);
+    });
+  }
+
+  /** Sets (or with null removes) the logo printed on documents. */
+  async updateLogo(dataUrl: string | null): Promise<DocSettings> {
+    const ctx = authedContext();
+    let logo: string | null = null;
+    if (dataUrl) {
+      const m = /^data:[a-z/+.-]+;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+      const bytes = m ? Buffer.from(m[1]!, "base64") : null;
+      const type = bytes && LOGO_TYPES.find(([, is]) => is(bytes))?.[0];
+      if (!bytes || !type) throw new AppError("VALIDATION_FAILED", "The logo must be a PNG, JPEG or WebP image", { logo: ["Unsupported image"] });
+      if (bytes.length > LOGO_MAX_BYTES) throw new AppError("VALIDATION_FAILED", "The logo is too large", { logo: ["At most 200 KB"] });
+      logo = `data:${type};base64,${bytes.toString("base64")}`;
+    }
+    return this.db.scoped(async (tx) => {
+      const updated = await tx.tenant.update({ id: ctx.tenantId }, { $set: { "docSettings.logo": logo } as never });
+      await this.audit.log(tx, { action: logo ? "documents.logo_updated" : "documents.logo_removed", entityType: "tenant", entityId: ctx.tenantId });
       return docSettingsDto(updated);
     });
   }
@@ -353,8 +378,30 @@ export class CrmSettingsService {
 // Seller details on documents: a separate block of the company settings
 export function docSettingsDto(tenant: Pick<Tenant, "docSettings">): DocSettings {
   const s = tenant.docSettings ?? {};
-  return { legalName: s.legalName ?? null, taxId: s.taxId ?? null, address: s.address ?? null, bankDetails: s.bankDetails ?? null, terms: s.terms ?? null };
+  return {
+    legalName: s.legalName ?? null,
+    taxId: s.taxId ?? null,
+    address: s.address ?? null,
+    bankDetails: s.bankDetails ?? null,
+    terms: s.terms ?? null,
+    maxDiscountBp: s.maxDiscountBp ?? null,
+    orderSteps: s.orderSteps ?? [],
+    logo: s.logo ?? null,
+  };
 }
+
+/** The seller block printed on documents: only what a customer may see. */
+export function docCompany(tenant: Pick<Tenant, "name" | "docSettings">): DocCompany {
+  const s = docSettingsDto(tenant);
+  return { name: tenant.name, legalName: s.legalName ?? null, taxId: s.taxId ?? null, address: s.address ?? null, bankDetails: s.bankDetails ?? null, terms: s.terms ?? null, logo: s.logo };
+}
+
+/** Image types accepted as a logo, by their first bytes (the declared type isn't trusted; SVG can carry scripts). */
+const LOGO_TYPES: [string, (b: Buffer) => boolean][] = [
+  ["image/png", (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))],
+  ["image/jpeg", (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
+  ["image/webp", (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP"],
+];
 
 function currencyDto(tenant: Pick<Tenant, "currency" | "fxRates">): CurrencySettingsDto {
   const rates = { ...(tenant.fxRates ?? {}) };

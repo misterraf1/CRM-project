@@ -4,7 +4,7 @@ import { CURRENCIES, customFieldValuesSchema } from "./crm-settings";
 export const LIFECYCLE_STAGES = ["LEAD", "QUALIFIED", "CUSTOMER", "CHURNED"] as const;
 export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
 
-export const CONTACT_SOURCES = ["manual", "website", "whatsapp", "instagram", "messenger", "phone", "referral", "other"] as const;
+export const CONTACT_SOURCES = ["manual", "website", "whatsapp", "instagram", "messenger", "facebook", "telegram", "ads", "phone", "referral", "other"] as const;
 
 const optionalText = (max: number) =>
   z
@@ -122,3 +122,10 @@ export type DealListQuery = z.infer<typeof dealListQuerySchema>;
 export const DASHBOARD_PERIODS = ["7d", "30d", "90d"] as const;
 export type DashboardPeriod = (typeof DASHBOARD_PERIODS)[number];
 export const dashboardQuerySchema = z.object({ period: z.enum(DASHBOARD_PERIODS).default("30d") });
+
+/** Possible duplicates while creating a contact (by email or phone). */
+export const duplicateQuerySchema = z.object({
+  email: z.string().trim().toLowerCase().max(254).optional(),
+  phone: z.string().trim().max(40).optional(),
+  excludeId: z.string().max(64).optional(),
+});

@@ -31,34 +31,35 @@ export class AuthService {
     const passwordHash = await hashPassword(input.password);
     // The trial runs on the top plan so every feature can be tried before choosing
     const plan = await this.db.current.plan.get({ code: "BUSINESS" });
-    const slug = await this.freeSlug(slugify(input.companyName));
+    const base = slugify(input.companyName);
     const tenantId = newId("tnt");
     const userId = newId("usr");
 
-    try {
-      return await this.db.scoped(
-        async (tx) => {
-          const now = new Date();
-          const trialEnd = new Date(now.getTime() + config().TRIAL_DAYS * 86_400_000);
-          await tx.user.insertOne({ id: userId, email: input.email, fullName: input.fullName, passwordHash });
-          await tx.tenant.insertOne({ id: tenantId, slug, name: input.companyName, status: "TRIALING" });
-          await tx.subscription.insertOne({ tenantId, planId: plan.id, status: "TRIALING", trialEndsAt: trialEnd, currentPeriodStart: now, currentPeriodEnd: trialEnd });
-          await tx.membership.insertOne({ tenantId, userId, role: "OWNER", status: "ACTIVE", joinedAt: now });
-          await insertPipeline(tx, tenantId, "Satış", true);
-          await this.audit.log(tx, { action: "tenant.created", entityType: "tenant", entityId: tenantId, tenantId, actorId: userId });
-          return this.tokens.issue(tx, userId, tenantId);
-        },
-        { tenantId, userId },
-      );
-    } catch (e) {
-      // Lost a race on email or slug between the checks above and the insert
-      if (isDuplicateKey(e)) {
-        const emailTaken = await this.db.current.user.count({ email: input.email });
-        throw emailTaken
-          ? new AppError("EMAIL_TAKEN", "An account with this email already exists")
-          : new AppError("CONFLICT", "Please try again");
+    // Two companies with the same name signing up at once race for the same address:
+    // the loser takes the next free one instead of failing
+    for (let attempt = 1; ; attempt++) {
+      const slug = await this.freeSlug(base);
+      try {
+        return await this.db.scoped(
+          async (tx) => {
+            const now = new Date();
+            const trialEnd = new Date(now.getTime() + config().TRIAL_DAYS * 86_400_000);
+            await tx.user.insertOne({ id: userId, email: input.email, fullName: input.fullName, passwordHash });
+            await tx.tenant.insertOne({ id: tenantId, slug, name: input.companyName, status: "TRIALING" });
+            await tx.subscription.insertOne({ tenantId, planId: plan.id, status: "TRIALING", trialEndsAt: trialEnd, currentPeriodStart: now, currentPeriodEnd: trialEnd });
+            await tx.membership.insertOne({ tenantId, userId, role: "OWNER", status: "ACTIVE", joinedAt: now });
+            await insertPipeline(tx, tenantId, "Satış", true);
+            await this.audit.log(tx, { action: "tenant.created", entityType: "tenant", entityId: tenantId, tenantId, actorId: userId });
+            return this.tokens.issue(tx, userId, tenantId);
+          },
+          { tenantId, userId },
+        );
+      } catch (e) {
+        // Lost a race on email or slug between the checks above and the insert
+        if (!isDuplicateKey(e)) throw e;
+        if (await this.db.current.user.count({ email: input.email })) throw new AppError("EMAIL_TAKEN", "An account with this email already exists");
+        if (attempt >= 3) throw new AppError("CONFLICT", "Please try again");
       }
-      throw e;
     }
   }
 

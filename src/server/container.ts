@@ -30,8 +30,10 @@ import { ImportService } from "./crm/import.service";
 import { DashboardService } from "./dashboard/dashboard.service";
 import { DepartmentsService } from "./departments/departments.service";
 import { RolesService } from "./roles/roles.service";
+import { AttentionService } from "./dashboard/attention.service";
 import { SalesDocsService } from "./sales/docs.service";
 import { ProductsService } from "./sales/products.service";
+import { OrdersService } from "./sales/orders.service";
 import { PublicDocsService } from "./sales/public-docs.service";
 import { ChannelsService } from "./inbox/channels.service";
 import { InboxEvents } from "./inbox/events";
@@ -111,14 +113,16 @@ export function createServices() {
     products: new ProductsService(db, audit),
     docs,
     publicDocs: new PublicDocsService(db, docs),
+    orders: new OrdersService(db, audit, activity, notifications),
     contacts: new ContactsService(db, activity, audit, automationRunner, entitlements),
     imports: new ImportService(db, audit, entitlements),
     exports: new ExportService(db, audit),
     deals,
     crmSettings: new CrmSettingsService(db, audit, deals),
     dashboard: new DashboardService(db, activity),
+    attention: new AttentionService(db),
     projects: new ProjectsService(db),
-    overdueJob: new OverdueJob(db, monitor, notifications, automationRunner),
+    overdueJob: new OverdueJob(db, monitor, notifications, automationRunner, docs),
     team: new TeamService(db, tasks, activity),
     channels: new ChannelsService(db, ingest, mail),
     webhooks: new WebhooksService(db, ingest),

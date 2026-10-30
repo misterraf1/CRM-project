@@ -13,6 +13,16 @@ describe("Auth", () => {
 
   it("health check", () => http().get("/health").expect(200, { status: "ok" }));
 
+  it("companies with the same name signing up at the same moment both get in, on different addresses", async () => {
+    const name = `Eyni Ad ${Date.now().toString(36)}`;
+    const results = await Promise.all(
+      [1, 2, 3].map(() => http().post("/v1/auth/signup").send({ companyName: name, fullName: "Paralel Sahib", email: uniqueEmail("race"), password: PASSWORD })),
+    );
+    expect(results.map((r) => r.status)).toEqual([201, 201, 201]);
+    const slugs = await Promise.all(results.map(async (r) => (await http().get("/v1/me").set("authorization", `Bearer ${r.body.accessToken}`)).body.tenant.slug as string));
+    expect(new Set(slugs).size).toBe(3);
+  });
+
   it("signup creates company, owner and a full-feature trial (BUSINESS)", async () => {
     const company = await signup(app, "Bakı Tekstil MMC");
     const me = await http().get("/v1/me").set(company.auth).expect(200);

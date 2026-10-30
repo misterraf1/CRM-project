@@ -29,6 +29,8 @@ const STATUS: Record<ErrorCode, number> = {
   ROLE_IN_USE: 409,
   /** Self-service payments are off: the platform manages subscriptions by hand */
   BILLING_MANUAL: 409,
+  /** A quote's discount is over the company limit and nobody has approved it yet */
+  APPROVAL_REQUIRED: 409,
   RATE_LIMITED: 429,
   INTERNAL: 500,
 };

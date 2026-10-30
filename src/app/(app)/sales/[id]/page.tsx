@@ -24,7 +24,15 @@ function sheet(doc: DocDto, company: string, settings: DocSettings, customer: Pu
     number: doc.number,
     status: doc.status,
     expired: doc.expired,
-    company: { name: company, ...settings },
+    company: {
+      name: company,
+      legalName: settings.legalName ?? null,
+      taxId: settings.taxId ?? null,
+      address: settings.address ?? null,
+      bankDetails: settings.bankDetails ?? null,
+      terms: settings.terms ?? null,
+      logo: settings.logo,
+    },
     customer,
     currency: doc.currency,
     lines: doc.lines,
@@ -38,6 +46,7 @@ function sheet(doc: DocDto, company: string, settings: DocSettings, customer: Pu
     notes: doc.notes,
     response: doc.response,
     locale,
+    order: null,
   };
 }
 
@@ -113,6 +122,11 @@ export default async function DocPage({ params, searchParams }: Props) {
             {k.fromQuote}
           </Link>
         )}
+        {doc.orders.map((o) => (
+          <Link key={o.id} href={`/orders/${o.id}`} className="text-accent hover:underline">
+            {interpolate(k.orderLink, { number: o.number })}
+          </Link>
+        ))}
         {doc.invoices.map((i) => (
           <Link key={i.id} href={`/sales/${i.id}`} className="text-accent hover:underline">
             {interpolate(k.invoiceLink, { number: i.number ?? k.draftNumber })}

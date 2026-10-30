@@ -50,6 +50,7 @@ const MODELS = [
   "Product",
   "SalesDoc",
   "DocPayment",
+  "Order",
 ] as const satisfies readonly ModelName[];
 
 type Key<M extends string> = Uncapitalize<M>;

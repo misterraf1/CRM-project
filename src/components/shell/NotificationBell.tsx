@@ -55,6 +55,7 @@ export function NotificationBell({ unread: initialUnread }: { unread: number }) 
     else if (x.type === "support_reply" && x.payload.ticketId) router.push(`/support/${x.payload.ticketId}`);
     else if (x.payload.taskId) router.push(`/tasks/${x.payload.taskId}`);
     else if (x.payload.docId) router.push(`/sales/${x.payload.docId}`);
+    else if (x.payload.orderId) router.push(`/orders/${x.payload.orderId}`);
     else if (x.payload.dealId) router.push(`/deals/${x.payload.dealId}`);
     else if (x.payload.conversationId) router.push(`/inbox?c=${x.payload.conversationId}`);
     else if (x.payload.contactId) router.push(`/crm/${x.payload.contactId}`);

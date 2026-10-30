@@ -73,7 +73,19 @@ export interface Tenant {
   /** Company-currency value of one unit of another currency (CRM deals), e.g. { USD: 1.7 } */
   fxRates: Record<string, number>;
   /** Seller details printed on quotes and invoices */
-  docSettings: { legalName?: string | null; taxId?: string | null; address?: string | null; bankDetails?: string | null; terms?: string | null };
+  docSettings: {
+    legalName?: string | null;
+    taxId?: string | null;
+    address?: string | null;
+    bankDetails?: string | null;
+    terms?: string | null;
+    /** data: URI of a PNG/JPEG/WebP logo (small, inlined so printed and public pages need no extra request) */
+    logo?: string | null;
+    /** Discount above this (basis points) needs approval; null = no limit */
+    maxDiscountBp?: number | null;
+    /** Default execution steps of a new order */
+    orderSteps?: string[];
+  };
   locale: Locale;
   status: TenantStatus;
   lockVersion: number;
@@ -635,6 +647,8 @@ export interface Product {
   currency: string;
   taxBp: number;
   active: boolean;
+  /** A bundle lists what it contains (sold at its own price, as one line) */
+  components: { productId: string; quantity: number }[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -668,8 +682,43 @@ export interface SalesDoc {
   /** sha256 of the customer link's secret */
   publicToken: string | null;
   sentAt: Date | null;
+  /** When the owner was told the invoice is overdue (once) */
+  overdueNotifiedAt: Date | null;
+  /** Discount over the company limit: a manager's decision before the quote goes out */
+  approval: { status: "pending" | "approved" | "rejected"; requestedById: string | null; decidedById: string | null; at: Date; note: string | null } | null;
   response: { decision: "accept" | "reject"; name: string; comment: string | null; at: Date } | null;
   createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OrderStep {
+  id: string;
+  title: string;
+  assigneeId: string | null;
+  dueDate: Date | null;
+  doneAt: Date | null;
+  doneById: string | null;
+}
+
+/** Work after the sale: execution steps with owners and dates. */
+export interface Order {
+  id: string;
+  tenantId: string;
+  number: string;
+  title: string;
+  status: string;
+  contactId: string;
+  dealId: string | null;
+  quoteId: string | null;
+  ownerId: string | null;
+  currency: string;
+  total: number;
+  dueDate: Date | null;
+  deliveryDate: Date | null;
+  notes: string | null;
+  steps: OrderStep[];
+  completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -734,6 +783,7 @@ export interface Models {
   Product: Product;
   SalesDoc: SalesDoc;
   DocPayment: DocPayment;
+  Order: Order;
 }
 export type ModelName = keyof Models;
 
@@ -781,14 +831,15 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   EmailMessage: { tenantId: null, inboxMessageId: null, from: null, headers: {}, status: "queued", attempts: 0, error: null, createdAt: "now", sentAt: null },
   FieldDefinition: { options: [], required: false, order: 0, archived: false, createdAt: "now" },
   ImportJob: { issues: [], issueRows: [], createdIds: [], byId: null, createdAt: "now" },
-  Product: { sku: null, description: null, unit: "ədəd", taxBp: 0, active: true, createdAt: "now", updatedAt: "now" },
-  SalesDoc: { number: null, dealId: null, ownerId: null, sourceId: null, paidAmount: 0, issueDate: null, dueDate: null, notes: null, publicToken: null, sentAt: null, response: null, createdById: null, createdAt: "now", updatedAt: "now" },
+  Product: { sku: null, description: null, unit: "ədəd", taxBp: 0, active: true, components: [], createdAt: "now", updatedAt: "now" },
+  Order: { status: "new", dealId: null, quoteId: null, ownerId: null, currency: "AZN", total: 0, dueDate: null, deliveryDate: null, notes: null, steps: [], completedAt: null, createdAt: "now", updatedAt: "now" },
+  SalesDoc: { number: null, dealId: null, ownerId: null, sourceId: null, paidAmount: 0, issueDate: null, dueDate: null, notes: null, publicToken: null, sentAt: null, overdueNotifiedAt: null, approval: null, response: null, createdById: null, createdAt: "now", updatedAt: "now" },
   DocPayment: { reference: null, note: null, recordedById: null, createdAt: "now" },
   ErrorEvent: { stack: null, where: null, tenantRef: null, count: 1, firstSeenAt: "now", lastSeenAt: "now" },
 };
 
 /** Models whose `updatedAt` is bumped on every update. */
-export const HAS_UPDATED_AT: ReadonlySet<ModelName> = new Set<ModelName>(["User", "Tenant", "Plan", "Subscription", "Role", "Contact", "Deal", "Task", "SupportTicket", "AutomationRule", "Product", "SalesDoc"]);
+export const HAS_UPDATED_AT: ReadonlySet<ModelName> = new Set<ModelName>(["User", "Tenant", "Plan", "Subscription", "Role", "Contact", "Deal", "Task", "SupportTicket", "AutomationRule", "Product", "SalesDoc", "Order"]);
 
 /** Models that carry `tenantId` (tenant-isolated by the repository layer). Session is not: refresh tokens are looked up by hash before any identity exists. */
-export const TENANT_MODELS: ReadonlySet<ModelName> = new Set<ModelName>(["Subscription", "Invoice", "Payment", "UsageCounter", "Membership", "Role", "Department", "Contact", "Pipeline", "PipelineStage", "Deal", "Activity", "Project", "Task", "TaskComment", "Channel", "Conversation", "Message", "CannedResponse", "ChatRoom", "ChatMember", "ChatMessage", "FileObject", "Notification", "AuditLog", "SupportTicket", "SupportTicketMessage", "AutomationRule", "AutomationEvent", "AutomationRun", "EmailMessage", "FieldDefinition", "ImportJob", "Product", "SalesDoc", "DocPayment"]);
+export const TENANT_MODELS: ReadonlySet<ModelName> = new Set<ModelName>(["Subscription", "Invoice", "Payment", "UsageCounter", "Membership", "Role", "Department", "Contact", "Pipeline", "PipelineStage", "Deal", "Activity", "Project", "Task", "TaskComment", "Channel", "Conversation", "Message", "CannedResponse", "ChatRoom", "ChatMember", "ChatMessage", "FileObject", "Notification", "AuditLog", "SupportTicket", "SupportTicketMessage", "AutomationRule", "AutomationEvent", "AutomationRun", "EmailMessage", "FieldDefinition", "ImportJob", "Product", "SalesDoc", "DocPayment", "Order"]);

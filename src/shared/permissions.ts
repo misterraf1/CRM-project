@@ -31,6 +31,10 @@ export const PERMISSIONS = [
   "invoices.manage",
   /** See invoices and payments of the whole company */
   "finance.view",
+  /** Orders and their execution steps (own records, like contacts) */
+  "orders.manage",
+  /** Approve quotes whose discount is over the company limit */
+  "discounts.approve",
   "inbox.view_all",
   "inbox.reply",
   "inbox.assign",
@@ -58,7 +62,7 @@ export const PERMISSION_GROUPS = {
   visibility: ["dashboard.view_all", "contacts.view_all", "inbox.view_all", "tasks.view_all", "records.view_department"],
   crm: ["contacts.create", "contacts.edit", "contacts.manage", "contacts.delete", "deals.create", "deals.edit", "deals.delete"],
   data: ["contacts.export", "deals.export", "data.import"],
-  sales: ["quotes.manage", "products.manage", "invoices.manage", "finance.view"],
+  sales: ["quotes.manage", "discounts.approve", "orders.manage", "products.manage", "invoices.manage", "finance.view"],
   work: ["inbox.reply", "inbox.assign", "tasks.create", "tasks.assign_any", "analytics.view", "automations.manage"],
   admin: ["members.view", "members.invite", "members.manage", "roles.manage", "departments.manage", "channels.manage", "crm.configure", "audit.view", "billing.manage"],
 } as const satisfies Record<string, readonly Permission[]>;
@@ -66,7 +70,7 @@ export const PERMISSION_GROUPS = {
 const ALL: readonly Permission[] = PERMISSIONS;
 
 /** Everyday work every built-in role has: creating and editing the records they can see. */
-const EVERYDAY: readonly Permission[] = ["contacts.create", "contacts.edit", "deals.create", "deals.edit", "quotes.manage", "tasks.create"];
+const EVERYDAY: readonly Permission[] = ["contacts.create", "contacts.edit", "deals.create", "deals.edit", "quotes.manage", "orders.manage", "tasks.create"];
 
 export const ROLE_PERMISSIONS: Record<MemberRole, readonly Permission[]> = {
   OWNER: ALL,
@@ -75,6 +79,7 @@ export const ROLE_PERMISSIONS: Record<MemberRole, readonly Permission[]> = {
     ...EVERYDAY,
     "records.view_department",
     "contacts.manage",
+    "discounts.approve",
     "inbox.reply",
     "inbox.assign",
     "tasks.assign_any",

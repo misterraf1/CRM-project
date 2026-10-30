@@ -30,6 +30,7 @@ export type ErrorCode =
   | "PLAN_LIMIT"
   | "ROLE_IN_USE"
   | "BILLING_MANUAL"
+  | "APPROVAL_REQUIRED"
   | "INTERNAL";
 
 export interface ApiError {

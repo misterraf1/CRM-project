@@ -1,7 +1,8 @@
-import type { DocStatus, PublicDocDto } from "@/shared";
+import type { DocStatus, OrderStatus, PublicDocDto } from "@/shared";
 import { currentContext } from "../common/context";
 import { notFound } from "../common/errors";
 import type { Database, Tx } from "../db/database";
+import { docCompany } from "../crm/settings.service";
 import { derived, parseDocToken, SalesDocsService } from "./docs.service";
 
 /**
@@ -38,14 +39,17 @@ export class PublicDocsService {
   }
 
   private async dto(tx: Tx, d: Awaited<ReturnType<PublicDocsService["find"]>>): Promise<PublicDocDto> {
-    const [tenant, contact] = await Promise.all([tx.tenant.get({ id: d.tenantId }), tx.contact.findOne({ id: d.contactId, tenantId: d.tenantId })]);
-    const s = tenant.docSettings ?? {};
+    const [tenant, contact, order] = await Promise.all([
+      tx.tenant.get({ id: d.tenantId }),
+      tx.contact.findOne({ id: d.contactId, tenantId: d.tenantId }),
+      d.kind === "quote" ? tx.order.findOne({ tenantId: d.tenantId, quoteId: d.id, status: { $ne: "canceled" } }, { sort: { createdAt: -1 } }) : null,
+    ]);
     return {
       kind: d.kind,
       number: d.number,
       status: d.status as DocStatus,
       expired: derived(d).expired,
-      company: { name: tenant.name, legalName: s.legalName ?? null, taxId: s.taxId ?? null, address: s.address ?? null, bankDetails: s.bankDetails ?? null, terms: s.terms ?? null },
+      company: docCompany(tenant),
       customer: { name: contact?.name ?? "", email: contact?.email ?? null, phone: contact?.phone ?? null, companyName: contact?.companyName ?? null },
       currency: d.currency,
       lines: d.lines.map((l) => ({ ...l })),
@@ -59,6 +63,16 @@ export class PublicDocsService {
       notes: d.notes,
       response: d.response ? { decision: d.response.decision, name: d.response.name, at: d.response.at.toISOString() } : null,
       locale: tenant.locale.toLowerCase(),
+      // The customer follows their order: step names and dates, never who does them
+      order: order
+        ? {
+            number: order.number,
+            status: order.status as OrderStatus,
+            deliveryDate: order.deliveryDate?.toISOString() ?? null,
+            dueDate: order.dueDate?.toISOString() ?? null,
+            steps: order.steps.map((st) => ({ title: st.title, done: !!st.doneAt, dueDate: st.dueDate?.toISOString() ?? null })),
+          }
+        : null,
     };
   }
 }

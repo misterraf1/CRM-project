@@ -1,4 +1,4 @@
-import { docTotals, type DocDto, type DocInput, type DocKind, type DocLineDto, type DocShareResponse, type DocStatus, type DocSummaryDto, type PaymentInput } from "@/shared";
+import { docTotals, maxLineDiscount, ROLE_PERMISSIONS, type DocDto, type DocInput, type DocKind, type DocLineDto, type DocShareResponse, type DocStatus, type DocSummaryDto, type PaymentInput } from "@/shared";
 import { ActivityService } from "../crm/activity.service";
 import { AuditService } from "../audit/audit.service";
 import { authedContext, type AuthedContext } from "../common/context";
@@ -46,6 +46,22 @@ export function derived(d: Pick<SalesDoc, "kind" | "status" | "dueDate" | "total
 }
 
 const lineDto = (l: DocLine): DocLineDto => ({ ...l });
+
+/** A quote with a line discount over the company limit (no limit = never). */
+export function needsApproval(d: Pick<SalesDoc, "kind" | "lines">, tenant: Pick<Tenant, "docSettings">) {
+  const limit = tenant.docSettings?.maxDiscountBp;
+  return d.kind === "quote" && limit !== null && limit !== undefined && maxLineDiscount(d.lines) > limit;
+}
+
+/** Active members who may approve discounts: built-in roles with the right, or custom roles carrying it. */
+async function approvers(tx: Tx, tenantId: string) {
+  const [members, roles] = await Promise.all([
+    tx.membership.find({ tenantId, status: "ACTIVE" }, { projection: { id: 1, role: 1, roleId: 1, permissions: 1 } }),
+    tx.role.find({ tenantId, permissions: "discounts.approve" }, { projection: { id: 1 } }),
+  ]);
+  const custom = new Set(roles.map((r) => r.id));
+  return members.filter((m) => (m.roleId ? custom.has(m.roleId) : ROLE_PERMISSIONS[m.role].includes("discounts.approve"))).map((m) => m.id);
+}
 
 /**
  * Quotes and customer invoices. Quotes follow the contact visibility rules (own,
@@ -130,6 +146,7 @@ export class SalesDocsService {
 
   /** Drafts (and quotes already sent, before the customer answered) can still change. */
   async update(id: string, input: DocInput): Promise<DocDto> {
+    // (a changed quote over the discount limit needs a fresh approval, see below)
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
       const doc = await this.visible(tx, ctx, id);
@@ -137,7 +154,10 @@ export class SalesDocsService {
       const editable = doc.status === "draft" || (doc.kind === "quote" && doc.status === "sent");
       if (!editable) throw new AppError("CONFLICT", "This document can no longer be changed", { status: doc.status });
       const tenant = await tx.tenant.get({ id: ctx.tenantId });
-      const updated = await tx.salesDoc.update({ id }, { $set: await this.fields(tx, ctx, tenant, input) });
+      const fields = await this.fields(tx, ctx, tenant, input);
+      const linesChanged = JSON.stringify(fields.lines) !== JSON.stringify(doc.lines);
+      const reapprove = doc.approval && linesChanged && needsApproval({ ...doc, lines: fields.lines }, tenant);
+      const updated = await tx.salesDoc.update({ id }, { $set: { ...fields, ...(reapprove || (doc.approval && !needsApproval({ ...doc, lines: fields.lines }, tenant)) ? { approval: null } : {}) } });
       await this.audit.log(tx, { action: `${doc.kind}.updated`, entityType: doc.kind, entityId: id, diff: { total: { from: doc.total, to: updated.total } } });
       return this.detail(tx, ctx, updated);
     });
@@ -158,7 +178,7 @@ export class SalesDocsService {
    * Makes the customer link (a new one each time: the previous link stops working) and,
    * with `email`, sends it. A draft quote becomes "sent"; a draft invoice is issued.
    */
-  async send(id: string, opts: { to?: string; email: boolean }): Promise<DocShareResponse> {
+  async send(id: string, opts: { to?: string; email: boolean; reminder?: boolean }): Promise<DocShareResponse> {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
       const doc = await this.visible(tx, ctx, id);
@@ -168,6 +188,11 @@ export class SalesDocsService {
         throw new AppError("CONFLICT", "The customer already answered this quote", { status: doc.status });
       }
       const [tenant, contact] = await Promise.all([tx.tenant.get({ id: ctx.tenantId }), tx.contact.findOne({ id: doc.contactId, tenantId: ctx.tenantId })]);
+      if (opts.reminder && (doc.kind !== "invoice" || doc.status !== "issued")) throw new AppError("CONFLICT", "Reminders are for issued, unpaid invoices", { status: doc.status });
+      // Over the discount limit a quote goes out only once approved (approvers send it straight away)
+      if (needsApproval(doc, tenant) && doc.approval?.status !== "approved" && !ctx.permissions.includes("discounts.approve")) {
+        throw new AppError("APPROVAL_REQUIRED", "The discount is over the company limit and needs approval", { maxDiscountBp: tenant.docSettings?.maxDiscountBp ?? null });
+      }
       const secret = randomToken(24);
       const now = new Date();
       const set: Partial<SalesDoc> = { publicToken: sha256(secret), sentAt: now };
@@ -188,11 +213,11 @@ export class SalesDocsService {
             tenantId: ctx.tenantId,
             to,
             locale: tenant.locale,
-            template: doc.kind === "quote" ? "quote_sent" : "invoice_sent",
+            template: opts.reminder ? "invoice_reminder" : doc.kind === "quote" ? "quote_sent" : "invoice_sent",
             vars: {
               company: tenant.name,
               number: updated.number ?? "",
-              amount: `${(updated.total / 100).toFixed(2)} ${updated.currency}`,
+              amount: `${((opts.reminder ? updated.total - updated.paidAmount : updated.total) / 100).toFixed(2)} ${updated.currency}`,
               link: `${config().WEB_ORIGIN}${publicPath}`,
             },
           });
@@ -207,8 +232,39 @@ export class SalesDocsService {
           payload: { number: updated.number, amount: updated.total, currency: updated.currency, docId: id },
         });
       }
-      await this.audit.log(tx, { action: `${doc.kind}.sent`, entityType: doc.kind, entityId: id, diff: { number: updated.number, email: opts.email ? (emailDelivery === "no_email" ? null : (opts.to ?? contact?.email ?? null)) : null } });
+      await this.audit.log(tx, { action: opts.reminder ? "invoice.reminded" : `${doc.kind}.sent`, entityType: doc.kind, entityId: id, diff: { number: updated.number, email: opts.email ? (emailDelivery === "no_email" ? null : (opts.to ?? contact?.email ?? null)) : null } });
       return { doc: await this.detail(tx, ctx, updated), publicPath, emailDelivery };
+    });
+  }
+
+  /**
+   * Discount approval: the writer asks, a holder of discounts.approve decides. Only
+   * quotes over the company limit need it; their writers are told the outcome.
+   */
+  async approval(id: string, action: "request" | "approve" | "reject", note: string | null): Promise<DocDto> {
+    const ctx = authedContext();
+    return this.db.scoped(async (tx) => {
+      const doc = await this.visible(tx, ctx, id);
+      if (doc.kind !== "quote") throw notFound("Quote");
+      if (doc.status !== "draft" && doc.status !== "sent") throw new AppError("CONFLICT", "The customer already answered this quote", { status: doc.status });
+      const tenant = await tx.tenant.get({ id: ctx.tenantId }, { projection: { docSettings: 1 } });
+      if (!needsApproval(doc, tenant)) throw new AppError("CONFLICT", "No discount over the limit: nothing to approve");
+      const now = new Date();
+      if (action === "request") {
+        this.assertWrite(ctx, "quote");
+        if (doc.approval?.status === "pending") throw new AppError("CONFLICT", "Already waiting for approval");
+        const updated = await tx.salesDoc.update({ id }, { $set: { approval: { status: "pending", requestedById: ctx.membershipId, decidedById: null, at: now, note } } });
+        await this.notifications.notify(tx, ctx.tenantId, await approvers(tx, ctx.tenantId), "discount_approval_requested", { title: doc.number ?? "", docId: id }, ctx.membershipId);
+        await this.audit.log(tx, { action: "quote.approval_requested", entityType: "quote", entityId: id, diff: { discountBp: maxLineDiscount(doc.lines) } });
+        return this.detail(tx, ctx, updated);
+      }
+      if (!ctx.permissions.includes("discounts.approve")) throw forbidden("Requires permission discounts.approve");
+      if (doc.approval?.status !== "pending") throw new AppError("CONFLICT", "No approval request is waiting");
+      const status = action === "approve" ? "approved" : "rejected";
+      const updated = await tx.salesDoc.update({ id }, { $set: { approval: { ...doc.approval, status, decidedById: ctx.membershipId, at: now, note } } });
+      await this.notifications.notify(tx, ctx.tenantId, [doc.approval.requestedById, doc.ownerId], status === "approved" ? "discount_approved" : "discount_rejected", { title: doc.number ?? "", docId: id }, ctx.membershipId);
+      await this.audit.log(tx, { action: `quote.discount_${status}`, entityType: "quote", entityId: id, diff: { discountBp: maxLineDiscount(doc.lines), note } });
+      return this.detail(tx, ctx, updated);
     });
   }
 
@@ -349,6 +405,29 @@ export class SalesDocsService {
     });
   }
 
+  /** One notice per invoice when it passes its due date unpaid (run by the overdue job). */
+  async notifyOverdue(): Promise<number> {
+    const due = await this.db.system.salesDoc.find(
+      { kind: "invoice", status: "issued", dueDate: { $lt: new Date(), $ne: null }, overdueNotifiedAt: null },
+      { projection: { tenantId: 1, id: 1 }, sort: { dueDate: 1 }, limit: 200 },
+    );
+    let sent = 0;
+    for (const { tenantId, id } of due) {
+      sent += await this.db.scoped(
+        async (tx) => {
+          // Claimed with a conditional update: with several instances only one notifies
+          const claimed = await tx.salesDoc.updateMany({ id, tenantId, overdueNotifiedAt: null }, { $set: { overdueNotifiedAt: new Date() } });
+          if (!claimed.count) return 0;
+          const doc = await tx.salesDoc.get({ id });
+          await this.notifications.notify(tx, tenantId, [doc.ownerId], "invoice_overdue", { title: doc.number ?? "", docId: id, amount: doc.total - doc.paidAmount });
+          return 1;
+        },
+        { tenantId },
+      );
+    }
+    return sent;
+  }
+
   // ─── Internals ────────────────────────────────────────────
 
   /** Recomputes the paid amount from the payments and the status from it. */
@@ -459,13 +538,16 @@ export class SalesDocsService {
   }
 
   private async detail(tx: Tx, ctx: AuthedContext, d: SalesDoc): Promise<DocDto> {
-    const [[summary], payments, invoices] = await Promise.all([
+    const [[summary], payments, invoices, orders, tenant] = await Promise.all([
       this.summaries(tx, ctx.tenantId, [d]),
       d.kind === "invoice" ? tx.docPayment.find({ docId: d.id, tenantId: ctx.tenantId }, { sort: { paidOn: 1, createdAt: 1 } }) : [],
       d.kind === "quote" && this.can(ctx, "invoice")
         ? tx.salesDoc.find({ tenantId: ctx.tenantId, kind: "invoice", sourceId: d.id }, { projection: { id: 1, number: 1, status: 1 } })
         : [],
+      d.kind === "quote" ? tx.order.find({ tenantId: ctx.tenantId, quoteId: d.id }, { projection: { id: 1, number: 1, status: 1 } }) : [],
+      tx.tenant.get({ id: ctx.tenantId }, { projection: { docSettings: 1 } }),
     ]);
+    const names = await memberRefs(tx, ctx.tenantId, [d.approval?.requestedById, d.approval?.decidedById]);
     const recorders = await memberRefs(tx, ctx.tenantId, payments.map((p) => p.recordedById));
     return {
       ...summary!,
@@ -490,6 +572,17 @@ export class SalesDocsService {
         createdAt: p.createdAt.toISOString(),
       })),
       shared: !!d.publicToken,
+      needsApproval: needsApproval(d, tenant),
+      approval: d.approval
+        ? {
+            status: d.approval.status,
+            requestedBy: d.approval.requestedById ? (names.get(d.approval.requestedById)?.name ?? null) : null,
+            decidedBy: d.approval.decidedById ? (names.get(d.approval.decidedById)?.name ?? null) : null,
+            at: d.approval.at.toISOString(),
+            note: d.approval.note,
+          }
+        : null,
+      orders: orders.map((o) => ({ id: o.id, number: o.number, status: o.status })),
     };
   }
 }

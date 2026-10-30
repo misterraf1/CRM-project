@@ -1,7 +1,7 @@
 "use client";
 
 import { PAYMENT_METHODS, type DocDto, type DocShareResponse, type Permission } from "@/shared";
-import { Check, Copy, Link2, Mail, Pencil, Printer, Trash2 } from "lucide-react";
+import { BadgePercent, BellRing, Check, Copy, Link2, Mail, PackagePlus, Pencil, Printer, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
@@ -9,6 +9,7 @@ import { api, type ClientResult } from "@/lib/api/client";
 import { formatDate, formatMoneyExact, moneyInputValue, parseMoneyInput } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
+import { interpolate } from "@/lib/i18n/locales";
 import { useHydrated } from "@/lib/use-hydrated";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -33,6 +34,10 @@ export function DocActions({ doc, permissions, contactEmail }: { doc: DocDto; pe
   const editable = canWrite && (doc.status === "draft" || (quote && doc.status === "sent"));
   const sendable = canWrite && (quote ? doc.status === "draft" || doc.status === "sent" : doc.status !== "void");
   const due = doc.total - doc.paidAmount;
+  const canApprove = permissions.includes("discounts.approve");
+  // Over the limit and not approved: the writer asks first (approvers may send directly)
+  const blocked = quote && doc.needsApproval && doc.approval?.status !== "approved" && !canApprove;
+  const approvalOpen = quote && doc.needsApproval && (doc.status === "draft" || doc.status === "sent");
 
   function run<T>(call: () => Promise<ClientResult<T>>, ok?: (data: T) => void) {
     startTransition(async () => {
@@ -84,7 +89,7 @@ export function DocActions({ doc, permissions, contactEmail }: { doc: DocDto; pe
   return (
     <div className="space-y-4 print:hidden" aria-busy={pending}>
       <div className="flex flex-wrap gap-2">
-        {sendable && (
+        {sendable && !blocked && (
           <>
             <button type="button" disabled={pending || !hydrated} onClick={() => setSending((v) => !v)} className="btn-primary h-8 text-xs">
               <Mail className="h-3.5 w-3.5" aria-hidden />
@@ -116,6 +121,18 @@ export function DocActions({ doc, permissions, contactEmail }: { doc: DocDto; pe
             </button>
           </>
         )}
+        {quote && permissions.includes("orders.manage") && (doc.status === "sent" || doc.status === "accepted") && (
+          <Link href={`/orders/new?quoteId=${doc.id}`} className={btn}>
+            <PackagePlus className="h-3.5 w-3.5" aria-hidden />
+            {k.toOrder}
+          </Link>
+        )}
+        {!quote && doc.status === "issued" && canWrite && (
+          <button type="button" disabled={pending || !hydrated} onClick={() => run(() => api<DocShareResponse>(`/docs/${doc.id}/remind`, "POST", {}), (r) => setNotice(r.emailDelivery === "queued" ? k.reminderSent : r.emailDelivery === "no_email" ? k.noEmail : k.emailNotConfigured))} className={btn}>
+            <BellRing className="h-3.5 w-3.5" aria-hidden />
+            {k.remind}
+          </button>
+        )}
         {quote && canInvoice && (doc.status === "sent" || doc.status === "accepted") && (
           <button type="button" disabled={pending} onClick={() => run(() => api<DocDto>(`/docs/${doc.id}/invoice`, "POST"), (inv) => router.push(`/sales/${inv.id}`))} className={btn}>
             {k.toInvoice}
@@ -138,6 +155,53 @@ export function DocActions({ doc, permissions, contactEmail }: { doc: DocDto; pe
           </button>
         )}
       </div>
+
+      {approvalOpen && (
+        <section className="card border-warning/40 p-4" aria-labelledby="approval-title">
+          <h2 id="approval-title" className="flex items-center gap-2 text-sm font-semibold">
+            <BadgePercent className="h-4 w-4 text-warning" aria-hidden />
+            {k.needsApproval}
+          </h2>
+          {doc.approval && (
+            <p className="mt-1 text-sm text-fg-muted">
+              {interpolate(doc.approval.status === "pending" ? k.approvalPending : doc.approval.status === "approved" ? k.approvalApproved : k.approvalRejected, {
+                name: (doc.approval.status === "pending" ? doc.approval.requestedBy : doc.approval.decidedBy) ?? "",
+              })}
+              {doc.approval.note && ` — «${doc.approval.note}»`}
+            </p>
+          )}
+          {doc.approval?.status === "pending" && canApprove ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" disabled={pending} onClick={() => run(() => api(`/docs/${doc.id}/approval`, "POST", { action: "approve" }))} className="btn-primary h-8 text-xs">
+                {k.approve}
+              </button>
+              <button type="button" disabled={pending} onClick={() => run(() => api(`/docs/${doc.id}/approval`, "POST", { action: "reject" }))} className="btn-ghost h-8 border border-border text-xs">
+                {k.rejectApproval}
+              </button>
+            </div>
+          ) : (
+            blocked &&
+            doc.approval?.status !== "pending" && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const note = String(new FormData(e.currentTarget).get("note") ?? "");
+                  run(() => api(`/docs/${doc.id}/approval`, "POST", { action: "request", note }));
+                }}
+                className="mt-3 flex flex-wrap items-end gap-2"
+              >
+                <label className="field-label min-w-[14rem] flex-1">
+                  {k.approvalNote}
+                  <input name="note" maxLength={500} className="input" />
+                </label>
+                <button type="submit" disabled={pending || !hydrated} className="btn-primary">
+                  {k.requestApproval}
+                </button>
+              </form>
+            )
+          )}
+        </section>
+      )}
 
       {sending && (
         <form

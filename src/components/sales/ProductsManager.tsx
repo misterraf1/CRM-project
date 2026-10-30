@@ -24,6 +24,11 @@ export function ProductsManager({ products: initial, canManage, baseCurrency }: 
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [pending, startTransition] = useTransition();
+  // Bundle contents of the product being edited
+  const [components, setComponents] = useState<{ productId: string; quantity: number }[]>([]);
+  useEffect(() => setComponents(editing && editing !== "new" ? editing.components.map(({ productId, quantity }) => ({ productId, quantity })) : []), [editing]);
+  const plain = products.filter((p) => p.components.length === 0 && (editing === "new" || !editing || p.id !== editing.id));
+  const nameOf = new Map(products.map((p) => [p.id, p.name]));
 
   function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -40,6 +45,7 @@ export function ProductsManager({ products: initial, canManage, baseCurrency }: 
       currency: String(f.get("currency")),
       taxBp: Math.round(tax * 100),
       active: f.get("active") === "on",
+      components,
     };
     const current = editing;
     startTransition(async () => {
@@ -102,6 +108,43 @@ export function ProductsManager({ products: initial, canManage, baseCurrency }: 
         {k.lineDescription}
         <input name="description" maxLength={1000} defaultValue={p?.description ?? ""} className="input" />
       </label>
+      <fieldset className="sm:col-span-6">
+        <legend className="text-xs font-medium">{k.bundleContents}</legend>
+        {components.length > 0 && (
+          <ul className="mt-1 space-y-1">
+            {components.map((c, i) => (
+              <li key={c.productId} className="flex items-center gap-2 text-sm">
+                <span className="flex-1 truncate">{nameOf.get(c.productId)}</span>
+                <input
+                  aria-label={`${k.quantity}: ${nameOf.get(c.productId)}`}
+                  type="number"
+                  min={0.001}
+                  step="any"
+                  value={c.quantity}
+                  onChange={(e) => setComponents((all) => all.map((x, j) => (j === i ? { ...x, quantity: Number(e.target.value) || 1 } : x)))}
+                  className="input mt-0 h-8 w-20"
+                />
+                <button type="button" onClick={() => setComponents((all) => all.filter((_, j) => j !== i))} className="text-xs font-medium text-danger hover:underline">
+                  {k.removeComponent}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <select
+          aria-label={k.addComponent}
+          value=""
+          onChange={(e) => e.target.value && setComponents((all) => (all.some((x) => x.productId === e.target.value) ? all : [...all, { productId: e.target.value, quantity: 1 }]))}
+          className="input mt-1 h-8 w-auto max-w-full text-xs"
+        >
+          <option value="">+ {k.addComponent}</option>
+          {plain.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+      </fieldset>
       <label className="flex items-center gap-2 text-sm sm:col-span-6">
         <input type="checkbox" name="active" defaultChecked={p?.active ?? true} />
         {k.activeProduct}
@@ -150,7 +193,11 @@ export function ProductsManager({ products: initial, canManage, baseCurrency }: 
                     {p.name}
                     {p.sku && <span className="ml-2 font-mono text-xs text-fg-subtle">{p.sku}</span>}
                     {!p.active && <span className="ml-2 rounded-full bg-muted px-1.5 text-[10px] text-fg-subtle">{k.archived}</span>}
+                    {p.components.length > 0 && <span className="ml-2 rounded-full bg-accent-soft px-1.5 text-[10px] text-accent">{k.bundle}</span>}
                   </p>
+                  {p.components.length > 0 && (
+                    <p className="truncate text-xs text-fg-muted">{k.bundleIncludes.replace("{list}", p.components.map((c) => `${c.name} ×${c.quantity}`).join(", "))}</p>
+                  )}
                   {p.description && <p className="truncate text-xs text-fg-muted">{p.description}</p>}
                 </div>
                 <span className="tabular text-sm font-medium">

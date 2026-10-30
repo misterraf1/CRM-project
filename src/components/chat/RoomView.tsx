@@ -143,7 +143,8 @@ export function RoomView({
               run(
                 () => api(`/chat/rooms/${room.id}/members/me`, "DELETE"),
                 () => {
-                  router.push("/chat");
+                  // A full load: the client cache may still hold the room list with this room in it
+                  window.location.assign("/chat");
                   return "navigated";
                 },
               )

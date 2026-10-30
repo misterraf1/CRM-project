@@ -1,6 +1,7 @@
 import { AutomationRunner } from "../automations/automation.runner";
 import type { Contact } from "../db/models";
 import type {
+  DuplicateMatchesDto,
   ActivityDto,
   ContactCreateInput,
   ContactDetailDto,
@@ -112,6 +113,32 @@ export class ContactsService {
         ...dto!,
         deals: deals.map((d) => dealToDto(d, refs)),
         people: people.map((p) => ({ id: p.id, name: p.name, email: p.email, phone: p.phone })),
+      };
+    });
+  }
+
+  /**
+   * Contacts with the same email or phone (the last 9 digits, so +994 50… and 050… meet).
+   * Matches outside the caller's view are only counted: their names stay private.
+   */
+  async duplicates(q: { email?: string; phone?: string; excludeId?: string }): Promise<DuplicateMatchesDto> {
+    const ctx = authedContext();
+    const digits = (q.phone ?? "").replace(/\D/g, "");
+    const or = [
+      ...(q.email && q.email.includes("@") ? [{ email: q.email }] : []),
+      ...(digits.length >= 7 ? [{ phone: { $regex: `${digits.slice(-9)}$` } }] : []),
+    ];
+    if (!or.length) return { items: [], hidden: 0 };
+    return this.db.scoped(async (tx) => {
+      const where = { tenantId: ctx.tenantId, deletedAt: null, $or: or, ...(q.excludeId ? { id: { $ne: q.excludeId } } : {}) };
+      const [all, scope] = await Promise.all([
+        tx.contact.find(where, { limit: 20, projection: { id: 1, name: 1, email: 1, phone: 1, ownerId: 1 } }),
+        ownerScope(tx, ctx, "contacts.view_all"),
+      ]);
+      const visible = all.filter((c) => !scope.memberIds || (c.ownerId ? scope.memberIds.includes(c.ownerId) : scope.scope === "department"));
+      return {
+        items: visible.slice(0, 5).map((c) => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, match: q.email && c.email === q.email ? ("email" as const) : ("phone" as const) })),
+        hidden: all.length - visible.length,
       };
     });
   }

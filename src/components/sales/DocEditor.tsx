@@ -85,7 +85,10 @@ export function DocEditor({ kind, doc, contacts, defaults, products, currencies 
     const p = products.find((x) => x.id === id);
     if (!p) return;
     if (p.currency !== currency) setError(k.productCurrency.replace("{currency}", p.currency));
-    const row: Row = { key: key(), productId: p.id, name: p.name, description: p.description ?? "", quantity: "1", unit: p.unit, price: moneyInputValue(p.price), discount: "", tax: pct(p.taxBp) };
+    // A bundle is one line at its own price; its contents go into the description
+    const contents = p.components.length ? k.bundleIncludes.replace("{list}", p.components.map((c) => `${c.name} ×${c.quantity}`).join(", ")) : "";
+    const description = [p.description, contents].filter(Boolean).join(". ").slice(0, 500);
+    const row: Row = { key: key(), productId: p.id, name: p.name, description, quantity: "1", unit: p.unit, price: moneyInputValue(p.price), discount: "", tax: pct(p.taxBp) };
     // An untouched empty first row is replaced
     setRows((all) => (all.length === 1 && !all[0]!.name && !all[0]!.price ? [row] : [...all, row]));
   }
