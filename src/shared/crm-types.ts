@@ -82,7 +82,12 @@ export type ActivityType =
   | "deal_created"
   | "deal_stage"
   | "deal_won"
-  | "deal_lost";
+  | "deal_lost"
+  | "quote_sent"
+  | "quote_accepted"
+  | "quote_rejected"
+  | "invoice_issued"
+  | "invoice_paid";
 
 export interface ActivityDto {
   id: string;

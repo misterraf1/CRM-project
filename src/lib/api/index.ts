@@ -35,7 +35,7 @@ import type {
   AutomationRunDto,
   FileListResponse,
 } from "@/shared";
-import type { CurrencySettingsDto, FieldDefinitionDto, FieldEntity, RoleDto } from "@/shared";
+import type { CurrencySettingsDto, DocDto, DocKind, DocSettings, DocSummaryDto, FieldDefinitionDto, FieldEntity, ProductDto, RoleDto } from "@/shared";
 import { cache } from "react";
 import { apiFetch } from "./server";
 import { PERIODS, type Period, type ShellSummary } from "./types";
@@ -49,6 +49,19 @@ export const getMembers = cache(() => apiFetch<MemberDto[]>("/v1/members"));
 export const getDepartments = () => apiFetch<DepartmentDto[]>("/v1/departments");
 
 export const getRoles = () => apiFetch<RoleDto[]>("/v1/roles");
+
+export const getProducts = (all = false) => apiFetch<ProductDto[]>(`/v1/products${all ? "?all=1" : ""}`);
+
+export function getDocs(kind: DocKind, params: { status?: string; q?: string } = {}) {
+  const qs = new URLSearchParams(Object.entries({ kind, ...params }).filter((e): e is [string, string] => !!e[1]));
+  return apiFetch<DocSummaryDto[]>(`/v1/docs?${qs}`);
+}
+
+export const getDoc = (id: string) => apiFetch<DocDto>(`/v1/docs/${encodeURIComponent(id)}`);
+
+export const getDealDocs = (dealId: string) => apiFetch<DocSummaryDto[]>(`/v1/docs/deal/${encodeURIComponent(dealId)}`);
+
+export const getDocSettings = () => apiFetch<DocSettings>("/v1/settings/documents");
 
 export const getShellSummary = cache(async (): Promise<ShellSummary> => {
   const s = await apiFetch<ShellSummaryDto>("/v1/me/summary");

@@ -72,6 +72,8 @@ export interface Tenant {
   currency: string;
   /** Company-currency value of one unit of another currency (CRM deals), e.g. { USD: 1.7 } */
   fxRates: Record<string, number>;
+  /** Seller details printed on quotes and invoices */
+  docSettings: { legalName?: string | null; taxId?: string | null; address?: string | null; bankDetails?: string | null; terms?: string | null };
   locale: Locale;
   status: TenantStatus;
   lockVersion: number;
@@ -606,6 +608,85 @@ export interface ImportJob {
   createdAt: Date;
 }
 
+/** Commercial document line, with its computed amounts (minor units). */
+export interface DocLine {
+  productId: string | null;
+  name: string;
+  description: string | null;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  discountBp: number;
+  taxBp: number;
+  net: number;
+  discount: number;
+  tax: number;
+  total: number;
+}
+
+export interface Product {
+  id: string;
+  tenantId: string;
+  name: string;
+  sku: string | null;
+  description: string | null;
+  unit: string;
+  price: number;
+  currency: string;
+  taxBp: number;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** A quote or a customer invoice (one collection: invoices are usually made from quotes). */
+export interface SalesDoc {
+  id: string;
+  tenantId: string;
+  kind: "quote" | "invoice";
+  /** Quotes get one when created; invoices when issued (gap-free) */
+  number: string | null;
+  status: string;
+  contactId: string;
+  dealId: string | null;
+  ownerId: string | null;
+  /** The quote an invoice was made from */
+  sourceId: string | null;
+  currency: string;
+  lines: DocLine[];
+  subtotal: number;
+  discountTotal: number;
+  taxTotal: number;
+  total: number;
+  /** `total` in the company currency */
+  baseTotal: number;
+  paidAmount: number;
+  issueDate: Date | null;
+  /** Quote: valid until · invoice: due */
+  dueDate: Date | null;
+  notes: string | null;
+  /** sha256 of the customer link's secret */
+  publicToken: string | null;
+  sentAt: Date | null;
+  response: { decision: "accept" | "reject"; name: string; comment: string | null; at: Date } | null;
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DocPayment {
+  id: string;
+  tenantId: string;
+  docId: string;
+  amount: number;
+  method: string;
+  paidOn: Date;
+  reference: string | null;
+  note: string | null;
+  recordedById: string | null;
+  createdAt: Date;
+}
+
 export interface Models {
   User: User;
   AdminSession: AdminSession;
@@ -650,6 +731,9 @@ export interface Models {
   ErrorEvent: ErrorEvent;
   FieldDefinition: FieldDefinition;
   ImportJob: ImportJob;
+  Product: Product;
+  SalesDoc: SalesDoc;
+  DocPayment: DocPayment;
 }
 export type ModelName = keyof Models;
 
@@ -658,7 +742,7 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   User: { passwordHash: null, avatarUrl: null, locale: "AZ", platformRole: "NONE", emailVerified: null, mfaSecret: null, mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [], lastLoginAt: null, createdAt: "now", updatedAt: "now" },
   AdminSession: { revokedAt: null, ip: null, userAgent: null, createdAt: "now" },
   Session: { userAgent: null, ip: null, rotatedAt: null, revokedAt: null, createdAt: "now" },
-  Tenant: { logoUrl: null, timezone: "Asia/Baku", currency: "AZN", fxRates: {}, locale: "AZ", status: "TRIALING", lockVersion: 0, createdAt: "now", updatedAt: "now" },
+  Tenant: { logoUrl: null, timezone: "Asia/Baku", currency: "AZN", fxRates: {}, docSettings: {}, locale: "AZ", status: "TRIALING", lockVersion: 0, createdAt: "now", updatedAt: "now" },
   Plan: { currency: "AZN", aiCredits: 0, extraSeatPrice: 900, extraStorageGbPrice: 500, features: [], contactLimit: null, automationLimit: null, isPublic: true, sortOrder: 0, createdAt: "now", updatedAt: "now" },
   Subscription: { status: "TRIALING", interval: "MONTH", extraSeats: 0, extraStorageMb: 0, trialEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false, scheduledPlanId: null, providerRef: null, paymentMethod: null, retryCount: 0, nextRetryAt: null, trialReminderSentAt: null, demoNextChargeFails: false, limitOverrides: {}, featureGrants: [], complimentary: false, createdAt: "now", updatedAt: "now" },
   Invoice: { kind: "subscription", status: "OPEN", currency: "AZN", apply: null, paidAt: null, createdAt: "now" },
@@ -697,11 +781,14 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   EmailMessage: { tenantId: null, inboxMessageId: null, from: null, headers: {}, status: "queued", attempts: 0, error: null, createdAt: "now", sentAt: null },
   FieldDefinition: { options: [], required: false, order: 0, archived: false, createdAt: "now" },
   ImportJob: { issues: [], issueRows: [], createdIds: [], byId: null, createdAt: "now" },
+  Product: { sku: null, description: null, unit: "ədəd", taxBp: 0, active: true, createdAt: "now", updatedAt: "now" },
+  SalesDoc: { number: null, dealId: null, ownerId: null, sourceId: null, paidAmount: 0, issueDate: null, dueDate: null, notes: null, publicToken: null, sentAt: null, response: null, createdById: null, createdAt: "now", updatedAt: "now" },
+  DocPayment: { reference: null, note: null, recordedById: null, createdAt: "now" },
   ErrorEvent: { stack: null, where: null, tenantRef: null, count: 1, firstSeenAt: "now", lastSeenAt: "now" },
 };
 
 /** Models whose `updatedAt` is bumped on every update. */
-export const HAS_UPDATED_AT: ReadonlySet<ModelName> = new Set<ModelName>(["User", "Tenant", "Plan", "Subscription", "Role", "Contact", "Deal", "Task", "SupportTicket", "AutomationRule"]);
+export const HAS_UPDATED_AT: ReadonlySet<ModelName> = new Set<ModelName>(["User", "Tenant", "Plan", "Subscription", "Role", "Contact", "Deal", "Task", "SupportTicket", "AutomationRule", "Product", "SalesDoc"]);
 
 /** Models that carry `tenantId` (tenant-isolated by the repository layer). Session is not: refresh tokens are looked up by hash before any identity exists. */
-export const TENANT_MODELS: ReadonlySet<ModelName> = new Set<ModelName>(["Subscription", "Invoice", "Payment", "UsageCounter", "Membership", "Role", "Department", "Contact", "Pipeline", "PipelineStage", "Deal", "Activity", "Project", "Task", "TaskComment", "Channel", "Conversation", "Message", "CannedResponse", "ChatRoom", "ChatMember", "ChatMessage", "FileObject", "Notification", "AuditLog", "SupportTicket", "SupportTicketMessage", "AutomationRule", "AutomationEvent", "AutomationRun", "EmailMessage", "FieldDefinition", "ImportJob"]);
+export const TENANT_MODELS: ReadonlySet<ModelName> = new Set<ModelName>(["Subscription", "Invoice", "Payment", "UsageCounter", "Membership", "Role", "Department", "Contact", "Pipeline", "PipelineStage", "Deal", "Activity", "Project", "Task", "TaskComment", "Channel", "Conversation", "Message", "CannedResponse", "ChatRoom", "ChatMember", "ChatMessage", "FileObject", "Notification", "AuditLog", "SupportTicket", "SupportTicketMessage", "AutomationRule", "AutomationEvent", "AutomationRun", "EmailMessage", "FieldDefinition", "ImportJob", "Product", "SalesDoc", "DocPayment"]);

@@ -1,6 +1,7 @@
 import {
   BarChart3,
   CheckSquare,
+  FileText,
   FolderOpen,
   Handshake,
   LayoutDashboard,
@@ -38,6 +39,7 @@ export const NAV_GROUPS: { label: "groupWork" | "groupManage"; items: NavItem[] 
       { key: "inbox", href: "/inbox", icon: MessageSquareText, badge: "awaiting" },
       { key: "crm", href: "/crm", icon: Users },
       { key: "deals", href: "/deals", icon: Handshake, feature: "deals.pipeline" },
+      { key: "sales", href: "/sales", icon: FileText, permission: "quotes.manage" },
       { key: "tasks", href: "/tasks", icon: CheckSquare, badge: "overdue" },
       { key: "chat", href: "/chat", icon: MessagesSquare, badge: "unreadChat" },
     ],

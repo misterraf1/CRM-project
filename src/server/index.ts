@@ -13,6 +13,7 @@ import { dataRoutes } from "./crm/data.routes";
 import { dashboardRoutes } from "./dashboard/dashboard.routes";
 import { departmentsRoutes } from "./departments/departments.routes";
 import { rolesRoutes } from "./roles/roles.routes";
+import { salesRoutes } from "./sales/sales.routes";
 import { healthRoutes } from "./health.routes";
 import { ApiApp, type ClientInfo } from "./http/app";
 import { Router } from "./http/router";
@@ -46,6 +47,7 @@ export function createApi(): ApiServer {
     membersRoutes,
     departmentsRoutes,
     rolesRoutes,
+    salesRoutes,
     auditRoutes,
     contactsRoutes,
     dealsRoutes,

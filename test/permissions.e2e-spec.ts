@@ -11,6 +11,7 @@ describe("Role permission matrix", () => {
       "contacts.manage",
       "deals.create",
       "deals.edit",
+      "quotes.manage",
       "inbox.reply",
       "inbox.assign",
       "tasks.create",
@@ -21,7 +22,7 @@ describe("Role permission matrix", () => {
   });
 
   it("employee", () => {
-    expect(resolvePermissions("EMPLOYEE")).toEqual(["contacts.create", "contacts.edit", "deals.create", "deals.edit", "inbox.reply", "tasks.create", "members.view"]);
+    expect(resolvePermissions("EMPLOYEE")).toEqual(["contacts.create", "contacts.edit", "deals.create", "deals.edit", "quotes.manage", "inbox.reply", "tasks.create", "members.view"]);
   });
 
   it("admin has everything except billing; owner has everything", () => {
@@ -32,7 +33,7 @@ describe("Role permission matrix", () => {
   });
 
   it("view-all permissions, roles, automation management and bulk import/export stay with owners and admins", () => {
-    for (const p of ["dashboard.view_all", "contacts.view_all", "tasks.view_all", "automations.manage", "data.import", "contacts.export", "deals.export", "roles.manage"] as const) {
+    for (const p of ["dashboard.view_all", "contacts.view_all", "tasks.view_all", "automations.manage", "data.import", "contacts.export", "deals.export", "roles.manage", "products.manage", "invoices.manage", "finance.view"] as const) {
       expect(resolvePermissions("MANAGER")).not.toContain(p);
       expect(resolvePermissions("EMPLOYEE")).not.toContain(p);
       expect(resolvePermissions("ADMIN")).toContain(p);
@@ -46,6 +47,7 @@ describe("Role permission matrix", () => {
       "deals.create",
       "deals.edit",
       "deals.export",
+      "quotes.manage",
       "tasks.create",
       "members.view",
     ]);

@@ -19,6 +19,8 @@ export const BACKFILLS = [
   ["Membership", { roleId: null }],
   ["Plan", { contactLimit: null, automationLimit: null }],
   ["Subscription", { limitOverrides: {}, featureGrants: [], complimentary: false }],
+  // v2 Stage E — quotes and invoices
+  ["Tenant", { docSettings: {} }],
 ];
 
 /**

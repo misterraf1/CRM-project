@@ -45,7 +45,7 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
       <aside
         aria-label={t.shell.mainNav}
         className={clsx(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-surface transition-[width,transform] duration-200",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-surface transition-[width,transform] duration-200 print:hidden",
           narrow ? "w-[68px]" : "w-60",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}

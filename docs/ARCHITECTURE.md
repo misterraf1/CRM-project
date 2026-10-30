@@ -548,5 +548,19 @@ Hədlər: fayl 5 MB, 5000 sətir, 60 sütun; export 50 000 sətir. Import avtoma
 
 Maliyyə icazəsi (təklif/faktura) E mərhələsində, həmin modullarla gəlir. Yeni sahələr `npm run db:indexes` backfill-i ilə doldurulur.
 
+### v2 Mərhələ E — Məhsul → Təklif → Faktura ✅ (2026-10-30)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Kataloq (`Product`, `/sales/products`) | ✅ | Hamı oxuyur, `products.manage` dəyişir; sənəddə istifadə olunan məhsul silinmir, arxivə keçir |
+| Təklif və faktura (`SalesDoc`, `/sales`) | ✅ | Sətir: miqdar (3 onluq), qiymət, endirim %, ƏDV %; hesablama `docTotals` (brauzer və API eyni). Təklif nömrəsi yaradılanda (T-2026-0001), faktura nömrəsi çıxarılanda (F-2026-0001, boşluqsuz). `baseTotal` şirkət valyutasında |
+| Müştəri linki (`/p/<tenant>.<secret>`) | ✅ | Hesabsız baxış, çap/PDF, təklifə qəbul/rədd; yalnız sha256 saxlanılır, yeni link köhnəsini etibarsız edir; daxili məlumat (məsul, satış) görünmür |
+| E-poçt | ✅ | `quote_sent`/`invoice_sent` şablonları, mövcud outbox; SMTP yoxdursa "not_sent" və link əl ilə |
+| Qəbul | ✅ | Açıq satışın məbləği = təklifin yekunu; tarixçə + məsula bildiriş; işçi telefonla gələn cavabı da qeyd edə bilir |
+| Ödənişlər (`DocPayment`) | ✅ | Qismən/tam, artıq ödəniş qəbul olunmur, səhv ödəniş silinir; ödənişsiz faktura ləğv edilə bilir |
+| İcazələr | ✅ | `quotes.manage` (hamı, öz qeydləri), `products.manage`, `invoices.manage`, `finance.view` (sahib/admin) |
+| Rekvizitlər (Ayarlar → CRM) | ✅ | Hüquqi ad, VÖEN, ünvan, bank, standart şərtlər |
+
+PDF: server tərəfdə fayl yaradılmır — çapa uyğun səhifə brauzerin "PDF kimi saxla" funksiyası ilə əsl PDF verir (ə/ş/₼ yoxlanılıb). Server PDF (e-poçta qoşma) yeni kitabxana + şrift tələb edir, ayrıca qərar.
+
 ### Növbəti
-v2 Mərhələ E: məhsul kataloqu → təklif → faktura (PDF, e-poçt, portal linki, ödəniş qeydi), maliyyə icazəsi.
+v2 Mərhələ F: kanallar — Telegram, inbox media, WhatsApp media + şablonlar, operator statusu, SLA, iş saatları.

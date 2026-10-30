@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { CurrencyManager } from "@/components/settings/CurrencyManager";
+import { DocSettingsCard } from "@/components/settings/DocSettingsCard";
 import { FieldsManager } from "@/components/settings/FieldsManager";
 import { PipelinesManager } from "@/components/settings/PipelinesManager";
-import { getCurrencySettings, getFields, getPipelines, getSession } from "@/lib/api";
+import { getCurrencySettings, getDocSettings, getFields, getPipelines, getSession } from "@/lib/api";
 import { hasFeature } from "@/lib/billing";
 import { getI18n } from "@/lib/i18n/server";
 
@@ -15,7 +16,7 @@ export default async function CrmSettingsPage() {
     return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;
   }
   const withPipelines = hasFeature(me, "deals.pipeline");
-  const [fields, currencies, pipelines] = await Promise.all([getFields(undefined, true), getCurrencySettings(), withPipelines ? getPipelines() : []]);
+  const [fields, currencies, pipelines, docSettings] = await Promise.all([getFields(undefined, true), getCurrencySettings(), withPipelines ? getPipelines() : [], getDocSettings()]);
 
   return (
     <div className="space-y-5">
@@ -27,6 +28,7 @@ export default async function CrmSettingsPage() {
         <div className="min-w-0 space-y-5">
           <FieldsManager fields={fields} />
           <CurrencyManager settings={currencies} />
+          <DocSettingsCard settings={docSettings} />
         </div>
         <div className="min-w-0">
           {withPipelines ? (

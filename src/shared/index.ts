@@ -15,3 +15,4 @@ export * from "./admin";
 export * from "./analytics";
 export * from "./automations";
 export * from "./imports";
+export * from "./sales";

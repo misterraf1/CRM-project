@@ -58,8 +58,8 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
       />
-      <div className={clsx("transition-[padding] duration-200", collapsed ? "lg:pl-[68px]" : "lg:pl-60")}>
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-surface/85 px-4 backdrop-blur lg:px-6">
+      <div className={clsx("transition-[padding] duration-200 print:!pl-0", collapsed ? "lg:pl-[68px]" : "lg:pl-60")}>
+        <header className="sticky top-0 z-20 flex print:hidden h-14 items-center gap-3 border-b border-border bg-surface/85 px-4 backdrop-blur lg:px-6">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
@@ -75,7 +75,7 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
           </div>
         </header>
         <SubscriptionBanner session={session} />
-        <main id="main" tabIndex={-1} className="mx-auto max-w-[1400px] px-4 py-6 outline-none lg:px-6">{children}</main>
+        <main id="main" tabIndex={-1} className="mx-auto max-w-[1400px] px-4 py-6 outline-none lg:px-6 print:p-0">{children}</main>
       </div>
     </div>
   );

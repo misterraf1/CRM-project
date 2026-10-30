@@ -12,6 +12,9 @@ const PUBLIC = [
   /^\/auth\//,
   /^\/widget\//,
   /^\/api\/v1\/widget\//,
+  // Customer links to quotes and invoices (the secret in the link is the credential)
+  /^\/p\//,
+  /^\/api\/v1\/public\//,
   /^\/v1\/webhooks\//,
   /^\/health$/,
   /^\/api\/cron$/,

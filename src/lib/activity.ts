@@ -1,6 +1,6 @@
 import type { ActivityDto, ActivityType, LifecycleStage } from "@/shared";
-import { CheckCircle2, Handshake, MoveRight, StickyNote, UserCog, UserPlus, XCircle, type LucideIcon } from "lucide-react";
-import { formatMoney } from "./format";
+import { CheckCircle2, FileCheck2, FileText, FileX2, Handshake, MoveRight, Receipt, StickyNote, UserCog, UserPlus, Wallet, XCircle, type LucideIcon } from "lucide-react";
+import { formatMoney, formatMoneyExact } from "./format";
 import type { Dictionary } from "./i18n/dictionaries/az";
 import { interpolate, type Locale } from "./i18n/locales";
 
@@ -13,6 +13,11 @@ export const ACTIVITY_ICONS: Record<ActivityType, { icon: LucideIcon; className:
   deal_stage: { icon: MoveRight, className: "text-accent" },
   deal_won: { icon: CheckCircle2, className: "text-success" },
   deal_lost: { icon: XCircle, className: "text-danger" },
+  quote_sent: { icon: FileText, className: "text-accent" },
+  quote_accepted: { icon: FileCheck2, className: "text-success" },
+  quote_rejected: { icon: FileX2, className: "text-danger" },
+  invoice_issued: { icon: Receipt, className: "text-accent" },
+  invoice_paid: { icon: Wallet, className: "text-success" },
 };
 
 /** One-line, localized description. Names come from the payload captured at write time. */
@@ -25,7 +30,10 @@ export function describeActivity(a: ActivityDto, t: Dictionary, locale: Locale):
     contact: String(p.contactName ?? ""),
     deal: String(p.dealTitle ?? ""),
     owner: String(p.ownerName ?? t.crm.unassigned),
-    amount: formatMoney(Number(p.amount ?? 0), locale),
+    // Documents carry their own currency and exact amounts
+    amount: p.currency ? formatMoneyExact(Number(p.amount ?? 0), locale, String(p.currency)) : formatMoney(Number(p.amount ?? 0), locale),
+    number: String(p.number ?? ""),
+    by: String(p.by ?? ""),
     from: a.type === "contact_stage" ? stage(p.from) : String(p.from ?? ""),
     to: a.type === "contact_stage" ? stage(p.to) : String(p.to ?? ""),
     reason: reason(p.reason),

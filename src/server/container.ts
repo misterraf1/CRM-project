@@ -30,6 +30,9 @@ import { ImportService } from "./crm/import.service";
 import { DashboardService } from "./dashboard/dashboard.service";
 import { DepartmentsService } from "./departments/departments.service";
 import { RolesService } from "./roles/roles.service";
+import { SalesDocsService } from "./sales/docs.service";
+import { ProductsService } from "./sales/products.service";
+import { PublicDocsService } from "./sales/public-docs.service";
 import { ChannelsService } from "./inbox/channels.service";
 import { InboxEvents } from "./inbox/events";
 import { InboxService } from "./inbox/inbox.service";
@@ -76,6 +79,7 @@ export function createServices() {
   const billing = new BillingService(db, entitlements, notifications, audit, mail, provider);
   const adminAuth = new AdminAuthService(db, jwt);
   const deals = new DealsService(db, activity, audit, automationRunner);
+  const docs = new SalesDocsService(db, audit, activity, notifications, mail);
 
   const services = {
     db,
@@ -104,6 +108,9 @@ export function createServices() {
     members: new MembersService(db, audit, entitlements, tokens, mail),
     departments: new DepartmentsService(db, audit),
     roles: new RolesService(db, audit),
+    products: new ProductsService(db, audit),
+    docs,
+    publicDocs: new PublicDocsService(db, docs),
     contacts: new ContactsService(db, activity, audit, automationRunner, entitlements),
     imports: new ImportService(db, audit, entitlements),
     exports: new ExportService(db, audit),

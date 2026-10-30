@@ -2,6 +2,7 @@ import type {
   CurrencySettingsDto,
   CurrencySettingsInput,
   CustomFieldValues,
+  DocSettings,
   FieldCreateInput,
   FieldDefinitionDto,
   FieldEntity,
@@ -331,6 +332,28 @@ export class CrmSettingsService {
       return currencyDto(updated);
     });
   }
+
+  // ─── Document details ───────────────────────────────────────
+
+  async docSettings(): Promise<DocSettings> {
+    const { tenantId } = authedContext();
+    return docSettingsDto(await this.db.scoped((tx) => tx.tenant.get({ id: tenantId }, { projection: { docSettings: 1 } })));
+  }
+
+  async updateDocSettings(input: DocSettings): Promise<DocSettings> {
+    const ctx = authedContext();
+    return this.db.scoped(async (tx) => {
+      const updated = await tx.tenant.update({ id: ctx.tenantId }, { $set: { docSettings: docSettingsDto({ docSettings: input }) } });
+      await this.audit.log(tx, { action: "documents.settings_updated", entityType: "tenant", entityId: ctx.tenantId });
+      return docSettingsDto(updated);
+    });
+  }
+}
+
+// Seller details on documents: a separate block of the company settings
+export function docSettingsDto(tenant: Pick<Tenant, "docSettings">): DocSettings {
+  const s = tenant.docSettings ?? {};
+  return { legalName: s.legalName ?? null, taxId: s.taxId ?? null, address: s.address ?? null, bankDetails: s.bankDetails ?? null, terms: s.terms ?? null };
 }
 
 function currencyDto(tenant: Pick<Tenant, "currency" | "fxRates">): CurrencySettingsDto {

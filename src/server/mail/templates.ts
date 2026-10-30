@@ -7,7 +7,9 @@ export type MailTemplate =
   | { template: "invite"; vars: { company: string; inviter: string; link: string; days: number } }
   | { template: "password_reset"; vars: { link: string; minutes: number } }
   | { template: "invoice_paid"; vars: { company: string; number: string; amount: string; link: string } }
-  | { template: "support_reply"; vars: { subject: string; link: string } };
+  | { template: "support_reply"; vars: { subject: string; link: string } }
+  | { template: "quote_sent"; vars: { company: string; number: string; amount: string; link: string } }
+  | { template: "invoice_sent"; vars: { company: string; number: string; amount: string; link: string } };
 
 type Copy = { subject: string; lines: string[]; action: string };
 
@@ -67,6 +69,40 @@ const COPY: Record<MailTemplate["template"], Record<MailLocale, (v: never) => Co
     az: (v: { subject: string }) => ({ subject: `Dəstək cavab verdi: ${v.subject}`, lines: [`«${v.subject}» müraciətinizə Axis dəstək komandası cavab yazdı.`], action: "Cavaba bax" }),
     en: (v: { subject: string }) => ({ subject: `Support replied: ${v.subject}`, lines: [`The Axis support team replied to your ticket “${v.subject}”.`], action: "Read the reply" }),
     ru: (v: { subject: string }) => ({ subject: `Поддержка ответила: ${v.subject}`, lines: [`Команда поддержки Axis ответила на ваше обращение «${v.subject}».`], action: "Посмотреть ответ" }),
+  },
+  quote_sent: {
+    az: (v: { company: string; number: string; amount: string }) => ({
+      subject: `${v.company}: təklif ${v.number}`,
+      lines: [`${v.company} sizə ${v.amount} məbləğində ${v.number} nömrəli təklif göndərdi.`, "Təklifə linkdən baxa, PDF kimi saxlaya və cavabınızı bildirə bilərsiniz."],
+      action: "Təklifə bax",
+    }),
+    en: (v: { company: string; number: string; amount: string }) => ({
+      subject: `${v.company}: quote ${v.number}`,
+      lines: [`${v.company} sent you quote ${v.number} for ${v.amount}.`, "Open the link to view it, save it as a PDF and give your answer."],
+      action: "View the quote",
+    }),
+    ru: (v: { company: string; number: string; amount: string }) => ({
+      subject: `${v.company}: предложение ${v.number}`,
+      lines: [`${v.company} отправил(а) вам предложение ${v.number} на сумму ${v.amount}.`, "По ссылке его можно посмотреть, сохранить в PDF и дать ответ."],
+      action: "Открыть предложение",
+    }),
+  },
+  invoice_sent: {
+    az: (v: { company: string; number: string; amount: string }) => ({
+      subject: `${v.company}: hesab-faktura ${v.number}`,
+      lines: [`${v.company} sizə ${v.amount} məbləğində ${v.number} nömrəli hesab-faktura göndərdi.`, "Fakturaya linkdən baxa və PDF kimi saxlaya bilərsiniz."],
+      action: "Fakturaya bax",
+    }),
+    en: (v: { company: string; number: string; amount: string }) => ({
+      subject: `${v.company}: invoice ${v.number}`,
+      lines: [`${v.company} sent you invoice ${v.number} for ${v.amount}.`, "Open the link to view it and save it as a PDF."],
+      action: "View the invoice",
+    }),
+    ru: (v: { company: string; number: string; amount: string }) => ({
+      subject: `${v.company}: счёт ${v.number}`,
+      lines: [`${v.company} выставил(а) вам счёт ${v.number} на сумму ${v.amount}.`, "По ссылке его можно посмотреть и сохранить в PDF."],
+      action: "Открыть счёт",
+    }),
   },
 };
 

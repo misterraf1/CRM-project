@@ -66,6 +66,15 @@ export function formatMoney(minor: number, locale: Locale, currency = "AZN", com
   return locale === "en" ? `${symbol}${amount}` : `${amount} ${symbol}`;
 }
 
+/** Documents (quotes, invoices): always two decimals — "1 250,50 ₼". */
+export function formatMoneyExact(minor: number, locale: Locale, currency = "AZN") {
+  const { group, decimal } = NUMBER[locale];
+  const [int, frac] = (Math.abs(minor) / 100).toFixed(2).split(".");
+  const amount = `${minor < 0 ? "-" : ""}${int!.replace(/\B(?=(\d{3})+(?!\d))/g, group)}${decimal}${frac}`;
+  const symbol = CURRENCY_SYMBOL[currency] ?? currency;
+  return locale === "en" ? `${symbol}${amount}` : `${amount} ${symbol}`;
+}
+
 /** "45 dəq", "3 saat", "2 gün" — a duration without "ago". */
 export function formatDuration(minutes: number, locale: Locale) {
   const [value, unit] =

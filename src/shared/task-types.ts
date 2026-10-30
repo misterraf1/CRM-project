@@ -81,6 +81,8 @@ export type NotificationType =
   | "billing_suspended"
   /** Manual billing: the paid period is over and the renewal is due */
   | "billing_period_ended"
+  | "quote_accepted"
+  | "quote_rejected"
   | "support_reply"
   | "automation";
 

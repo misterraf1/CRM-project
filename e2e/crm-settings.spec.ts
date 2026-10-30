@@ -21,7 +21,7 @@ test("custom fields, company link, second pipeline and a USD deal", async ({ pag
   await page.getByRole("button", { name: "Sahə əlavə et" }).click();
   await page.getByLabel("Sahənin adı").fill("VÖEN");
   await page.getByRole("button", { name: "Yadda saxla" }).first().click();
-  await expect(page.getByText("VÖEN")).toBeVisible();
+  await expect(page.getByRole("listitem").getByText("VÖEN", { exact: true })).toBeVisible();
 
   // USD rate, then a second pipeline with its own stage
   await page.getByLabel("1 USD = ? AZN").fill("1,7");
