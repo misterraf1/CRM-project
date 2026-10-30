@@ -89,6 +89,8 @@ export type NotificationType =
   | "discount_rejected"
   | "order_step_assigned"
   | "order_done"
+  /** "@Name" in a contact note or task comment */
+  | "mention"
   | "support_reply"
   | "automation";
 
@@ -131,3 +133,22 @@ export interface MemberProfileDto extends MemberStatsDto {
   tasks: TaskDto[];
   activity: ActivityDto[];
 }
+
+/** Notifications a member may turn off for themselves (billing notices always arrive). */
+export const MUTABLE_NOTIFICATIONS = [
+  "mention",
+  "task_assigned",
+  "task_comment",
+  "task_completed",
+  "task_overdue",
+  "order_step_assigned",
+  "order_done",
+  "quote_accepted",
+  "quote_rejected",
+  "discount_approval_requested",
+  "discount_approved",
+  "discount_rejected",
+  "invoice_overdue",
+  "automation",
+  "support_reply",
+] as const satisfies readonly NotificationType[];

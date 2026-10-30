@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const CHANNEL_TYPES = ["WHATSAPP", "INSTAGRAM", "MESSENGER", "WEBCHAT", "EMAIL"] as const;
+export const CHANNEL_TYPES = ["WHATSAPP", "INSTAGRAM", "MESSENGER", "TELEGRAM", "WEBCHAT", "EMAIL"] as const;
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 
 export const CONVERSATION_STATUSES = ["OPEN", "PENDING", "RESOLVED"] as const;
@@ -20,6 +20,15 @@ export const channelCreateSchema = z.discriminatedUnion("type", [
     demo: z.boolean().default(false),
     phoneNumberId: z.string().trim().regex(/^\d{5,30}$/).optional(),
     accessToken: z.string().trim().min(20).max(1000).optional(),
+    /** WhatsApp Business Account id: needed to load the approved message templates */
+    wabaId: z.string().trim().regex(/^\d{5,30}$/).optional(),
+  }),
+  z.object({
+    type: z.literal("TELEGRAM"),
+    name: z.string().trim().min(1).max(80),
+    demo: z.boolean().default(false),
+    /** From @BotFather: 123456789:AA… */
+    botToken: z.string().trim().regex(/^\d{5,15}:[\w-]{30,60}$/, "Invalid bot token").optional(),
   }),
   z.object({
     type: z.enum(["INSTAGRAM", "MESSENGER"]),
@@ -80,6 +89,17 @@ export const cannedResponseSchema = z.object({
 });
 export type CannedResponseInput = z.infer<typeof cannedResponseSchema>;
 
+/** WhatsApp business-initiated message: an approved template with its {{n}} values. */
+export const templateMessageSchema = z.object({
+  name: z.string().trim().min(1).max(512),
+  language: z.string().trim().min(2).max(15),
+  params: z.array(z.string().trim().min(1).max(1024)).max(20).default([]),
+});
+export type TemplateMessageInput = z.infer<typeof templateMessageSchema>;
+
+/** The customer's permission to receive messages we start (WhatsApp templates, campaigns). */
+export const consentSchema = z.object({ status: z.enum(["opted_in", "opted_out"]).nullable() });
+
 export const simulateInboundSchema = z.object({
   from: z.string().trim().min(1).max(80),
   name: z.string().trim().max(100).optional(),
@@ -97,3 +117,31 @@ export const widgetMessageSchema = z.object({
 export type WidgetMessageInput = z.infer<typeof widgetMessageSchema>;
 
 export const inboxMetricsQuerySchema = z.object({ period: z.enum(["7d", "30d", "90d"]).default("30d") });
+
+// ─── Business hours, away reply, SLA, operator status ────────────
+
+const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "HH:MM");
+
+/** Monday first. A closed day has open = false; times are the company's local time. */
+export const inboxSettingsSchema = z.object({
+  hours: z
+    .array(z.object({ open: z.boolean(), start: clock, end: clock }).refine((d) => !d.open || d.start < d.end, "Start before end"))
+    .length(7),
+  /** Sent once per conversation (at most every 12 h) to customers who write outside business hours */
+  autoReply: z.boolean(),
+  awayMessage: z.string().trim().max(1000).nullable(),
+  /** First-response target: conversations waiting longer are flagged */
+  slaMinutes: z.number().int().min(5).max(10_080),
+});
+export type InboxSettings = z.infer<typeof inboxSettingsSchema>;
+
+export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
+  hours: [0, 1, 2, 3, 4, 5, 6].map((d) => ({ open: d < 5, start: "09:00", end: "18:00" })),
+  autoReply: false,
+  awayMessage: null,
+  slaMinutes: 120,
+};
+
+export const PRESENCES = ["available", "away"] as const;
+export type Presence = (typeof PRESENCES)[number];
+export const presenceSchema = z.object({ presence: z.enum(PRESENCES) });

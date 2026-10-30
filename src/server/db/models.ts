@@ -17,7 +17,7 @@ export type MemberStatus = "INVITED" | "ACTIVE" | "DISABLED";
 export type LifecycleStage = "LEAD" | "QUALIFIED" | "CUSTOMER" | "CHURNED";
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE" | "CANCELED";
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-export type ChannelType = "WHATSAPP" | "INSTAGRAM" | "MESSENGER" | "WEBCHAT" | "EMAIL";
+export type ChannelType = "WHATSAPP" | "INSTAGRAM" | "MESSENGER" | "TELEGRAM" | "WEBCHAT" | "EMAIL";
 export type ConversationStatus = "OPEN" | "PENDING" | "RESOLVED";
 export type MessageDirection = "INBOUND" | "OUTBOUND" | "INTERNAL_NOTE";
 
@@ -72,6 +72,8 @@ export interface Tenant {
   currency: string;
   /** Company-currency value of one unit of another currency (CRM deals), e.g. { USD: 1.7 } */
   fxRates: Record<string, number>;
+  /** Business hours, away reply and response target of the inbox (null = defaults) */
+  inboxSettings: import("@/shared").InboxSettings | null;
   /** Seller details printed on quotes and invoices */
   docSettings: {
     legalName?: string | null;
@@ -214,6 +216,10 @@ export interface Membership {
   role: MemberRole;
   /** Custom role: its permissions replace the built-in role's (`role` is then EMPLOYEE) */
   roleId: string | null;
+  /** Operator status: "away" members are skipped by automatic assignment */
+  presence: "available" | "away";
+  /** Notification types this member turned off */
+  mutedNotifications: string[];
   status: MemberStatus;
   departmentId: string | null;
   title: string | null;
@@ -257,6 +263,8 @@ export interface Contact {
   source: string | null;
   tags: string[];
   customFields: JsonValue;
+  /** Permission for messages we start (WhatsApp templates, campaigns): who recorded it and how */
+  messagingConsent: { status: "opted_in" | "opted_out"; at: Date; source: "manual" | "keyword" } | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -382,6 +390,10 @@ export interface Conversation {
   firstResponseMs: number | null;
   subject: string | null;
   emailReplyTo: string | null;
+  /** The customer wrote STOP (or staff recorded it): no business-initiated messages */
+  optedOutAt: Date | null;
+  /** Last automatic out-of-hours reply (at most one per 12 h) */
+  lastAutoReplyAt: Date | null;
   createdAt: Date;
 }
 
@@ -792,7 +804,7 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   User: { passwordHash: null, avatarUrl: null, locale: "AZ", platformRole: "NONE", emailVerified: null, mfaSecret: null, mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [], lastLoginAt: null, createdAt: "now", updatedAt: "now" },
   AdminSession: { revokedAt: null, ip: null, userAgent: null, createdAt: "now" },
   Session: { userAgent: null, ip: null, rotatedAt: null, revokedAt: null, createdAt: "now" },
-  Tenant: { logoUrl: null, timezone: "Asia/Baku", currency: "AZN", fxRates: {}, docSettings: {}, locale: "AZ", status: "TRIALING", lockVersion: 0, createdAt: "now", updatedAt: "now" },
+  Tenant: { logoUrl: null, timezone: "Asia/Baku", currency: "AZN", fxRates: {}, docSettings: {}, inboxSettings: null, locale: "AZ", status: "TRIALING", lockVersion: 0, createdAt: "now", updatedAt: "now" },
   Plan: { currency: "AZN", aiCredits: 0, extraSeatPrice: 900, extraStorageGbPrice: 500, features: [], contactLimit: null, automationLimit: null, isPublic: true, sortOrder: 0, createdAt: "now", updatedAt: "now" },
   Subscription: { status: "TRIALING", interval: "MONTH", extraSeats: 0, extraStorageMb: 0, trialEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false, scheduledPlanId: null, providerRef: null, paymentMethod: null, retryCount: 0, nextRetryAt: null, trialReminderSentAt: null, demoNextChargeFails: false, limitOverrides: {}, featureGrants: [], complimentary: false, createdAt: "now", updatedAt: "now" },
   Invoice: { kind: "subscription", status: "OPEN", currency: "AZN", apply: null, paidAt: null, createdAt: "now" },
@@ -800,10 +812,10 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   UsageCounter: { value: 0 },
   Counter: { value: 0 },
   PlatformExpense: { currency: "AZN", note: null, createdAt: "now" },
-  Membership: { role: "EMPLOYEE", roleId: null, status: "INVITED", departmentId: null, title: null, permissions: [], inviteToken: null, invitedAt: null, joinedAt: null, createdAt: "now" },
+  Membership: { role: "EMPLOYEE", roleId: null, presence: "available", mutedNotifications: [], status: "INVITED", departmentId: null, title: null, permissions: [], inviteToken: null, invitedAt: null, joinedAt: null, createdAt: "now" },
   Role: { description: null, permissions: [], createdAt: "now", updatedAt: "now" },
   Department: { headId: null, parentId: null },
-  Contact: { ownerId: null, type: "person", email: null, phone: null, companyName: null, companyId: null, stage: "LEAD", source: null, tags: [], customFields: {}, createdAt: "now", updatedAt: "now", deletedAt: null },
+  Contact: { ownerId: null, type: "person", email: null, phone: null, companyName: null, companyId: null, stage: "LEAD", source: null, tags: [], customFields: {}, messagingConsent: null, createdAt: "now", updatedAt: "now", deletedAt: null },
   Pipeline: { isDefault: false },
   PipelineStage: { probability: 0, kind: "open" },
   Deal: { contactId: null, ownerId: null, amount: 0, currency: "AZN", baseAmount: 0, customFields: {}, expectedClose: null, closedAt: null, lostReason: null, position: 0, createdAt: "now", updatedAt: "now" },
@@ -812,7 +824,7 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   Task: { projectId: null, parentId: null, description: null, status: "TODO", priority: "MEDIUM", assigneeId: null, dueAt: null, completedAt: null, overdueNotifiedAt: null, recurrence: null, contactId: null, dealId: null, position: 0, createdAt: "now", updatedAt: "now" },
   TaskComment: { createdAt: "now" },
   Channel: { credentials: null, demo: false, settings: {}, status: "connected", createdAt: "now" },
-  Conversation: { contactId: null, displayName: null, handle: null, lastInboundAt: null, status: "OPEN", assigneeId: null, departmentId: null, unreadCount: 0, lastMessageAt: null, awaitingSince: null, firstResponseMs: null, subject: null, emailReplyTo: null, createdAt: "now" },
+  Conversation: { contactId: null, displayName: null, handle: null, lastInboundAt: null, status: "OPEN", assigneeId: null, departmentId: null, unreadCount: 0, lastMessageAt: null, awaitingSince: null, firstResponseMs: null, subject: null, emailReplyTo: null, optedOutAt: null, lastAutoReplyAt: null, createdAt: "now" },
   Message: { authorId: null, body: null, attachments: [], externalId: null, deliveryStatus: null, createdAt: "now" },
   CannedResponse: { isShared: true, ownerId: null },
   WebhookEvent: { receivedAt: "now", processedAt: null, error: null },

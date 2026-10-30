@@ -34,6 +34,7 @@ function toDto(m: Membership & { user: User }, roles: RoleNames): MemberDto {
     email: m.user.email,
     role: m.role,
     customRole: m.roleId && roleName ? { id: m.roleId, name: roleName } : null,
+    presence: m.presence ?? "available",
     status: m.status,
     title: m.title,
     departmentId: m.departmentId,
@@ -221,6 +222,24 @@ export class MembersService {
       }
       return toDto(await withUser(tx, updated), roles);
     });
+  }
+
+  async notificationPrefs(): Promise<{ muted: string[] }> {
+    const ctx = authedContext();
+    const m = await this.db.scoped((tx) => tx.membership.get({ id: ctx.membershipId }, { projection: { mutedNotifications: 1 } }));
+    return { muted: m.mutedNotifications ?? [] };
+  }
+
+  async setNotificationPrefs(muted: string[]): Promise<{ muted: string[] }> {
+    const ctx = authedContext();
+    const unique = [...new Set(muted)];
+    await this.db.scoped((tx) => tx.membership.update({ id: ctx.membershipId }, { $set: { mutedNotifications: unique } }));
+    return { muted: unique };
+  }
+
+  async setPresence(presence: "available" | "away") {
+    const ctx = authedContext();
+    await this.db.scoped((tx) => tx.membership.update({ id: ctx.membershipId }, { $set: { presence } }));
   }
 
   async previewInvite(token: string): Promise<InvitePreview> {

@@ -588,5 +588,34 @@ PDF: server tərəfdə fayl yaradılmır — çapa uyğun səhifə brauzerin "PD
 
 Yol üstündə: qrupdan çıxandan sonra siyahı köhnə qalırdı (client cache) — tam yükləmə ilə düzəldildi.
 
+### v2 Mərhələ F1 — Telegram, media, WhatsApp şablonları, razılıq ✅ (2026-10-30)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Telegram kanalı (`TelegramClient`) | ✅ | Bot tokeni `getMe` ilə yoxlanılır, şifrəli saxlanılır; `setWebhook` gizli açarla (`X-Telegram-Bot-Api-Secret-Token`); yalnız şəxsi çatlar; mətn, şəkil, sənəd, səs, video; ayıranda `deleteWebhook` |
+| Gələn media | ✅ | Telegram `getFile` və WhatsApp media id ilə endirilir (20 MB-a qədər), söhbətin faylı kimi saxlanılır, yaddaş limitinə daxildir; saxlanılmayan fayl adı ilə görünür, mesaj itmir |
+| Göndərilən fayl | ✅ | WhatsApp (media yükləmə → id ilə göndərmə) və Telegram (`sendPhoto`/`sendDocument`); fayl əvvəlcə tarixçədə saxlanılır |
+| Faylların açılması | ✅ | `/v1/files/:id` — söhbəti görə bilən hər kəs; həmişə endirmə kimi |
+| WhatsApp şablonları | ✅ | WABA id ilə təsdiqlənmiş şablonlar yüklənir; 24 saatlıq pəncərədən kənar yalnız şablon; parametrlər yoxlanılır; demo kanalda nümunə şablonlar |
+| Razılıq | ✅ | `Contact.messagingConsent` + `Conversation.optedOutAt`; "STOP / DAYANDIR / СТОП" imtina, "START / BAŞLA" geri qayıdış; imtinada şablon göndərilmir (`CONSENT_REQUIRED`); kartda əl ilə qeyd |
+
+Testlər real provayderə getmir: `test/fake-providers.ts` Telegram və Graph API-ni (media daxil) təqlid edir.
+
+### v2 Mərhələ F2 — İş saatları, avtomatik cavab, SLA, operator statusu ✅ (2026-10-30)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| İş saatları (`Tenant.inboxSettings`, Ayarlar → Kanallar) | ✅ | Həftənin hər günü açıq/bağlı + saatlar, şirkətin saat qurşağı ilə (`inbox/hours.ts`, unit testli) |
+| İş vaxtından kənar avtomatik cavab | ✅ | Söhbətə 12 saatda ən çox bir dəfə; cavab sayılmır (gözləmə və ilk cavab vaxtı dəyişmir); real kanallarda tranzaksiyadan sonra göndərilir (`afterResponse` → `deliverStored`), e-poçtda növbəyə düşür |
+| SLA | ✅ | İlk cavab hədəfi (dəqiqə); keçən söhbət siyahıda "SLA keçib", "Diqqət tələb edir"-də gözləmə müddəti ilə |
+| Operator statusu | ✅ | `Membership.presence` onlayn/uzaqda (sidebar-da); avtomatik təyinat uzaqda olanları keçir (hamı uzaqdadırsa, yenə də təyin edir) |
+| Düzəliş: kanalı yenidən qoşmaq | ✅ | Ayrılmış kanalın provayder id-si `disconnected:<id>:<köhnə id>` olur — eyni nömrə/səhifə/bot yenidən qoşula bilir (əvvəl unikal indeks buna mane olurdu); mövcud ayrılmış kanallar backfill ilə |
+
+### v2 Mərhələ G1 — Axtarış, fayllar, @mention, bildiriş seçimləri ✅ (2026-10-30)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Cmd+K / Ctrl+K qlobal axtarış (`/v1/search`) | ✅ | Müştəri (ad, e-poçt, telefon, şirkət), satış, tapşırıq, söhbət, təklif/faktura nömrəsi, sifariş — hər biri görünmə qaydalarına tabe, növ başına 5 nəticə |
+| Müştəri və satış kartında fayllar | ✅ | Qeydin özü kimi görünür; yükləyən və ya rəhbər silir; Fayllar bölməsinin siyahısına qarışmır |
+| @mention | ✅ | Qeyd və tapşırıq şərhlərində "@" yoldaş təklif edir; bildiriş yalnız qeydi görə bilən yoldaşa gedir (kontakt/tapşırıq görünmə qaydaları) |
+| Bildiriş seçimləri (`/settings/notifications`) | ✅ | Hər işçi növləri özü söndürür; abunəlik/ödəniş bildirişləri söndürülmür |
+
 ### Növbəti
-v2 Mərhələ F: kanallar — Telegram, inbox media, WhatsApp şablonları və razılıq, operator statusu, iş saatları.
+v2 Mərhələ G2: təqvim (görüş/zəng, gün/həftə/ay), "Bu gün" görünüşü, şirkət işçiləri üçün iki mərhələli giriş.

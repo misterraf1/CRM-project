@@ -7,6 +7,8 @@ import {
   linkContactSchema,
   sendMessageSchema,
   simulateInboundSchema,
+  templateMessageSchema,
+  inboxSettingsSchema,
   type InboxEvent,
 } from "@/shared";
 import { authedContext } from "../common/context";
@@ -22,6 +24,10 @@ export function inboxRoutes(router: Router, s: Services) {
 
     r.post("conversations/:id/messages", { body: sendMessageSchema }, ({ params, body }) => s.inbox.send(params.id!, body));
 
+    r.post("conversations/:id/files", { upload: true }, ({ params, file, fields }) => s.inbox.sendFile(params.id!, file, fields.caption));
+
+    r.post("conversations/:id/template", { body: templateMessageSchema }, ({ params, body }) => s.inbox.sendTemplate(params.id!, body));
+
     /** AI draft of the next reply — filled into the composer, never sent by itself */
     r.post("conversations/:id/ai/reply", { permission: "inbox.reply" }, ({ params }) => s.inboxAi.reply(params.id!));
 
@@ -35,6 +41,10 @@ export function inboxRoutes(router: Router, s: Services) {
 
     r.get("metrics", { query: inboxMetricsQuerySchema }, ({ query }) => s.inbox.metrics(query.period));
 
+    r.get("settings", () => s.inbox.settings());
+
+    r.patch("settings", { permission: "channels.manage", body: inboxSettingsSchema }, ({ body }) => s.inbox.updateSettings(body));
+
     r.get("templates", () => s.inbox.templates());
 
     r.post("templates", { permission: "inbox.assign", body: cannedResponseSchema }, ({ body }) => s.inbox.createTemplate(body));
@@ -46,6 +56,8 @@ export function inboxRoutes(router: Router, s: Services) {
     r.post("channels", { permission: "channels.manage", body: channelCreateSchema }, ({ body }) => s.channels.create(body));
 
     r.delete("channels/:id", { permission: "channels.manage", status: 204 }, ({ params }) => s.channels.disconnect(params.id!));
+
+    r.post("channels/:id/templates/sync", { permission: "channels.manage", status: 200 }, ({ params }) => s.channels.syncTemplates(params.id!));
 
     r.post("channels/:id/simulate", { permission: "channels.manage", body: simulateInboundSchema }, ({ params, body }) =>
       s.channels.simulate(params.id!, body),

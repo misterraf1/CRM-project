@@ -1,4 +1,4 @@
-import type { AttentionItemDto, AttentionReason } from "@/shared";
+import { DEFAULT_INBOX_SETTINGS, type AttentionItemDto, type AttentionReason } from "@/shared";
 import { authedContext } from "../common/context";
 import { stageIds } from "../crm/deals.service";
 import { memberRefs, ownerScope } from "../crm/scope";
@@ -8,8 +8,8 @@ import { inboxScope } from "../inbox/inbox.service";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
-/** Thresholds: a customer waiting 2 h, a sent quote 2 days without a next step, a deal 7 days untouched */
-const UNANSWERED_H = 2;
+/** Thresholds: a customer waiting past the company's response target, a sent quote 2 days without a next step, a deal 7 days untouched */
+const MINUTE = 60_000;
 const QUOTE_FOLLOWUP_D = 2;
 const STALE_DEAL_D = 7;
 const EXPIRING_D = 2;
@@ -29,13 +29,19 @@ export class AttentionService {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
       const now = Date.now();
-      const [owners, convScope, openStages] = await Promise.all([ownerScope(tx, ctx, "contacts.view_all"), inboxScope(tx, ctx), stageIds(tx, ctx.tenantId, "open")]);
+      const [owners, convScope, openStages, tenant] = await Promise.all([
+        ownerScope(tx, ctx, "contacts.view_all"),
+        inboxScope(tx, ctx),
+        stageIds(tx, ctx.tenantId, "open"),
+        tx.tenant.get({ id: ctx.tenantId }, { projection: { inboxSettings: 1 } }),
+      ]);
+      const slaMinutes = (tenant.inboxSettings ?? DEFAULT_INBOX_SETTINGS).slaMinutes;
       const base = { tenantId: ctx.tenantId };
       const finance = ctx.permissions.includes("finance.view");
       const quotes = ctx.permissions.includes("quotes.manage") || finance;
 
       const [waiting, sentQuotes, staleDeals, overdue, lateOrders, pending] = await Promise.all([
-        tx.conversation.find(and(base, convScope, { status: { $ne: "RESOLVED" }, awaitingSince: { $lt: new Date(now - UNANSWERED_H * HOUR), $ne: null } }), {
+        tx.conversation.find(and(base, convScope, { status: { $ne: "RESOLVED" }, awaitingSince: { $lt: new Date(now - slaMinutes * MINUTE), $ne: null } }), {
           sort: { awaitingSince: 1 },
           limit: PER_RULE,
           projection: { id: 1, displayName: 1, handle: 1, contactId: 1, awaitingSince: 1, assigneeId: 1, status: 1 },
@@ -96,7 +102,8 @@ export class AttentionService {
           reason: "unanswered",
           title: (c.contactId && names.get(c.contactId)) || c.displayName || c.handle || "—",
           href: `/inbox?status=${c.status}&assignee=all&c=${c.id}`,
-          age: Math.floor((now - c.awaitingSince!.getTime()) / HOUR),
+          // Minutes: response targets are often under an hour
+          age: Math.floor((now - c.awaitingSince!.getTime()) / MINUTE),
           amount: null,
           ownerId: c.assigneeId,
           since: c.awaitingSince!.toISOString(),

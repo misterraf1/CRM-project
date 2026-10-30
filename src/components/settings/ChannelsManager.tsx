@@ -11,7 +11,7 @@ import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
 import { interpolate } from "@/lib/i18n/locales";
 
-const CONNECTABLE: ChannelType[] = ["WEBCHAT", "WHATSAPP", "INSTAGRAM", "MESSENGER", "EMAIL"];
+const CONNECTABLE: ChannelType[] = ["WEBCHAT", "WHATSAPP", "TELEGRAM", "INSTAGRAM", "MESSENGER", "EMAIL"];
 
 function widgetPreviewUrl(c: ChannelDto) {
   const key = /data-axis-widget="([^"]+)"/.exec(c.embedCode ?? "")?.[1];
@@ -64,11 +64,15 @@ export function ChannelsManager({
     else if (type === "EMAIL") {
       body.demo = demo;
       body.address = String(f.get("address"));
+    } else if (type === "TELEGRAM") {
+      body.demo = demo;
+      if (!demo) body.botToken = String(f.get("botToken")).trim();
     } else {
       body.demo = demo;
       if (!demo) {
         body.accessToken = String(f.get("accessToken"));
         body[type === "WHATSAPP" ? "phoneNumberId" : "accountId"] = String(f.get("providerId"));
+        if (type === "WHATSAPP" && String(f.get("wabaId") || "")) body.wabaId = String(f.get("wabaId"));
       }
     }
     startTransition(async () => {
@@ -155,7 +159,18 @@ export function ChannelsManager({
                   <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} />
                   {k.demoMode}
                 </label>
-                {!demo && (
+                {!demo && adding === "TELEGRAM" && (
+                  <>
+                    <label className="field-label">
+                      {k.botToken}
+                      <input name="botToken" required type="password" autoComplete="off" pattern="\d{5,15}:[\w-]{30,60}" aria-describedby="bot-token-hint" className="input font-mono" />
+                    </label>
+                    <p id="bot-token-hint" className="text-xs text-fg-subtle">
+                      {k.telegramHint}
+                    </p>
+                  </>
+                )}
+                {!demo && adding !== "TELEGRAM" && (
                   <>
                     <label className="field-label">
                       {adding === "WHATSAPP" ? k.phoneNumberId : k.accountId}
@@ -165,6 +180,15 @@ export function ChannelsManager({
                       {k.accessToken}
                       <input name="accessToken" required type="password" autoComplete="off" minLength={20} className="input font-mono" />
                     </label>
+                    {adding === "WHATSAPP" && (
+                      <label className="field-label">
+                        {k.wabaId}
+                        <input name="wabaId" inputMode="numeric" pattern="\d{5,30}" aria-describedby="waba-hint" className="input font-mono" />
+                        <span id="waba-hint" className="mt-1 block text-[11px] font-normal text-fg-subtle">
+                          {k.wabaHint}
+                        </span>
+                      </label>
+                    )}
                     <p className="text-xs text-fg-subtle">{k.metaHint}</p>
                     <p className="text-xs text-fg-subtle">{interpolate(k.webhookHint, { url: webhookUrl })}</p>
                   </>
@@ -215,7 +239,8 @@ export function ChannelsManager({
                       </p>
                       <p className="truncate text-xs text-fg-subtle">
                         {k.types[c.type]}
-                        {!c.demo && c.type !== "WEBCHAT" && ` · ${c.externalId}`}
+                        {!c.demo && c.type !== "WEBCHAT" && ` · ${c.type === "TELEGRAM" && c.botUsername ? `@${c.botUsername}` : c.externalId}`}
+                        {c.type === "WHATSAPP" && interpolate(k.templatesCount, { n: c.templates ?? 0 })}
                       </p>
                     </div>
                     {preview && (
@@ -223,6 +248,11 @@ export function ChannelsManager({
                         <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                         {k.preview}
                       </a>
+                    )}
+                    {canManage && c.canSyncTemplates && (
+                      <button type="button" disabled={pending} onClick={() => run(() => api(`/inbox/channels/${c.id}/templates/sync`, "POST"))} className="btn-ghost h-8 border border-border text-xs">
+                        {k.syncTemplates}
+                      </button>
                     )}
                     {canManage && (
                       <button

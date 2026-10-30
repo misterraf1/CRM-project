@@ -1,4 +1,4 @@
-import { contactCreateSchema, contactListQuerySchema, contactUpdateSchema, noteSchema, duplicateQuerySchema } from "@/shared";
+import { contactCreateSchema, contactListQuerySchema, contactUpdateSchema, noteSchema, duplicateQuerySchema, consentSchema } from "@/shared";
 import type { Services } from "../container";
 import type { Router } from "../http/router";
 
@@ -19,6 +19,14 @@ export function contactsRoutes(router: Router, s: Services) {
     r.delete(":id", { permission: "contacts.delete", status: 204 }, ({ params }) => s.contacts.remove(params.id!));
 
     r.get(":id/activities", ({ params }) => s.contacts.activities(params.id!));
+
+    r.get(":id/files", ({ params }) => s.files.forRecord("contact", params.id!));
+
+    r.post(":id/files", { permission: "contacts.edit", upload: true }, ({ params, file }) => s.files.uploadToRecord("contact", params.id!, file));
+
+    r.patch(":id/consent", { permission: "contacts.edit", status: 204, body: consentSchema }, async ({ params, body }) => {
+      await s.contacts.setConsent(params.id!, body.status);
+    });
 
     r.post(":id/notes", { permission: "contacts.edit", body: noteSchema }, ({ params, body }) => s.contacts.addNote(params.id!, body.body));
   });

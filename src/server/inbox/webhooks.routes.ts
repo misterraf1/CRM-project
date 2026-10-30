@@ -21,6 +21,11 @@ export function webhooksRoutes(router: Router, s: Services) {
       s.webhooks.processEmail(params.channelId!, search.get("token") ?? "", (body ?? {}) as InboundEmail),
     );
 
+    /** Telegram deliveries; authorised by the secret Telegram sends back in a header. */
+    r.post("telegram/:channelId", { throttle: false, status: 200 }, ({ req, params, body }) =>
+      s.webhooks.processTelegram(params.channelId!, req.headers.get("x-telegram-bot-api-secret-token") ?? "", (body ?? {}) as Parameters<WebhooksService["processTelegram"]>[2]),
+    );
+
     /** Deliveries are accepted only with a valid X-Hub-Signature-256 over the raw body. */
     r.post("meta", { throttle: false, status: 200 }, ({ req, raw, body }) => {
       const secret = config().META_APP_SECRET;

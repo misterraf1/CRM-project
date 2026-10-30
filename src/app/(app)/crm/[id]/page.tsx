@@ -4,14 +4,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ContactDeals } from "@/components/crm/ContactDeals";
+import { ConsentControl } from "@/components/crm/ConsentControl";
 import { ContactForm } from "@/components/crm/ContactForm";
+import { RecordFiles } from "@/components/crm/RecordFiles";
 import { DeleteButton } from "@/components/crm/DeleteButton";
 import { NoteComposer } from "@/components/crm/NoteComposer";
 import { StageBadge } from "@/components/crm/StageBadge";
 import { Timeline } from "@/components/crm/Timeline";
 import { TaskList } from "@/components/tasks/TaskList";
 import { TaskQuickAdd } from "@/components/tasks/TaskQuickAdd";
-import { getContact, getContactActivities, getConversations, getFields, getMembers, getPipelines, getSession, getTasks } from "@/lib/api";
+import { getContact, getContactActivities, getConversations, getFields, getMembers, getPipelines, getRecordFiles, getSession, getTasks } from "@/lib/api";
 import { ChannelIcon } from "@/components/ui/ChannelIcon";
 import { formatRelative } from "@/lib/format";
 import { ApiRequestError } from "@/lib/api/server";
@@ -29,11 +31,12 @@ export default async function ContactPage({ params }: Props) {
   const [{ t, locale }, me, members, personFields, companyFields, dealFields] = await Promise.all([getI18n(), getSession(), getMembers(), getFields("contact"), getFields("company"), getFields("deal")]);
   // Deals are a PRO feature; without it the contact page simply has no deals block
   const pipelines = hasFeature(me, "deals.pipeline") ? await getPipelines() : [];
-  const [contact, activities, tasks, conversations] = await Promise.all([
+  const [contact, activities, tasks, conversations, files] = await Promise.all([
     getContact(id),
     getContactActivities(id),
     getTasks({ contactId: id, view: "all" }),
     getConversations({ contactId: id, status: "ALL" }),
+    getRecordFiles("contacts", id),
   ]).catch((e) => {
     if (e instanceof ApiRequestError && e.status === 404) notFound();
     throw e;
@@ -99,6 +102,7 @@ export default async function ContactPage({ params }: Props) {
               fields={{ contact: personFields, company: companyFields }}
               readOnly={!can("contacts.edit")}
             />
+            <ConsentControl contactId={contact.id} consent={contact.messagingConsent} canEdit={can("contacts.edit")} />
           </section>
           {contact.type === "company" && (
             <section className="card">
@@ -157,6 +161,7 @@ export default async function ContactPage({ params }: Props) {
               </div>
             )}
           </section>
+          <RecordFiles path={`/contacts/${contact.id}`} files={files} canUpload={can("contacts.edit")} canDeleteAny={can("contacts.manage")} meId={me.membership.id} />
           {pipelines[0] && <ContactDeals contactId={contact.id} deals={contact.deals} pipelines={pipelines} requiredFields={dealFields.filter((f) => f.required)} canCreate={can("deals.create")} />}
         </div>
         <section className="card min-w-0">

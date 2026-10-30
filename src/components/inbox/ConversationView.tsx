@@ -1,8 +1,8 @@
 "use client";
 
-import type { AiTextDto, CannedResponseDto, ConversationDetailDto, MeResponse, MessageDto } from "@/shared";
+import type { AiTextDto, CannedResponseDto, ConversationDetailDto, MeResponse, MessageAttachmentDto, MessageDto, WhatsAppTemplateDto } from "@/shared";
 import clsx from "clsx";
-import { AlertTriangle, ArrowLeft, Check, MessageSquareQuote, RotateCcw, Sparkles, StickyNote, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Ban, Check, FileText, MessageSquareQuote, Paperclip, RotateCcw, Sparkles, StickyNote, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
@@ -15,6 +15,96 @@ import { errorMessage } from "@/lib/i18n/errors";
 import { interpolate } from "@/lib/i18n/locales";
 
 type Mode = "reply" | "note";
+
+const fileSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+/** Files in a message: a download link each (files are always served as downloads). */
+function Attachments({ items, outbound, notStored }: { items: MessageAttachmentDto[]; outbound: boolean; notStored: string }) {
+  if (!items.length) return null;
+  return (
+    <ul className="mt-1 space-y-1">
+      {items.map((a, i) => (
+        <li key={a.fileId ?? i}>
+          {a.fileId ? (
+            <a
+              href={`/api/v1/files/${a.fileId}`}
+              download={a.name}
+              className={clsx("inline-flex max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-xs underline-offset-2 hover:underline", outbound ? "bg-white/15" : "bg-muted")}
+            >
+              <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{a.name}</span>
+              <span className="shrink-0 opacity-70">{fileSize(a.sizeBytes)}</span>
+            </a>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-xs opacity-80">
+              <FileText className="h-3.5 w-3.5" aria-hidden />
+              {a.name} · {notStored}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** WhatsApp outside the 24 h window: pick an approved template and fill its {{n}} values. */
+function TemplateComposer({ conversationId, templates, onSent, t }: { conversationId: string; templates: WhatsAppTemplateDto[]; onSent: () => void; t: ReturnType<typeof useI18n>["t"] }) {
+  const k = t.inbox;
+  const [choice, setChoice] = useState(0);
+  const [values, setValues] = useState<string[]>([]);
+  const [error, setError] = useState<string>();
+  const [pending, startTransition] = useTransition();
+  const tpl = templates[choice];
+  if (!tpl) return <p className="mb-2 text-xs text-fg-muted">{k.noWaTemplates}</p>;
+  const preview = tpl.body.replace(/\{\{(\d+)\}\}/g, (_, n: string) => values[Number(n) - 1] || `{{${n}}}`);
+  return (
+    <div className="mb-2 rounded-lg border border-border p-3">
+      <label className="field-label">
+        {k.waTemplate}
+        <select
+          value={choice}
+          onChange={(e) => {
+            setChoice(Number(e.target.value));
+            setValues([]);
+          }}
+          className="input"
+        >
+          {templates.map((x, i) => (
+            <option key={`${x.name}-${x.language}`} value={i}>
+              {x.name} ({x.language})
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {Array.from({ length: tpl.params }, (_, i) => (
+          <label key={i} className="field-label">
+            {`{{${i + 1}}}`}
+            <input value={values[i] ?? ""} onChange={(e) => setValues((v) => Object.assign([...v], { [i]: e.target.value }))} maxLength={1024} className="input" />
+          </label>
+        ))}
+      </div>
+      <p className="mt-2 whitespace-pre-wrap rounded-md bg-muted px-2 py-1.5 text-xs">{preview}</p>
+      {error && <p role="alert" className="mt-1 text-xs text-danger">{error}</p>}
+      <button
+        type="button"
+        disabled={pending || values.filter(Boolean).length < tpl.params}
+        onClick={() =>
+          startTransition(async () => {
+            setError(undefined);
+            const res = await api<MessageDto>(`/inbox/conversations/${conversationId}/template`, "POST", { name: tpl.name, language: tpl.language, params: values.slice(0, tpl.params) });
+            if (!res.ok) return setError(errorMessage(t, res.code, res.details));
+            setValues([]);
+            onSent();
+          })
+        }
+        className="btn-primary mt-2 h-8 text-xs"
+      >
+        {k.sendTemplate}
+      </button>
+    </div>
+  );
+}
 
 export function ConversationView({
   conversation: c,
@@ -62,6 +152,22 @@ export function ConversationView({
   const bottom = useRef<HTMLDivElement>(null);
   const windowClosed = !!c.replyWindowEndsAt && new Date(c.replyWindowEndsAt).getTime() < Date.now();
   const canSend = c.can.reply && !(mode === "reply" && windowClosed);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [waTemplate, setWaTemplate] = useState(false);
+  const templateOpen = mode === "reply" && !c.optedOut && c.templates.length > 0 && (windowClosed || waTemplate);
+
+  function sendFile(file: File) {
+    setError(undefined);
+    const form = new FormData();
+    form.set("file", file);
+    if (body.trim()) form.set("caption", body.trim());
+    startTransition(async () => {
+      const res = await api<MessageDto>(`/inbox/conversations/${c.id}/files`, "POST", form);
+      if (!res.ok) return setError(errorMessage(t, res.code, res.details));
+      setBody("");
+      router.refresh();
+    });
+  }
 
   // Opening a conversation marks it read
   useEffect(() => {
@@ -165,6 +271,7 @@ export function ConversationView({
                 {interpolate(k.noteLabel, { name: m.author?.name ?? "" })}
               </p>
               <p className="mt-0.5 whitespace-pre-wrap text-sm">{m.body}</p>
+              <Attachments items={m.attachments} outbound={false} notStored={k.fileNotStored} />
               <p className="mt-0.5 text-[11px] text-fg-subtle">{formatDateTime(m.createdAt, locale)}</p>
             </div>
           ) : (
@@ -175,9 +282,10 @@ export function ConversationView({
                   m.direction === "OUTBOUND" ? "rounded-br-md bg-accent text-accent-fg" : "rounded-bl-md border border-border bg-surface",
                 )}
               >
-                <p className="whitespace-pre-wrap text-sm">{m.body}</p>
+                {m.body && <p className="whitespace-pre-wrap text-sm">{m.body}</p>}
+                <Attachments items={m.attachments} outbound={m.direction === "OUTBOUND"} notStored={k.fileNotStored} />
                 <p className={clsx("mt-0.5 flex items-center justify-end gap-1 text-[11px]", m.direction === "OUTBOUND" ? "text-accent-fg/75" : "text-fg-subtle")}>
-                  {m.direction === "OUTBOUND" && m.author && <span>{m.author.name} ·</span>}
+                  {m.direction === "OUTBOUND" && (m.author ? <span>{m.author.name} ·</span> : <span>{k.autoReply} ·</span>)}
                   {formatDateTime(m.createdAt, locale)}
                   {m.deliveryStatus && m.deliveryStatus !== "sent" && (
                     <span className={clsx(m.deliveryStatus === "failed" && "font-semibold text-red-200")}>
@@ -194,7 +302,7 @@ export function ConversationView({
 
       {c.can.reply && (
         <form onSubmit={submit} className="border-t border-border bg-surface p-3">
-          <div role="tablist" aria-label={`${k.reply} / ${k.note}`} className="mb-2 flex gap-1">
+          <div role="tablist" aria-label={`${k.reply} / ${k.note}`} className="mb-2 flex flex-wrap items-center gap-1">
             {(["reply", "note"] as const).map((m) => (
               <button
                 key={m}
@@ -210,7 +318,7 @@ export function ConversationView({
                 {m === "reply" ? k.reply : k.note}
               </button>
             ))}
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex flex-wrap items-center gap-1">
               <span className="hidden text-[11px] text-fg-subtle sm:inline">{ai.limit > 0 && interpolate(k.aiUsage, { used: ai.used, limit: ai.limit })}</span>
               <button
                 type="button"
@@ -233,6 +341,11 @@ export function ConversationView({
                 {aiBusy === "reply" ? k.aiWorking : k.aiReply}
               </button>
             </div>
+            {c.templates.length > 0 && !windowClosed && !c.optedOut && (
+              <button type="button" aria-pressed={waTemplate} onClick={() => setWaTemplate((v) => !v)} className={clsx("rounded-md px-2 py-1 text-xs", waTemplate ? "bg-accent-soft text-accent" : "text-fg-muted hover:bg-muted")}>
+                {k.waTemplateToggle}
+              </button>
+            )}
             <div className="relative">
               <button type="button" onClick={() => setShowTemplates((v) => !v)} aria-expanded={showTemplates} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-muted">
                 <MessageSquareQuote className="h-3.5 w-3.5" aria-hidden />
@@ -259,12 +372,21 @@ export function ConversationView({
               )}
             </div>
           </div>
-          {mode === "reply" && windowClosed && (
-            <p className="mb-2 flex items-start gap-1.5 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-              {k.windowClosed}
+          {c.optedOut && (
+            <p className="mb-2 flex items-start gap-1.5 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
+              <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              {k.optedOut}
             </p>
           )}
+          {mode === "reply" && windowClosed && (
+            <>
+              <p className="mb-2 flex items-start gap-1.5 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                {k.windowClosed} {!c.optedOut && k.windowTemplateHint}
+              </p>
+            </>
+          )}
+          {templateOpen && <TemplateComposer conversationId={c.id} templates={c.templates} onSent={() => router.refresh()} t={t} />}
           {draftFromAi && mode === "reply" && body && (
             <p className="mb-2 flex items-center gap-1.5 text-[11px] text-accent">
               <Sparkles className="h-3 w-3" aria-hidden />
@@ -293,7 +415,27 @@ export function ConversationView({
           />
           {error && <p role="alert" className="mt-1 text-xs text-danger">{error}</p>}
           <div className="mt-2 flex items-center justify-between gap-2">
-            <span className="text-[11px] text-fg-subtle">
+            <span className="flex items-center gap-2 text-[11px] text-fg-subtle">
+              {c.canSendFiles && mode === "reply" && canSend && (
+                <>
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) sendFile(file);
+                    }}
+                  />
+                  <button type="button" disabled={pending} onClick={() => fileInput.current?.click()} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-muted">
+                    <Paperclip className="h-3.5 w-3.5" aria-hidden />
+                    {k.attachFile}
+                  </button>
+                </>
+              )}
               {c.replyWindowEndsAt && !windowClosed ? interpolate(k.windowEnds, { date: formatDateTime(c.replyWindowEndsAt, locale) }) : ""}
             </span>
             <button

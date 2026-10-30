@@ -1,6 +1,14 @@
 import type { MemberRefDto } from "./crm-types";
 import type { ChannelType, ConversationStatus } from "./inbox-schemas";
 
+export interface WhatsAppTemplateDto {
+  name: string;
+  language: string;
+  /** Body text with {{1}}, {{2}}… placeholders */
+  body: string;
+  params: number;
+}
+
 export interface ChannelDto {
   id: string;
   type: ChannelType;
@@ -13,6 +21,10 @@ export interface ChannelDto {
   /** Website chat: snippet to paste into the site */
   embedCode: string | null;
   greeting: string | null;
+  /** Telegram: the bot's @username · WhatsApp: templates loaded / whether a WABA id is set */
+  botUsername?: string | null;
+  templates?: number;
+  canSyncTemplates?: boolean;
   /** Email channel: the inbound webhook URL with its secret — returned only when the channel is created */
   inboundUrl?: string;
   createdAt: string;
@@ -30,16 +42,27 @@ export interface ConversationListItemDto {
   departmentId: string | null;
   unreadCount: number;
   awaitingSince: string | null;
+  /** Waiting longer than the company's first-response target */
+  slaBreached: boolean;
   lastMessageAt: string | null;
   lastMessage: { body: string; direction: MessageDirection } | null;
 }
 
 export type MessageDirection = "INBOUND" | "OUTBOUND" | "INTERNAL_NOTE";
 
+export interface MessageAttachmentDto {
+  /** null when the file couldn't be stored (too large, storage full, provider error) */
+  fileId: string | null;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
 export interface MessageDto {
   id: string;
   direction: MessageDirection;
   body: string;
+  attachments: MessageAttachmentDto[];
   author: MemberRefDto | null;
   deliveryStatus: string | null;
   createdAt: string;
@@ -50,6 +73,12 @@ export interface ConversationDetailDto extends ConversationListItemDto {
   firstResponseMs: number | null;
   /** WhatsApp only: free-form replies are allowed for 24 h after the customer's last message */
   replyWindowEndsAt: string | null;
+  /** WhatsApp: approved templates for writing outside the 24 h window */
+  templates: WhatsAppTemplateDto[];
+  /** The customer asked us to stop writing (STOP) or staff recorded it */
+  optedOut: boolean;
+  /** Channels that take files from us */
+  canSendFiles: boolean;
   can: { reply: boolean; assign: boolean };
 }
 

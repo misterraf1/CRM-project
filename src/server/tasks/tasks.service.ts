@@ -1,3 +1,4 @@
+import { mentionedMembers } from "../notifications/mentions";
 import { Logger } from "../common/logger";
 import type { Task } from "../db/models";
 import type {
@@ -235,14 +236,17 @@ export class TasksService {
       const task = await this.findVisible(tx, ctx, id);
       const comment = await tx.taskComment.insertOne({ tenantId: ctx.tenantId, taskId: id, authorId: ctx.membershipId, body });
       const actorName = await this.actorName(tx, ctx);
+      const mentioned = await mentionedMembers(tx, ctx.tenantId, body, [task.assigneeId, task.creatorId], "tasks.view_all");
       await this.notifications.notify(
         tx,
         ctx.tenantId,
-        [task.assigneeId, task.creatorId],
+        // Mentioned people get the mention instead of the plain comment notice
+        [task.assigneeId, task.creatorId].filter((m) => !m || !mentioned.includes(m)),
         "task_comment",
         { taskId: id, title: task.title, actorName, excerpt: body.slice(0, 140) },
         ctx.membershipId,
       );
+      await this.notifications.notify(tx, ctx.tenantId, mentioned, "mention", { taskId: id, title: task.title, actorName, excerpt: body.slice(0, 140) }, ctx.membershipId);
       return { id: comment.id, author: { id: ctx.membershipId, name: actorName }, body, createdAt: comment.createdAt.toISOString() };
     });
   }

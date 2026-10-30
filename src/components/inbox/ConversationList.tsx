@@ -52,10 +52,11 @@ export function ConversationList({
                 </p>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   {waitMin !== null && (
-                    <span className={clsx("text-[11px]", waitMin > 60 ? "font-medium text-warning" : "text-fg-subtle")}>
+                    <span className={clsx("text-[11px]", c.slaBreached ? "font-medium text-danger" : waitMin > 60 ? "font-medium text-warning" : "text-fg-subtle")}>
                       {interpolate(t.inbox.waiting, { time: formatDuration(waitMin, locale) })}
                     </span>
                   )}
+                  {c.slaBreached && <span className="rounded bg-danger/10 px-1.5 text-[11px] font-medium leading-4 text-danger">{t.inbox.slaBreached}</span>}
                   {c.channel.demo && <DemoBadge label={t.channels.demoBadge} />}
                   {!c.assignee && <span className="rounded bg-danger/10 px-1.5 text-[11px] font-medium leading-4 text-danger">{t.inbox.unassigned}</span>}
                   {c.unreadCount > 0 && (

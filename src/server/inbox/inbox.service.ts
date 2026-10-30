@@ -9,10 +9,14 @@ import type {
   ConversationListQuery,
   ConversationUpdateInput,
   InboxMetricsDto,
+  MessageAttachmentDto,
   MessageDto,
   SendMessageInput,
+  TemplateMessageInput,
+  InboxSettings,
 } from "@/shared";
-import { authedContext, type AuthedContext } from "../common/context";
+import { DEFAULT_INBOX_SETTINGS } from "@/shared";
+import { authedContext, requestContext, type AuthedContext } from "../common/context";
 import { AppError, forbidden, notFound } from "../common/errors";
 import { sortNullsLast } from "../common/sort";
 import { addDays, startOfDay } from "../common/time";
@@ -25,6 +29,20 @@ import type { Filter } from "../db/repo";
 import { InboxEvents } from "./events";
 import { MetaClient } from "./meta.client";
 import { openCredentials } from "../common/secrets";
+import type { FilesService, UploadedFile } from "../tasks/files.service";
+import { channelSettings } from "./channels.service";
+import { TelegramClient, type OutgoingFile } from "./telegram.client";
+
+/** What goes out to the customer: plain text, a file, or (WhatsApp) an approved template. */
+type Outgoing =
+  | { kind: "text"; body: string }
+  | { kind: "file"; file: OutgoingFile; caption?: string }
+  | { kind: "template"; name: string; language: string; params: string[] };
+
+/** Channels we can send files through (WhatsApp Cloud API, Telegram Bot API). */
+const FILE_CHANNELS = new Set(["WHATSAPP", "TELEGRAM"]);
+
+const attachmentsOf = (m: Pick<Message, "attachments">) => (Array.isArray(m.attachments) ? (m.attachments as unknown as MessageAttachmentDto[]) : []);
 
 const WHATSAPP_WINDOW_MS = 24 * 3600_000;
 const PERIOD_DAYS = { "7d": 7, "30d": 30, "90d": 90 } as const;
@@ -80,6 +98,8 @@ export class InboxService {
     private readonly activity: ActivityService,
     private readonly mail: MailService,
     private readonly entitlements: EntitlementsService,
+    private readonly telegram: TelegramClient,
+    private readonly files: FilesService,
   ) {}
 
   async list(query: ConversationListQuery): Promise<ConversationListItemDto[]> {
@@ -129,6 +149,7 @@ export class InboxService {
             id: m.id,
             direction: m.direction,
             body: m.body ?? "",
+            attachments: attachmentsOf(m),
             author: a ? { id: a.id, name: a.name } : null,
             deliveryStatus: m.deliveryStatus,
             createdAt: m.createdAt.toISOString(),
@@ -137,6 +158,9 @@ export class InboxService {
         firstResponseMs: c.firstResponseMs,
         replyWindowEndsAt:
           c.channel.type === "WHATSAPP" && !c.channel.demo && c.lastInboundAt ? new Date(c.lastInboundAt.getTime() + WHATSAPP_WINDOW_MS).toISOString() : null,
+        templates: c.channel.type === "WHATSAPP" ? (channelSettings(c.channel).templates ?? []) : [],
+        optedOut: await this.optedOut(tx, c),
+        canSendFiles: FILE_CHANNELS.has(c.channel.type),
         can: { reply: ctx.permissions.includes("inbox.reply"), assign: ctx.permissions.includes("inbox.assign") },
       };
     });
@@ -189,22 +213,7 @@ export class InboxService {
       return { message, channel: c.channel, conversation: c };
     });
 
-    let status = message.deliveryStatus;
-    if (status === "pending") {
-      try {
-        const token = openCredentials(channel.credentials!).accessToken!;
-        const externalId =
-          channel.type === "WHATSAPP"
-            ? await this.meta.sendWhatsApp(channel.externalId, token, conversation.externalThread, input.body)
-            : await this.meta.sendPageMessage(token, conversation.externalThread, input.body);
-        status = "sent";
-        await this.db.scoped((tx) => tx.message.update({ id: message.id }, { $set: { deliveryStatus: status, externalId: externalId || null } }));
-      } catch (e) {
-        status = "failed";
-        this.logger.warn(`Send failed for conversation ${id}: ${e instanceof Error ? e.message : e}`);
-        await this.db.scoped((tx) => tx.message.update({ id: message.id }, { $set: { deliveryStatus: status } }));
-      }
-    }
+    const status = message.deliveryStatus === "pending" ? await this.deliver(message.id, channel, conversation, { kind: "text", body: input.body }) : message.deliveryStatus;
 
     this.events.publish(ctx.tenantId, { type: "message", conversationId: id, direction: message.direction });
     const me = (await this.db.scoped((tx) => memberRefs(tx, ctx.tenantId, [ctx.membershipId]))).get(ctx.membershipId);
@@ -212,6 +221,171 @@ export class InboxService {
       id: message.id,
       direction: message.direction,
       body: input.body,
+      attachments: [],
+      author: me ? { id: me.id, name: me.name } : null,
+      deliveryStatus: status,
+      createdAt: message.createdAt.toISOString(),
+    };
+  }
+
+  /**
+   * A file to the customer (WhatsApp, Telegram). Stored as the conversation's file first,
+   * so it stays in the history whatever the provider answers.
+   */
+  async sendFile(id: string, file: UploadedFile | undefined, caption?: string): Promise<MessageDto> {
+    const ctx = authedContext();
+    if (!ctx.permissions.includes("inbox.reply")) throw forbidden("Replying needs the inbox.reply permission");
+    const c = await this.db.scoped((tx) => this.findVisible(tx, ctx, id));
+    if (!FILE_CHANNELS.has(c.channel.type)) throw new AppError("CONFLICT", "This channel doesn't take files from us", { channel: c.channel.type });
+    this.assertSendable(c);
+    const stored = await this.files.store({ entityType: "conversation", entityId: id }, file);
+    const attachment: MessageAttachmentDto = { fileId: stored.id, name: stored.name, mimeType: stored.mimeType, sizeBytes: stored.sizeBytes };
+    const message = await this.storeOutbound(ctx, c, caption?.trim().slice(0, 1024) || null, [attachment]);
+    const status = message.deliveryStatus === "pending"
+      ? await this.deliver(message.id, c.channel, c, { kind: "file", file: { buffer: file!.buffer, name: stored.name, mimeType: stored.mimeType }, caption: caption?.trim() || undefined })
+      : message.deliveryStatus;
+    return this.messageDto(ctx, message, status);
+  }
+
+  /**
+   * WhatsApp outside the 24 h window: only an approved template, and never to a customer
+   * who asked us to stop.
+   */
+  async sendTemplate(id: string, input: TemplateMessageInput): Promise<MessageDto> {
+    const ctx = authedContext();
+    if (!ctx.permissions.includes("inbox.reply")) throw forbidden("Replying needs the inbox.reply permission");
+    const c = await this.db.scoped((tx) => this.findVisible(tx, ctx, id));
+    if (c.channel.type !== "WHATSAPP") throw new AppError("CONFLICT", "Templates are a WhatsApp feature");
+    if (c.channel.status === "disconnected") throw new AppError("CHANNEL_ERROR", "Channel is disconnected");
+    if (await this.db.scoped((tx) => this.optedOut(tx, c))) throw new AppError("CONSENT_REQUIRED", "The customer asked not to receive messages");
+    const template = (channelSettings(c.channel).templates ?? []).find((t) => t.name === input.name && t.language === input.language);
+    if (!template) throw new AppError("VALIDATION_FAILED", "Unknown template", { name: ["Unknown template"] });
+    if (input.params.length !== template.params) throw new AppError("VALIDATION_FAILED", "Fill in every template value", { params: [`${template.params} values`] });
+    const body = template.body.replace(/\{\{(\d+)\}\}/g, (_, n: string) => input.params[Number(n) - 1] ?? "");
+    const message = await this.storeOutbound(ctx, c, body, []);
+    const status = message.deliveryStatus === "pending" ? await this.deliver(message.id, c.channel, c, { kind: "template", name: template.name, language: template.language, params: input.params }) : message.deliveryStatus;
+    return this.messageDto(ctx, message, status);
+  }
+
+  /** Opted out by keyword on this conversation, or recorded on the customer's contact. */
+  private async optedOut(tx: Tx, c: Pick<Conversation, "optedOutAt" | "contactId">) {
+    if (c.optedOutAt) return true;
+    if (!c.contactId) return false;
+    const contact = await tx.contact.findOne({ id: c.contactId }, { projection: { messagingConsent: 1 } });
+    return contact?.messagingConsent?.status === "opted_out";
+  }
+
+  private assertSendable(c: ConversationRow) {
+    if (c.channel.status === "disconnected") throw new AppError("CHANNEL_ERROR", "Channel is disconnected");
+    if (c.channel.type === "WHATSAPP" && !c.channel.demo) {
+      const open = c.lastInboundAt && Date.now() - c.lastInboundAt.getTime() < WHATSAPP_WINDOW_MS;
+      if (!open) throw new AppError("WINDOW_CLOSED", "WhatsApp allows free-form replies only within 24 h of the customer's last message");
+    }
+  }
+
+  /** Records an outgoing message and its effect on the conversation (waiting, first response, owner). */
+  private async storeOutbound(ctx: AuthedContext, c: ConversationRow, body: string | null, attachments: MessageAttachmentDto[]) {
+    return this.db.scoped(async (tx) => {
+      const now = new Date();
+      const message = await tx.message.insertOne({
+        tenantId: ctx.tenantId,
+        conversationId: c.id,
+        direction: "OUTBOUND",
+        authorId: ctx.membershipId,
+        body,
+        attachments: attachments as unknown as Message["attachments"],
+        deliveryStatus: c.channel.demo ? "demo" : "pending",
+        createdAt: now,
+      });
+      await tx.conversation.update(
+        { id: c.id },
+        {
+          $set: {
+            lastMessageAt: now,
+            awaitingSince: null,
+            unreadCount: 0,
+            ...(c.firstResponseMs === null ? { firstResponseMs: now.getTime() - c.createdAt.getTime() } : {}),
+            ...(c.assigneeId ? {} : { assigneeId: ctx.membershipId }),
+          },
+        },
+      );
+      return message;
+    });
+  }
+
+  async settings(): Promise<InboxSettings> {
+    const { tenantId } = authedContext();
+    const tenant = await this.db.scoped((tx) => tx.tenant.get({ id: tenantId }, { projection: { inboxSettings: 1 } }));
+    return tenant.inboxSettings ?? DEFAULT_INBOX_SETTINGS;
+  }
+
+  async updateSettings(input: InboxSettings): Promise<InboxSettings> {
+    const ctx = authedContext();
+    if (input.autoReply && !input.awayMessage) throw new AppError("VALIDATION_FAILED", "Write the away message first", { awayMessage: ["Required"] });
+    return this.db.scoped(async (tx) => {
+      await tx.tenant.update({ id: ctx.tenantId }, { $set: { inboxSettings: input } });
+      return input;
+    });
+  }
+
+  /** An automatic reply stored by the ingest path, delivered after its transaction committed. */
+  async deliverStored(tenantId: string, messageId: string) {
+    await requestContext.run({ tenantId }, async () => {
+      const found = await this.db.scoped(async (tx) => {
+        const m = await tx.message.findOne({ id: messageId, tenantId, deliveryStatus: "pending" });
+        if (!m) return null;
+        const c = (await withRelations(tx, tenantId, [await tx.conversation.get({ id: m.conversationId })]))[0]!;
+        // Email replies go through the mail queue, which records the outcome itself
+        if (c.channel.type === "EMAIL" && c.handle) {
+          await tx.message.update({ id: m.id }, { $set: { deliveryStatus: "queued" } });
+          await this.queueEmailReply(tx, c, m.body ?? "", m.id);
+          return { m, c, queued: true };
+        }
+        return { m, c, queued: false };
+      });
+      if (!found) return;
+      if (!found.queued) await this.deliver(found.m.id, found.c.channel, found.c, { kind: "text", body: found.m.body ?? "" });
+      this.events.publish(tenantId, { type: "message", conversationId: found.c.id, direction: "OUTBOUND" });
+    });
+  }
+
+  /** Sends to the provider outside any transaction; the message keeps the outcome. */
+  private async deliver(messageId: string, channel: Channel, conversation: Pick<Conversation, "id" | "externalThread">, out: Outgoing) {
+    let status: string;
+    try {
+      const token = openCredentials(channel.credentials!).accessToken!;
+      const to = conversation.externalThread;
+      let externalId: string;
+      if (channel.type === "TELEGRAM") {
+        externalId = out.kind === "file" ? await this.telegram.sendFile(token, to, out.file, out.caption) : await this.telegram.sendMessage(token, to, out.kind === "text" ? out.body : "");
+      } else if (channel.type === "WHATSAPP") {
+        externalId =
+          out.kind === "file"
+            ? await this.meta.sendWhatsAppMedia(channel.externalId, token, to, out.file, out.caption)
+            : out.kind === "template"
+              ? await this.meta.sendWhatsAppTemplate(channel.externalId, token, to, out.name, out.language, out.params)
+              : await this.meta.sendWhatsApp(channel.externalId, token, to, out.body);
+      } else {
+        externalId = await this.meta.sendPageMessage(token, to, out.kind === "text" ? out.body : "");
+      }
+      status = "sent";
+      await this.db.scoped((tx) => tx.message.update({ id: messageId }, { $set: { deliveryStatus: status, externalId: externalId || null } }));
+    } catch (e) {
+      status = "failed";
+      this.logger.warn(`Send failed for conversation ${conversation.id}: ${e instanceof Error ? e.message : e}`);
+      await this.db.scoped((tx) => tx.message.update({ id: messageId }, { $set: { deliveryStatus: status } }));
+    }
+    return status;
+  }
+
+  private async messageDto(ctx: AuthedContext, message: Message, status: string | null): Promise<MessageDto> {
+    this.events.publish(ctx.tenantId, { type: "message", conversationId: message.conversationId, direction: message.direction });
+    const me = (await this.db.scoped((tx) => memberRefs(tx, ctx.tenantId, [ctx.membershipId]))).get(ctx.membershipId);
+    return {
+      id: message.id,
+      direction: message.direction,
+      body: message.body ?? "",
+      attachments: attachmentsOf(message),
       author: me ? { id: me.id, name: me.name } : null,
       deliveryStatus: status,
       createdAt: message.createdAt.toISOString(),
@@ -347,7 +521,9 @@ export class InboxService {
   }
 
   private async toListDtos(tx: Tx, ctx: AuthedContext, rows: ConversationRow[]): Promise<ConversationListItemDto[]> {
-    const refs = await memberRefs(tx, ctx.tenantId, rows.map((r) => r.assigneeId));
+    const [refs, tenant] = await Promise.all([memberRefs(tx, ctx.tenantId, rows.map((r) => r.assigneeId)), tx.tenant.get({ id: ctx.tenantId }, { projection: { inboxSettings: 1 } })]);
+    const slaMs = (tenant.inboxSettings ?? DEFAULT_INBOX_SETTINGS).slaMinutes * 60_000;
+    const now = Date.now();
     return rows.map((c) => {
       const a = c.assigneeId ? refs.get(c.assigneeId) : undefined;
       const last = c.messages[0];
@@ -363,6 +539,7 @@ export class InboxService {
         departmentId: c.departmentId,
         unreadCount: c.unreadCount,
         awaitingSince: c.awaitingSince?.toISOString() ?? null,
+        slaBreached: !!c.awaitingSince && c.status !== "RESOLVED" && now - c.awaitingSince.getTime() > slaMs,
         lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
         lastMessage: last ? { body: (last.body ?? "").slice(0, 160), direction: last.direction } : null,
       };

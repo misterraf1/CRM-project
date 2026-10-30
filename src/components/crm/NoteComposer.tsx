@@ -5,6 +5,7 @@ import { useState, useTransition, type FormEvent } from "react";
 import { api } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
+import { MentionTextarea } from "@/components/ui/MentionTextarea";
 
 export function NoteComposer({ contactId }: { contactId: string }) {
   const { t } = useI18n();
@@ -31,10 +32,10 @@ export function NoteComposer({ contactId }: { contactId: string }) {
       <label className="sr-only" htmlFor="note">
         {t.crm.addNote}
       </label>
-      <textarea
+      <MentionTextarea
         id="note"
         value={body}
-        onChange={(e) => setBody(e.target.value)}
+        onChange={setBody}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.form?.requestSubmit();
         }}

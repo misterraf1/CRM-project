@@ -31,6 +31,7 @@ export type ErrorCode =
   | "ROLE_IN_USE"
   | "BILLING_MANUAL"
   | "APPROVAL_REQUIRED"
+  | "CONSENT_REQUIRED"
   | "INTERNAL";
 
 export interface ApiError {
@@ -50,7 +51,7 @@ export type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED
 export interface MeResponse {
   user: { id: string; fullName: string; email: string; locale: "AZ" | "EN" | "RU" };
   tenant: { id: string; name: string; slug: string; currency: string; timezone: string };
-  membership: { id: string; role: MemberRole; customRole: { id: string; name: string } | null; title: string | null; departmentId: string | null };
+  membership: { id: string; role: MemberRole; customRole: { id: string; name: string } | null; title: string | null; departmentId: string | null; presence: "available" | "away" };
   permissions: Permission[];
   subscription: {
     plan: string;
@@ -79,6 +80,8 @@ export interface MemberDto {
   role: MemberRole;
   /** Custom role in place of the built-in role's permissions */
   customRole: { id: string; name: string } | null;
+  /** Operator status (away = skipped by automatic assignment) */
+  presence: "available" | "away";
   status: MemberStatus;
   title: string | null;
   departmentId: string | null;
@@ -123,4 +126,13 @@ export interface AuditLogDto {
   actor: { id: string; fullName: string } | null;
   diff: unknown;
   createdAt: string;
+}
+
+/** Global search (Cmd+K): a few hits per kind, each with where it opens. */
+export interface SearchHitDto {
+  kind: "contact" | "deal" | "task" | "conversation" | "quote" | "invoice" | "order";
+  id: string;
+  title: string;
+  subtitle: string | null;
+  href: string;
 }

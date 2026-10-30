@@ -1,5 +1,6 @@
 "use client";
 
+import { CommandPalette } from "./CommandPalette";
 import clsx from "clsx";
 import { AlertTriangle, Menu } from "lucide-react";
 import Link from "next/link";
@@ -69,6 +70,7 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
             <Menu className="h-5 w-5" />
           </button>
           <div className="ml-auto flex items-center gap-2">
+            <CommandPalette />
             <NotificationBell unread={summary.unreadNotifications} />
             <LocaleSwitcher />
             <ThemeToggle />

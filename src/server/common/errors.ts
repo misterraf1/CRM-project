@@ -31,6 +31,8 @@ const STATUS: Record<ErrorCode, number> = {
   BILLING_MANUAL: 409,
   /** A quote's discount is over the company limit and nobody has approved it yet */
   APPROVAL_REQUIRED: 409,
+  /** The customer opted out of messages we start (STOP) */
+  CONSENT_REQUIRED: 409,
   RATE_LIMITED: 429,
   INTERNAL: 500,
 };

@@ -14,6 +14,7 @@ import { dashboardRoutes } from "./dashboard/dashboard.routes";
 import { departmentsRoutes } from "./departments/departments.routes";
 import { rolesRoutes } from "./roles/roles.routes";
 import { salesRoutes } from "./sales/sales.routes";
+import { searchRoutes } from "./search/search.routes";
 import { healthRoutes } from "./health.routes";
 import { ApiApp, type ClientInfo } from "./http/app";
 import { Router } from "./http/router";
@@ -48,6 +49,7 @@ export function createApi(): ApiServer {
     departmentsRoutes,
     rolesRoutes,
     salesRoutes,
+    searchRoutes,
     auditRoutes,
     contactsRoutes,
     dealsRoutes,

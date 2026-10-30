@@ -23,6 +23,12 @@ export const BACKFILLS = [
   ["Tenant", { docSettings: {} }],
   ["SalesDoc", { overdueNotifiedAt: null, approval: null }],
   ["Product", { components: [] }],
+  // v2 Stage F — channels
+  ["Conversation", { optedOutAt: null }],
+  ["Contact", { messagingConsent: null }],
+  ["Conversation", { lastAutoReplyAt: null }],
+  ["Membership", { presence: "available", mutedNotifications: [] }],
+  ["Tenant", { inboxSettings: null }],
 ];
 
 /**
@@ -31,6 +37,15 @@ export const BACKFILLS = [
  * the company's (new deals used to be saved as "AZN" whatever the company currency was).
  */
 const COMPUTED = [
+  // Stage F: disconnected channels free their provider id so it can be connected again
+  async (db) => {
+    let touched = 0;
+    for await (const c of db.collection("Channel").find({ status: "disconnected", externalId: { $not: /^disconnected:/ } }, { projection: { _id: 1, externalId: 1 } })) {
+      const res = await db.collection("Channel").updateOne({ _id: c._id }, { $set: { externalId: `disconnected:${c._id}:${c.externalId}` } });
+      touched += res.modifiedCount;
+    }
+    return touched;
+  },
   async (db) => {
     let touched = 0;
     for await (const t of db.collection("Tenant").find({}, { projection: { _id: 1, currency: 1 } })) {

@@ -6,7 +6,7 @@ test.use({ viewport: { width: 390, height: 844 } });
 
 test("company pages fit a 390px phone screen", async ({ page }) => {
   await signupCompany(page, "Mobil MMC");
-  for (const path of ["/dashboard", "/crm", "/deals", "/tasks", "/inbox", "/chat", "/team", "/files", "/analytics", "/automations", "/support", "/settings/members", "/settings/channels", "/settings/billing"]) {
+  for (const path of ["/dashboard", "/crm", "/deals", "/tasks", "/inbox", "/chat", "/team", "/files", "/analytics", "/automations", "/support", "/settings/members", "/settings/channels", "/settings/billing", "/settings/roles", "/settings/crm", "/sales", "/sales/products", "/orders"]) {
     await page.goto(path);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth), { message: path }).toBeLessThanOrEqual(390);
   }

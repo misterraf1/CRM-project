@@ -145,6 +145,7 @@ export class AuthService {
           customRole: role ? { id: role.id, name: role.name } : null,
           title: membership.title,
           departmentId: membership.departmentId,
+          presence: membership.presence ?? "available",
         },
         permissions: resolvePermissions(membership.role, membership.permissions, role?.permissions),
         subscription: {

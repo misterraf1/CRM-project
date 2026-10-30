@@ -7,12 +7,47 @@ import { openCredentials } from "../common/secrets";
 import type { Database } from "../db/database";
 import { isDuplicateKey } from "../db/errors";
 import type { WebhookEvent } from "../db/models";
-import { IngestService } from "./ingest.service";
+import { IngestService, type InboundMessage } from "./ingest.service";
+import { MetaClient } from "./meta.client";
+import { TelegramClient } from "./telegram.client";
+
+/** Files customers send are kept up to this size (larger ones are listed without content). */
+export const INBOUND_FILE_MAX = 20 * 1024 * 1024;
+
+type WaMedia = { id: string; mime_type?: string; caption?: string; filename?: string };
+
+interface TelegramUpdate {
+  update_id?: number;
+  message?: {
+    message_id: number;
+    date?: number;
+    chat: { id: number; type: string };
+    from?: { id: number; first_name?: string; last_name?: string; username?: string };
+    text?: string;
+    caption?: string;
+    photo?: { file_id: string; file_size?: number; width?: number }[];
+    document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
+    voice?: { file_id: string; mime_type?: string; file_size?: number };
+    audio?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
+    video?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
+  };
+}
 
 interface WaValue {
   metadata?: { phone_number_id?: string };
   contacts?: { wa_id?: string; profile?: { name?: string } }[];
-  messages?: { from: string; id: string; timestamp?: string; type?: string; text?: { body?: string } }[];
+  messages?: {
+    from: string;
+    id: string;
+    timestamp?: string;
+    type?: string;
+    text?: { body?: string };
+    image?: WaMedia;
+    document?: WaMedia;
+    audio?: WaMedia;
+    video?: WaMedia;
+    sticker?: WaMedia;
+  }[];
   statuses?: { id: string; status: string }[];
 }
 
@@ -47,7 +82,61 @@ export class WebhooksService {
   constructor(
     private readonly db: Database,
     private readonly ingest: IngestService,
+    private readonly meta: MetaClient,
+    private readonly telegram: TelegramClient,
   ) {}
+
+  /**
+   * Telegram deliveries: the URL names the channel and the header carries the secret we
+   * gave Telegram with setWebhook. Only private chats become conversations.
+   */
+  async processTelegram(channelId: string, secret: string, update: TelegramUpdate) {
+    const channel = await this.db.system.channel.findOne({ id: channelId, type: "TELEGRAM", demo: false, status: { $ne: "disconnected" } });
+    const creds = channel?.credentials ? openCredentials(channel.credentials) : null;
+    const expected = Buffer.from(creds?.webhookSecret ?? "");
+    const given = Buffer.from(secret);
+    if (!channel || !creds || !expected.length || given.length !== expected.length || !timingSafeEqual(given, expected)) {
+      throw new AppError("FORBIDDEN", "Invalid webhook secret");
+    }
+    const m = update.message;
+    if (!m || m.chat.type !== "private") return { stored: 0 };
+    const token = creds.accessToken!;
+    // Largest photo size, or the one attached file
+    const photo = m.photo?.length ? m.photo[m.photo.length - 1] : undefined;
+    const media = photo
+      ? { file_id: photo.file_id, name: `photo_${m.message_id}.jpg`, mime: "image/jpeg", size: photo.file_size ?? 0 }
+      : m.document
+        ? { file_id: m.document.file_id, name: m.document.file_name ?? "document", mime: m.document.mime_type ?? "application/octet-stream", size: m.document.file_size ?? 0 }
+        : m.voice
+          ? { file_id: m.voice.file_id, name: `voice_${m.message_id}.ogg`, mime: m.voice.mime_type ?? "audio/ogg", size: m.voice.file_size ?? 0 }
+          : (m.audio ?? m.video)
+            ? { file_id: (m.audio ?? m.video)!.file_id, name: (m.audio ?? m.video)!.file_name ?? "file", mime: (m.audio ?? m.video)!.mime_type ?? "application/octet-stream", size: (m.audio ?? m.video)!.file_size ?? 0 }
+            : null;
+    const files: InboundMessage["files"] = [];
+    if (media) {
+      try {
+        files.push({ buffer: await this.telegram.download(token, media.file_id, INBOUND_FILE_MAX), name: media.name, mimeType: media.mime });
+      } catch (e) {
+        this.logger.warn(`Telegram file not stored: ${e instanceof Error ? e.message : e}`);
+        files.push({ failed: true, name: media.name, mimeType: media.mime, sizeBytes: media.size });
+      }
+    }
+    const name = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(" ") || m.from?.username || null;
+    const res = await this.db.scoped(
+      (tx) =>
+        this.ingest.inbound(tx, channel, {
+          externalThread: String(m.chat.id),
+          externalMessageId: `${m.chat.id}:${m.message_id}`,
+          body: m.text ?? m.caption ?? "",
+          displayName: name,
+          handle: m.from?.username ? `@${m.from.username}` : null,
+          at: m.date ? new Date(m.date * 1000) : undefined,
+          files,
+        }),
+      { tenantId: channel.tenantId },
+    );
+    return { stored: res ? 1 : 0 };
+  }
 
   async processMeta(raw: Buffer, payload: MetaPayload) {
     // Whole-delivery idempotency: Meta retries identical bodies
@@ -112,18 +201,42 @@ export class WebhooksService {
     const target = value.metadata?.phone_number_id && (await this.resolve("WHATSAPP", value.metadata.phone_number_id));
     if (!target) return 0;
     const names = new Map((value.contacts ?? []).map((c) => [c.wa_id, c.profile?.name]));
+    // Media is downloaded before the transaction: provider calls don't hold it open
+    const channelRow = await this.db.system.channel.get({ id: target.channelId });
+    const token = channelRow.credentials ? openCredentials(channelRow.credentials).accessToken : undefined;
+    const prepared = await Promise.all(
+      (value.messages ?? []).map(async (m) => {
+        const media = m.image ?? m.document ?? m.audio ?? m.video ?? m.sticker;
+        const files: InboundMessage["files"] = [];
+        if (media) {
+          const name = media.filename ?? `${m.type ?? "file"}_${m.id.slice(-8)}`;
+          const mimeType = media.mime_type ?? "application/octet-stream";
+          try {
+            if (!token) throw new Error("no token");
+            const file = await this.meta.downloadWhatsAppMedia(token, media.id, INBOUND_FILE_MAX);
+            files.push({ buffer: file.buffer, name, mimeType: file.mimeType });
+          } catch (e) {
+            this.logger.warn(`WhatsApp media not stored: ${e instanceof Error ? e.message : e}`);
+            files.push({ failed: true, name, mimeType, sizeBytes: 0 });
+          }
+        }
+        const body = m.type === "text" ? (m.text?.body ?? "") : (media?.caption ?? (media ? "" : `[${m.type ?? "message"}]`));
+        return { m, files, body };
+      }),
+    );
     return this.db.scoped(
       async (tx) => {
         const channel = await tx.channel.get({ id: target.channelId });
         let stored = 0;
-        for (const m of value.messages ?? []) {
+        for (const { m, files, body } of prepared) {
           const res = await this.ingest.inbound(tx, channel, {
             externalThread: m.from,
             externalMessageId: m.id,
-            body: m.type === "text" ? (m.text?.body ?? "") : `[${m.type ?? "message"}]`,
+            body,
             displayName: names.get(m.from) ?? null,
             handle: `+${m.from}`,
             at: m.timestamp ? new Date(Number(m.timestamp) * 1000) : undefined,
+            files,
           });
           if (res) stored++;
         }

@@ -253,8 +253,11 @@ export class AutomationRunner {
       return `notified ${recipients.length}`;
     }
 
-    // assign: one member, or the next one in turn
-    const pool = await this.activeMembers(tx, tenantId, action.memberIds);
+    // assign: one member, or the next one in turn — skipping operators who set themselves away
+    // (if everyone is away the work is still handed out rather than left unassigned)
+    const active = await this.activeMembers(tx, tenantId, action.memberIds);
+    const away = new Set((await tx.membership.find({ tenantId, id: { $in: active }, presence: "away" }, { projection: { id: 1 } })).map((m) => m.id));
+    const pool = active.some((id) => !away.has(id)) ? active.filter((id) => !away.has(id)) : active;
     if (!pool.length) return "assign skipped (no active member)";
     const { rrCursor } = await tx.automationRule.update({ id: rule.id }, { $inc: { rrCursor: 1 } });
     const memberId = pool[(rrCursor - 1) % pool.length]!;

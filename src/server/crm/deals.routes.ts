@@ -23,6 +23,10 @@ export function dealsRoutes(router: Router, s: Services) {
 
     r.post("deals/:id/move", { permission: "deals.edit", status: 200, body: dealMoveSchema }, ({ params, body }) => s.deals.move(params.id!, body));
 
+    r.get("deals/:id/files", ({ params }) => s.files.forRecord("deal", params.id!));
+
+    r.post("deals/:id/files", { permission: "deals.edit", upload: true }, ({ params, file }) => s.files.uploadToRecord("deal", params.id!, file));
+
     r.delete("deals/:id", { permission: "deals.delete", status: 204 }, ({ params }) => s.deals.remove(params.id!));
   });
 }

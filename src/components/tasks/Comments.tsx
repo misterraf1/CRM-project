@@ -8,6 +8,7 @@ import { api } from "@/lib/api/client";
 import { formatRelative } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
+import { MentionTextarea } from "@/components/ui/MentionTextarea";
 
 export function Comments({ taskId, items }: { taskId: string; items: CommentDto[] }) {
   const { t, locale } = useI18n();
@@ -57,10 +58,10 @@ export function Comments({ taskId, items }: { taskId: string; items: CommentDto[
         <label className="sr-only" htmlFor="comment">
           {k.comments}
         </label>
-        <textarea
+        <MentionTextarea
           id="comment"
           value={body}
-          onChange={(e) => setBody(e.target.value)}
+          onChange={setBody}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.form?.requestSubmit();
           }}

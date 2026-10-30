@@ -315,6 +315,7 @@ export function MembersManager({ me, members, departments, roles }: { me: MeResp
                   </td>
                   <td className="px-3">
                     <span className={clsx("rounded-full px-2 py-0.5 text-[11px] font-medium", STATUS_STYLE[x.status])}>{m.statuses[x.status]}</span>
+                    {x.status === "ACTIVE" && x.presence === "away" && <span className="ml-1 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">{t.shell.presence.away}</span>}
                   </td>
                   <td className="whitespace-nowrap px-4 text-right">
                     {can && x.status === "INVITED" && (

@@ -29,7 +29,7 @@ export function AwaitingInbox({ inbox, now, t, locale }: { inbox: DashboardCrmDt
             return (
               <li key={c.id}>
                 <Link href={`/inbox?c=${c.id}`} className="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/60">
-                  <ChannelIcon channel={c.channel} label={t.dashboard.channels[c.channel]} />
+                  <ChannelIcon channel={c.channel} label={t.channels.types[c.channel]} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <p className="truncate text-sm font-medium">{c.displayName || t.inbox.visitor}</p>

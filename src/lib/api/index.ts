@@ -1,5 +1,7 @@
 import "server-only";
 import type {
+  FileDto,
+  InboxSettings,
   AttentionItemDto,
   ActivityDto,
   BillingOverviewDto,
@@ -50,6 +52,12 @@ export const getMembers = cache(() => apiFetch<MemberDto[]>("/v1/members"));
 export const getDepartments = () => apiFetch<DepartmentDto[]>("/v1/departments");
 
 export const getRoles = () => apiFetch<RoleDto[]>("/v1/roles");
+
+export const getRecordFiles = (kind: "contacts" | "deals", id: string) => apiFetch<FileDto[]>(`/v1/${kind}/${encodeURIComponent(id)}/files`);
+
+export const getNotificationPrefs = () => apiFetch<{ muted: string[] }>("/v1/members/me/notifications");
+
+export const getInboxSettings = () => apiFetch<InboxSettings>("/v1/inbox/settings");
 
 export const getProducts = (all = false) => apiFetch<ProductDto[]>(`/v1/products${all ? "?all=1" : ""}`);
 

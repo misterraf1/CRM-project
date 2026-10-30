@@ -6,7 +6,8 @@ import { DeleteButton } from "@/components/crm/DeleteButton";
 import { Timeline } from "@/components/crm/Timeline";
 import { DealEditor } from "@/components/deals/DealEditor";
 import { DealDocs } from "@/components/sales/DealDocs";
-import { getContacts, getCurrencySettings, getDeal, getDealDocs, getFields, getMembers, getPipelines, getSession } from "@/lib/api";
+import { RecordFiles } from "@/components/crm/RecordFiles";
+import { getContacts, getCurrencySettings, getDeal, getDealDocs, getFields, getMembers, getPipelines, getRecordFiles, getSession } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatDate, formatMoney } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
@@ -25,7 +26,7 @@ export default async function DealPage({ params }: Props) {
     if (e instanceof ApiRequestError && e.status === 404) notFound();
     throw e;
   });
-  const [{ t, locale }, me, pipelines, members, contacts, currencies, fields, docs] = await Promise.all([
+  const [{ t, locale }, me, pipelines, members, contacts, currencies, fields, docs, files] = await Promise.all([
     getI18n(),
     getSession(),
     getPipelines(),
@@ -35,6 +36,7 @@ export default async function DealPage({ params }: Props) {
     getFields("deal"),
     // Members without any document rights simply see none
     getDealDocs(id).catch(() => []),
+    getRecordFiles("deals", id),
   ]);
   const pipeline = pipelines.find((p) => p.id === deal.pipelineId)!;
   const stage = pipeline.stages.find((s) => s.id === deal.stageId)!;
@@ -81,6 +83,7 @@ export default async function DealPage({ params }: Props) {
           />
         </section>
         <div className="min-w-0 space-y-5">
+        <RecordFiles path={`/deals/${deal.id}`} files={files} canUpload={me.permissions.includes("deals.edit")} canDeleteAny={me.permissions.includes("contacts.manage")} meId={me.membership.id} />
         <DealDocs docs={docs} dealId={deal.id} canQuote={me.permissions.includes("quotes.manage")} t={t} locale={locale} />
         <section className="card min-w-0">
           <h2 className="px-5 pt-4 text-sm font-semibold">{d.history}</h2>

@@ -14,6 +14,7 @@ export function SettingsTabs() {
     { href: "/settings/channels", label: t.channels.title },
     { href: "/settings/crm", label: t.crmSettings.tab },
     { href: "/settings/billing", label: t.billing.title },
+    { href: "/settings/notifications", label: t.notificationPrefs.title },
   ];
   return (
     <nav aria-label={t.nav.settings} className="mb-5 flex gap-1 overflow-x-auto border-b border-border">

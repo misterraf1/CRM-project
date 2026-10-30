@@ -49,6 +49,8 @@ const schema = z.object({
   META_APP_SECRET: z.string().min(16).optional(),
   META_VERIFY_TOKEN: z.string().min(8).optional(),
   META_GRAPH_URL: z.string().url().default("https://graph.facebook.com/v21.0"),
+  /** Telegram Bot API (tests point it at a local fake) */
+  TELEGRAM_API_URL: z.string().url().default("https://api.telegram.org"),
   /**
    * Payment provider.
    * - "manual" (default): no online payments. Platform staff activate, change and extend

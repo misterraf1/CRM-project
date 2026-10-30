@@ -21,6 +21,8 @@ export interface ContactDto {
   customFields: CustomFieldValues;
   owner: MemberRefDto | null;
   openDeals: number;
+  /** Permission for messages we start: null = not recorded */
+  messagingConsent: { status: "opted_in" | "opted_out"; at: string; source: "manual" | "keyword" } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -135,7 +137,7 @@ export interface AttentionItemDto {
   reason: AttentionReason;
   title: string;
   href: string;
-  /** Hours (unanswered) or days (the rest) */
+  /** Minutes (unanswered), hours (approval_pending) or days (the rest) */
   age: number;
   amount: { value: number; currency: string } | null;
   owner: MemberRefDto | null;
@@ -169,7 +171,7 @@ export interface DashboardCrmDto {
     longestWaitMin: number | null;
     avgFirstResponseMin: number | null;
     /** Longest-waiting first, at most 5 */
-    items: { id: string; channel: "WHATSAPP" | "INSTAGRAM" | "MESSENGER" | "WEBCHAT" | "EMAIL"; displayName: string; preview: string; waitingSince: string; assignee: MemberRefDto | null }[];
+    items: { id: string; channel: import("./inbox-schemas").ChannelType; displayName: string; preview: string; waitingSince: string; assignee: MemberRefDto | null }[];
   };
   tasks: {
     open: number;

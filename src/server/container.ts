@@ -1,3 +1,4 @@
+import { afterResponse } from "./common/after-response";
 import { AdminAuthService } from "./admin/admin-auth.service";
 import { AdminGuard } from "./admin/admin.guard";
 import { AdminService } from "./admin/admin.service";
@@ -31,6 +32,7 @@ import { DashboardService } from "./dashboard/dashboard.service";
 import { DepartmentsService } from "./departments/departments.service";
 import { RolesService } from "./roles/roles.service";
 import { AttentionService } from "./dashboard/attention.service";
+import { SearchService } from "./search/search.service";
 import { SalesDocsService } from "./sales/docs.service";
 import { ProductsService } from "./sales/products.service";
 import { OrdersService } from "./sales/orders.service";
@@ -40,6 +42,7 @@ import { InboxEvents } from "./inbox/events";
 import { InboxService } from "./inbox/inbox.service";
 import { IngestService } from "./inbox/ingest.service";
 import { MetaClient } from "./inbox/meta.client";
+import { TelegramClient } from "./inbox/telegram.client";
 import { WebhooksService } from "./inbox/webhooks.service";
 import { MailService } from "./mail/mail.service";
 import { MembersService } from "./members/members.service";
@@ -69,15 +72,17 @@ export function createServices() {
   const inboxEvents = new InboxEvents();
   const chatEvents = new ChatEvents();
   const meta = new MetaClient();
+  const telegram = new TelegramClient();
   const notifications = new NotificationsService(db);
   const mail = new MailService(db, monitor);
   const ai = new AiService(db);
   const tokens = new TokensService(jwt, db);
   const automationRunner = new AutomationRunner(db, notifications, entitlements, inboxEvents, monitor);
-  const ingest = new IngestService(inboxEvents, automationRunner);
+  const ingest = new IngestService(inboxEvents, automationRunner, storage);
   const tasks = new TasksService(db, notifications, storage);
   const files = new FilesService(db, tasks, storage);
-  const inbox = new InboxService(db, inboxEvents, meta, activity, mail, entitlements);
+  const inbox = new InboxService(db, inboxEvents, meta, activity, mail, entitlements, telegram, files);
+  ingest.onAutoReply = (tenantId, messageId) => afterResponse(() => inbox.deliverStored(tenantId, messageId));
   const billing = new BillingService(db, entitlements, notifications, audit, mail, provider);
   const adminAuth = new AdminAuthService(db, jwt);
   const deals = new DealsService(db, activity, audit, automationRunner);
@@ -114,18 +119,19 @@ export function createServices() {
     docs,
     publicDocs: new PublicDocsService(db, docs),
     orders: new OrdersService(db, audit, activity, notifications),
-    contacts: new ContactsService(db, activity, audit, automationRunner, entitlements),
+    contacts: new ContactsService(db, activity, audit, automationRunner, entitlements, notifications),
     imports: new ImportService(db, audit, entitlements),
     exports: new ExportService(db, audit),
     deals,
     crmSettings: new CrmSettingsService(db, audit, deals),
     dashboard: new DashboardService(db, activity),
     attention: new AttentionService(db),
+    search: new SearchService(db),
     projects: new ProjectsService(db),
     overdueJob: new OverdueJob(db, monitor, notifications, automationRunner, docs),
     team: new TeamService(db, tasks, activity),
-    channels: new ChannelsService(db, ingest, mail),
-    webhooks: new WebhooksService(db, ingest),
+    channels: new ChannelsService(db, ingest, mail, meta, telegram),
+    webhooks: new WebhooksService(db, ingest, meta, telegram),
     chat: new ChatService(db, chatEvents, files, storage),
     billingJob: new BillingJob(db, monitor, billing, notifications, provider),
     support: new SupportService(db, notifications, audit, entitlements, mail),

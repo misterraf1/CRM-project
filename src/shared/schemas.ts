@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MEMBER_ROLES } from "./permissions";
+import { MUTABLE_NOTIFICATIONS } from "./task-types";
 
 // Request bodies validated identically by the web forms and the API.
 
@@ -64,3 +65,7 @@ export const departmentSchema = z.object({
   parentId: z.string().min(1).max(64).nullish(),
 });
 export type DepartmentInput = z.infer<typeof departmentSchema>;
+
+export const notificationPrefsSchema = z.object({ muted: z.array(z.enum(MUTABLE_NOTIFICATIONS)).max(MUTABLE_NOTIFICATIONS.length) });
+
+export const searchQuerySchema = z.object({ q: z.string().trim().min(2).max(100) });

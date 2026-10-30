@@ -18,8 +18,14 @@ export class NotificationsService {
     payload: Record<string, unknown>,
     exceptMemberId?: string,
   ) {
-    const memberIds = [...new Set(recipients.filter((id): id is string => !!id && id !== exceptMemberId))];
+    let memberIds = [...new Set(recipients.filter((id): id is string => !!id && id !== exceptMemberId))];
     if (!memberIds.length) return;
+    // Members who turned this type off (billing notices can't be turned off)
+    if (!type.startsWith("billing_")) {
+      const muted = new Set((await tx.membership.find({ tenantId, id: { $in: memberIds }, mutedNotifications: type }, { projection: { id: 1 } })).map((m) => m.id));
+      memberIds = memberIds.filter((id) => !muted.has(id));
+      if (!memberIds.length) return;
+    }
     await tx.notification.insertMany(memberIds.map((memberId) => ({ tenantId, memberId, type, payload: payload as Notification["payload"] })));
   }
 

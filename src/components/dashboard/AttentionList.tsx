@@ -2,7 +2,7 @@ import type { AttentionItemDto, AttentionReason } from "@/shared";
 import { AlarmClock, BadgePercent, CheckCircle2, FileClock, FileText, MessageCircleWarning, PackageX, Receipt, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { formatMoneyExact } from "@/lib/format";
+import { formatDuration, formatMoneyExact } from "@/lib/format";
 import type { Dictionary } from "@/lib/i18n/dictionaries/az";
 import { interpolate, type Locale } from "@/lib/i18n/locales";
 
@@ -40,7 +40,7 @@ export function AttentionList({ items, t, locale }: { items: AttentionItemDto[];
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{item.title}</span>
                     <span className="block text-xs text-fg-muted">
-                      {interpolate(k.reasons[item.reason], { age: item.age })}
+                      {interpolate(k.reasons[item.reason], { age: item.reason === "unanswered" ? formatDuration(item.age, locale) : item.age })}
                       {item.owner && ` · ${item.owner.name}`}
                     </span>
                   </span>

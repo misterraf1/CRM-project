@@ -1,10 +1,11 @@
+import { inboxScope } from "../inbox/inbox.service";
 import type { FileDto, FileListItemDto, FileListQuery, FileListResponse, FileSource } from "@/shared";
-import { authedContext } from "../common/context";
+import { authedContext, type AuthedContext } from "../common/context";
 import { AppError, forbidden, notFound } from "../common/errors";
 import { newId } from "../common/ids";
-import { memberRefs } from "../crm/scope";
+import { memberRefs, ownerScope } from "../crm/scope";
 import { limitsOf, storageUsed, subscriptionOf } from "../billing/entitlements.service";
-import type { Database } from "../db/database";
+import type { Database, Tx } from "../db/database";
 import { and, contains } from "../db/query";
 import type { Filter } from "../db/repo";
 import type { FileStorage } from "../storage/storage.service";
@@ -39,7 +40,7 @@ export class FilesService {
    * Stores an upload for any entity after the caller has checked access to it:
    * enforces the plan's storage quota, writes the record, then the blob.
    */
-  async store(target: { entityType: "task" | "chat" | "library"; entityId: string | null }, file: UploadedFile | undefined): Promise<FileDto> {
+  async store(target: { entityType: "task" | "chat" | "library" | "conversation" | "contact" | "deal"; entityId: string | null }, file: UploadedFile | undefined): Promise<FileDto> {
     const ctx = authedContext();
     if (!file) throw new AppError("VALIDATION_FAILED", "No file", { file: ["Required"] });
     const id = newId("fil");
@@ -98,6 +99,14 @@ export class FilesService {
       if (f.entityType === "chat" && !(await tx.chatMember.count({ roomId: f.entityId ?? "", memberId: ctx.membershipId }))) {
         throw notFound("File");
       }
+      // Contact and deal files: whoever may see the record
+      if ((f.entityType === "contact" || f.entityType === "deal") && !(await this.recordVisible(tx, ctx, f.entityType, f.entityId ?? ""))) {
+        throw notFound("File");
+      }
+      // Customer conversation files: whoever may see the conversation
+      if (f.entityType === "conversation" && !(await tx.conversation.count(and({ id: f.entityId ?? "", tenantId: ctx.tenantId }, await inboxScope(tx, ctx))))) {
+        throw notFound("File");
+      }
       return f;
     });
     return { file, stream: await this.storage.read(file.key) };
@@ -112,6 +121,13 @@ export class FilesService {
         await tx.fileObject.delete({ id });
         return f.key;
       }
+      // Record files: the uploader, or anyone who may reassign records (managers and up)
+      if (f && (f.entityType === "contact" || f.entityType === "deal")) {
+        if (!(await this.recordVisible(tx, ctx, f.entityType, f.entityId ?? ""))) throw notFound("File");
+        if (f.uploaderId !== ctx.membershipId && !ctx.permissions.includes("contacts.manage")) throw forbidden("Not allowed to delete this file");
+        await tx.fileObject.delete({ id });
+        return f.key;
+      }
       // Chat attachments are removed together with their message
       if (!f || f.entityType !== "task" || !f.entityId) throw notFound("File");
       const task = await this.tasks.findVisible(tx, ctx, f.entityId).catch(() => {
@@ -122,6 +138,35 @@ export class FilesService {
       return f.key;
     });
     await this.storage.remove(key);
+  }
+
+  /** Files of a contact or deal the caller can see (404 otherwise), newest first. */
+  async forRecord(entityType: "contact" | "deal", entityId: string): Promise<FileDto[]> {
+    const ctx = authedContext();
+    return this.db.scoped(async (tx) => {
+      if (!(await this.recordVisible(tx, ctx, entityType, entityId))) throw notFound(entityType === "contact" ? "Contact" : "Deal");
+      const rows = await tx.fileObject.find({ tenantId: ctx.tenantId, entityType, entityId }, { sort: { createdAt: -1 }, limit: 200 });
+      const refs = await memberRefs(tx, ctx.tenantId, rows.map((r) => r.uploaderId));
+      return rows.map((r) => {
+        const u = refs.get(r.uploaderId);
+        return { id: r.id, name: r.name, mimeType: r.mimeType, sizeBytes: r.sizeBytes, uploader: u ? { id: u.id, name: u.name } : null, createdAt: r.createdAt.toISOString() };
+      });
+    });
+  }
+
+  /** Attaches a file to a contact or deal the caller can see. */
+  async uploadToRecord(entityType: "contact" | "deal", entityId: string, file: UploadedFile | undefined) {
+    const ctx = authedContext();
+    const visible = await this.db.scoped((tx) => this.recordVisible(tx, ctx, entityType, entityId));
+    if (!visible) throw notFound(entityType === "contact" ? "Contact" : "Deal");
+    return this.store({ entityType, entityId }, file);
+  }
+
+  /** Contacts and deals follow the owner rules (own, department, all). */
+  private async recordVisible(tx: Tx, ctx: AuthedContext, entityType: "contact" | "deal", id: string) {
+    const { where } = await ownerScope(tx, ctx, "contacts.view_all");
+    const base = { id, tenantId: ctx.tenantId };
+    return entityType === "contact" ? (await tx.contact.count(and(base, { deletedAt: null }, where))) > 0 : (await tx.deal.count(and(base, where))) > 0;
   }
 
   /** Library files: the uploader, owners and admins may delete them. */

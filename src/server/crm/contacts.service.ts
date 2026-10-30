@@ -12,6 +12,8 @@ import type {
 } from "@/shared";
 import { AuditService } from "../audit/audit.service";
 import { EntitlementsService } from "../billing/entitlements.service";
+import { mentionedMembers } from "../notifications/mentions";
+import { NotificationsService } from "../notifications/notifications.service";
 import { authedContext, type AuthedContext } from "../common/context";
 import { AppError, notFound } from "../common/errors";
 import type { Database, Tx } from "../db/database";
@@ -65,6 +67,7 @@ export class ContactsService {
     private readonly audit: AuditService,
     private readonly automations: AutomationRunner,
     private readonly entitlements: EntitlementsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(query: ContactListQuery): Promise<ContactListResponse> {
@@ -140,6 +143,23 @@ export class ContactsService {
         items: visible.slice(0, 5).map((c) => ({ id: c.id, name: c.name, email: c.email, phone: c.phone, match: q.email && c.email === q.email ? ("email" as const) : ("phone" as const) })),
         hidden: all.length - visible.length,
       };
+    });
+  }
+
+  /**
+   * Records the customer's permission for messages we start. Their open conversations
+   * follow it (an opt-out blocks WhatsApp templates there too).
+   */
+  async setConsent(id: string, status: "opted_in" | "opted_out" | null) {
+    const ctx = authedContext();
+    await this.db.scoped(async (tx) => {
+      const { where } = await ownerScope(tx, ctx, "contacts.view_all");
+      const c = await tx.contact.findOne(and({ id, tenantId: ctx.tenantId, deletedAt: null }, where));
+      if (!c) throw notFound("Contact");
+      const at = new Date();
+      await tx.contact.update({ id }, { $set: { messagingConsent: status ? { status, at, source: "manual" } : null } });
+      await tx.conversation.updateMany({ tenantId: ctx.tenantId, contactId: id }, { $set: { optedOutAt: status === "opted_out" ? at : null } });
+      await this.audit.log(tx, { action: "contact.consent_changed", entityType: "contact", entityId: id, diff: { from: c.messagingConsent?.status ?? null, to: status } });
     });
   }
 
@@ -259,6 +279,11 @@ export class ContactsService {
     return this.db.scoped(async (tx) => {
       const contact = await this.findVisible(tx, ctx, id);
       const row = await this.activity.record(tx, { type: "note", contactId: id, payload: { body, contactName: contact.name } });
+      const mentioned = await mentionedMembers(tx, ctx.tenantId, body, [contact.ownerId], "contacts.view_all");
+      if (mentioned.length) {
+        const me = await tx.user.get({ id: ctx.userId }, { projection: { fullName: 1 } });
+        await this.notifications.notify(tx, ctx.tenantId, mentioned, "mention", { title: contact.name, actorName: me.fullName, excerpt: body.slice(0, 140), contactId: id }, ctx.membershipId);
+      }
       return (await this.activity.toDtos(tx, ctx.tenantId, [row]))[0]!;
     });
   }
@@ -289,6 +314,7 @@ export class ContactsService {
         customFields: (c.customFields ?? {}) as ContactDto["customFields"],
         owner: owner ? { id: owner.id, name: owner.name } : null,
         openDeals: openDeals.get(c.id) ?? 0,
+        messagingConsent: c.messagingConsent ? { ...c.messagingConsent, at: c.messagingConsent.at.toISOString() } : null,
         createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString(),
       };

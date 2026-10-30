@@ -61,7 +61,7 @@ test("demo WhatsApp channel: simulated message, canned reply shortcut, demo deli
   await signupCompany(page, "Demo WA MMC");
   await page.goto("/settings/channels");
   await page.getByLabel("Qısa yol").fill("/salam");
-  await page.getByLabel("Mətn").fill("Salam! Necə kömək edək?");
+  await page.getByLabel("Mətn", { exact: true }).fill("Salam! Necə kömək edək?");
   await page.getByRole("button", { name: "Əlavə et", exact: true }).click();
   await expect(page.getByText("Salam! Necə kömək edək?")).toBeVisible();
 

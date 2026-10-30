@@ -1,5 +1,6 @@
 "use client";
 
+import { PresenceToggle } from "./PresenceToggle";
 import clsx from "clsx";
 import type { MeResponse } from "@/shared";
 import { ChevronsLeft, ChevronsRight, Lock, LogOut, X } from "lucide-react";
@@ -141,6 +142,7 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
               <div className="min-w-0 flex-1 leading-tight">
                 <p className="truncate text-sm font-medium">{session.user.fullName}</p>
                 <p className="truncate text-[11px] text-fg-subtle">{session.membership.customRole?.name ?? t.shell.roles[session.membership.role]}</p>
+                <PresenceToggle initial={session.membership.presence} />
               </div>
             )}
             <form action="/auth/logout" method="post">
