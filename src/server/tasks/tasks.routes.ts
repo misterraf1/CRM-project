@@ -3,6 +3,9 @@ import { Readable } from "node:stream";
 import type { Services } from "../container";
 import type { Router } from "../http/router";
 
+
+/** Image types shown inline as previews — SVG is left out on purpose (it can contain script) */
+const PREVIEWABLE = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 export function tasksRoutes(router: Router, s: Services) {
   router.group("/v1", {}, (r) => {
     r.get("tasks", { query: taskListQuerySchema }, ({ query }) => s.tasks.list(query));
@@ -25,13 +28,15 @@ export function tasksRoutes(router: Router, s: Services) {
     /** Company library: shared documents not tied to a task or chat */
     r.post("files", { upload: true }, ({ file }) => s.files.uploadToLibrary(file));
 
-    r.get("files/:id", async ({ params }) => {
+    r.get("files/:id", async ({ params, search }) => {
       const { file, stream } = await s.files.open(params.id!);
+      // ?inline=1 previews raster images (chat thumbnails); nothing that can carry script
+      const preview = search.get("inline") === "1" && PREVIEWABLE.has(file.mimeType);
       return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, {
         headers: {
-          // Always a download, never rendered in our origin (uploaded HTML/SVG can't run)
-          "content-type": "application/octet-stream",
-          "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+          // Otherwise always a download, never rendered in our origin (uploaded HTML/SVG can't run)
+          "content-type": preview ? file.mimeType : "application/octet-stream",
+          "content-disposition": `${preview ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
           "content-length": String(file.sizeBytes),
           "x-content-type-options": "nosniff",
           "content-security-policy": "sandbox",

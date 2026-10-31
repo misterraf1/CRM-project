@@ -16,6 +16,8 @@ test("demo email channel in the inbox; AI buttons reflect whether the server has
 
   await navTo(page, "Mesajlar");
   await page.getByRole("link", { name: /aysu@mail\.az/ }).click();
+  // AI draft lives in the composer's "+" menu, the summary in the header's "…" menu
+  await page.getByRole("button", { name: "Əlavə imkanlar" }).click();
   const aiReply = page.getByRole("button", { name: "AI cavab təklifi" });
   // The buttons tell the truth about the server: usable with a key, explained without one
   const { ai } = (await (await page.request.get("/api/v1/me")).json()) as { ai: { available: boolean } };
@@ -24,8 +26,10 @@ test("demo email channel in the inbox; AI buttons reflect whether the server has
   } else {
     await expect(aiReply).toBeDisabled();
     await expect(aiReply).toHaveAttribute("title", "AI köməkçisi bu serverdə qoşulmayıb.");
+    await page.getByRole("button", { name: "Daha çox" }).click();
     await expect(page.getByRole("button", { name: "Xülasə" })).toBeDisabled();
   }
+  await page.keyboard.press("Escape");
 
   await page.getByRole("textbox", { name: "Müştəriyə cavab" }).fill("Salam! Siyahını bu gün göndəririk.");
   await page.getByRole("button", { name: "Göndər" }).click();

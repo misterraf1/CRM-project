@@ -42,6 +42,8 @@ export const BACKFILLS = [
   // v2 Stage J
   ["Membership", { savedReports: [] }],
   ["Tenant", { onboarding: { dismissedAt: null, templates: [], demo: null } }],
+  // Inbox v3 — important conversations
+  ["Conversation", { starred: false }],
 ];
 
 /**

@@ -20,6 +20,8 @@ export function inboxRoutes(router: Router, s: Services) {
   router.group("/v1/inbox", {}, (r) => {
     r.get("conversations", { query: conversationListQuerySchema }, ({ query }) => s.inbox.list(query));
 
+    r.get("conversations/counts", { query: conversationListQuerySchema }, ({ query }) => s.inbox.counts(query));
+
     r.get("conversations/:id", ({ params }) => s.inbox.get(params.id!));
 
     r.post("conversations/:id/messages", { body: sendMessageSchema }, ({ params, body }) => s.inbox.send(params.id!, body));

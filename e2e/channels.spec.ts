@@ -22,6 +22,7 @@ test("WhatsApp template from the conversation; Telegram appears among the channe
 
   await navTo(page, "Mesajlar");
   await page.getByRole("link", { name: /\+994 55 444 33 22/ }).click();
+  await page.getByRole("button", { name: "Əlavə imkanlar" }).click();
   await page.getByRole("button", { name: "WhatsApp şablonu" }).click();
   await page.getByLabel("WhatsApp şablonu").selectOption({ label: "follow_up (az)" });
   await page.getByLabel("{{1}}").fill("Orxan");

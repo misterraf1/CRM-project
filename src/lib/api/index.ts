@@ -1,5 +1,6 @@
 import "server-only";
 import type {
+  ConversationCountsDto,
   FileDto,
   InboxSettings,
   AttentionItemDto,
@@ -139,6 +140,9 @@ export const getMemberProfile = (id: string) => apiFetch<MemberProfileDto>(`/v1/
 
 export const getConversations = (params: Record<string, string | undefined>) =>
   apiFetch<ConversationListItemDto[]>(`/v1/inbox/conversations${query(params)}`);
+
+export const getConversationCounts = (params: Record<string, string | undefined>) =>
+  apiFetch<ConversationCountsDto>(`/v1/inbox/conversations/counts${query(params)}`);
 
 export const getConversation = (id: string) => apiFetch<ConversationDetailDto>(`/v1/inbox/conversations/${encodeURIComponent(id)}`);
 

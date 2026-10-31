@@ -4,6 +4,7 @@ import type { Channel, Conversation, Message } from "../db/models";
 import type {
   CannedResponseDto,
   CannedResponseInput,
+  ConversationCountsDto,
   ConversationDetailDto,
   ConversationListItemDto,
   ConversationListQuery,
@@ -102,35 +103,45 @@ export class InboxService {
     private readonly files: FilesService,
   ) {}
 
+  /** Everything in the list query except the tab (view), which list and counts apply themselves. */
+  private async listFilter(tx: Tx, ctx: AuthedContext, query: ConversationListQuery): Promise<Filter> {
+    const scoped = await inboxScope(tx, ctx);
+    const q = query.q?.trim();
+    const [byContact, byMessage, ofType] = await Promise.all([
+      q ? tx.contact.find({ tenantId: ctx.tenantId, name: contains(q) }, { projection: { id: 1 } }).then((r) => r.map((c) => c.id)) : [],
+      q ? tx.message.distinct<string>("conversationId", { tenantId: ctx.tenantId, body: contains(q) }) : [],
+      query.channelType ? tx.channel.find({ tenantId: ctx.tenantId, type: query.channelType }, { projection: { id: 1 } }).then((r) => r.map((c) => c.id)) : null,
+    ]);
+    return and(
+      { tenantId: ctx.tenantId },
+      scoped,
+      query.status === "ALL" ? {} : { status: query.status },
+      query.assignee === "me" ? { assigneeId: ctx.membershipId } : query.assignee === "unassigned" ? { assigneeId: null } : {},
+      query.channelId ? { channelId: query.channelId } : {},
+      ofType ? { channelId: { $in: ofType } } : {},
+      query.contactId ? { contactId: query.contactId } : {},
+      q ? { $or: [{ displayName: contains(q) }, { handle: contains(q) }, { contactId: { $in: byContact } }, { id: { $in: byMessage } }] } : {},
+    );
+  }
+
   async list(query: ConversationListQuery): Promise<ConversationListItemDto[]> {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
-      const scoped = await inboxScope(tx, ctx);
-      const q = query.q?.trim();
-      const [byContact, byMessage] = q
-        ? await Promise.all([
-            tx.contact.find({ tenantId: ctx.tenantId, name: contains(q) }, { projection: { id: 1 } }).then((r) => r.map((c) => c.id)),
-            tx.message.distinct<string>("conversationId", { tenantId: ctx.tenantId, body: contains(q) }),
-          ])
-        : [[], []];
-      const found = await tx.conversation.find(
-        and(
-          { tenantId: ctx.tenantId },
-          scoped,
-          query.status === "ALL" ? {} : { status: query.status },
-          query.assignee === "me" ? { assigneeId: ctx.membershipId } : query.assignee === "unassigned" ? { assigneeId: null } : {},
-          query.channelId ? { channelId: query.channelId } : {},
-          query.contactId ? { contactId: query.contactId } : {},
-          q
-            ? { $or: [{ displayName: contains(q) }, { handle: contains(q) }, { contactId: { $in: byContact } }, { id: { $in: byMessage } }] }
-            : {},
-        ),
-        { sort: { lastMessageAt: -1 }, limit: 200 },
-      );
+      const found = await tx.conversation.find(and(await this.listFilter(tx, ctx, query), VIEWS[query.view]), { sort: { lastMessageAt: -1 }, limit: 200 });
       const rows = await withRelations(tx, ctx.tenantId, found);
       // Longest-waiting first, then most recent activity (nulls last)
       const sorted = sortNullsLast(rows, [(c) => c.awaitingSince, "asc"], [(c) => c.lastMessageAt, "desc"]);
       return this.toListDtos(tx, ctx, sorted);
+    });
+  }
+
+  /** The tab badges: how many in each view under the same filters. */
+  async counts(query: ConversationListQuery): Promise<ConversationCountsDto> {
+    const ctx = authedContext();
+    return this.db.read(async (tx) => {
+      const base = await this.listFilter(tx, ctx, query);
+      const [all, unread, starred] = await Promise.all((["all", "unread", "starred"] as const).map((v) => tx.conversation.count(and(base, VIEWS[v]))));
+      return { all: all!, unread: unread!, starred: starred! };
     });
   }
 
@@ -398,7 +409,7 @@ export class InboxService {
       await this.findVisible(tx, ctx, id);
       const routing = input.assigneeId !== undefined || input.departmentId !== undefined;
       if (routing && !ctx.permissions.includes("inbox.assign")) throw forbidden("Assigning needs the inbox.assign permission");
-      if (input.status && !ctx.permissions.includes("inbox.reply")) throw forbidden("Not allowed");
+      if ((input.status || input.starred !== undefined) && !ctx.permissions.includes("inbox.reply")) throw forbidden("Not allowed");
       if (input.assigneeId && !(await tx.membership.count({ id: input.assigneeId, tenantId: ctx.tenantId, status: "ACTIVE" }))) {
         throw new AppError("VALIDATION_FAILED", "Unknown assignee", { assigneeId: ["Unknown member"] });
       }
@@ -412,6 +423,7 @@ export class InboxService {
             status: input.status,
             assigneeId: input.assigneeId,
             departmentId: input.departmentId,
+            starred: input.starred,
             // Forwarding to a department without a person puts it back in the department's queue
             ...(input.departmentId && input.assigneeId === undefined ? { assigneeId: null } : {}),
             ...(input.status === "RESOLVED" ? { awaitingSince: null, unreadCount: 0 } : {}),
@@ -538,6 +550,8 @@ export class InboxService {
         assignee: a ? { id: a.id, name: a.name } : null,
         departmentId: c.departmentId,
         unreadCount: c.unreadCount,
+        // Conversations from before the flag existed count as not starred
+        starred: c.starred === true,
         awaitingSince: c.awaitingSince?.toISOString() ?? null,
         slaBreached: !!c.awaitingSince && c.status !== "RESOLVED" && now - c.awaitingSince.getTime() > slaMs,
         lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
@@ -546,6 +560,12 @@ export class InboxService {
     });
   }
 }
+
+const VIEWS: Record<ConversationListQuery["view"], Filter> = {
+  all: {},
+  unread: { unreadCount: { $gt: 0 } },
+  starred: { starred: true },
+};
 
 /** Shared by the inbox metrics endpoint and the dashboard. */
 export async function computeInboxMetrics(tx: Tx, ctx: AuthedContext, start: Date): Promise<InboxMetricsDto> {

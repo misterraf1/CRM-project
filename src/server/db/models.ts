@@ -417,6 +417,8 @@ export interface Conversation {
   lastAutoReplyAt: Date | null;
   /** conversation.unanswered fired for the current wait */
   unansweredAlertedAt: Date | null;
+  /** Marked important by the team (the inbox's "Important" view) */
+  starred: boolean;
   createdAt: Date;
 }
 
@@ -992,7 +994,7 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   Task: { projectId: null, parentId: null, description: null, status: "TODO", priority: "MEDIUM", assigneeId: null, dueAt: null, completedAt: null, overdueNotifiedAt: null, reminderMinutes: null, remindAt: null, recurrence: null, contactId: null, dealId: null, position: 0, createdAt: "now", updatedAt: "now" },
   TaskComment: { createdAt: "now" },
   Channel: { credentials: null, demo: false, settings: {}, status: "connected", createdAt: "now" },
-  Conversation: { contactId: null, displayName: null, handle: null, lastInboundAt: null, status: "OPEN", assigneeId: null, departmentId: null, unreadCount: 0, lastMessageAt: null, awaitingSince: null, firstResponseMs: null, subject: null, emailReplyTo: null, optedOutAt: null, lastAutoReplyAt: null, unansweredAlertedAt: null, createdAt: "now" },
+  Conversation: { contactId: null, displayName: null, handle: null, lastInboundAt: null, status: "OPEN", assigneeId: null, departmentId: null, unreadCount: 0, lastMessageAt: null, awaitingSince: null, firstResponseMs: null, subject: null, emailReplyTo: null, optedOutAt: null, lastAutoReplyAt: null, unansweredAlertedAt: null, starred: false, createdAt: "now" },
   Message: { authorId: null, body: null, attachments: [], externalId: null, deliveryStatus: null, createdAt: "now" },
   CannedResponse: { isShared: true, ownerId: null },
   WebhookEvent: { receivedAt: "now", processedAt: null, error: null },

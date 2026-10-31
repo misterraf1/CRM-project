@@ -41,6 +41,7 @@ export interface ConversationListItemDto {
   assignee: MemberRefDto | null;
   departmentId: string | null;
   unreadCount: number;
+  starred: boolean;
   awaitingSince: string | null;
   /** Waiting longer than the company's first-response target */
   slaBreached: boolean;
@@ -80,6 +81,13 @@ export interface ConversationDetailDto extends ConversationListItemDto {
   /** Channels that take files from us */
   canSendFiles: boolean;
   can: { reply: boolean; assign: boolean };
+}
+
+/** Tab counts for the current status / assignee / channel filters */
+export interface ConversationCountsDto {
+  all: number;
+  unread: number;
+  starred: number;
 }
 
 export interface CannedResponseDto {

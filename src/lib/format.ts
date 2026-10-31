@@ -181,3 +181,15 @@ export function fromDateTimeInput(value: string): string | null {
   const offset = Date.UTC(+p.y, +p.m - 1, +p.d, +p.h, +p.min) - asUtc;
   return new Date(asUtc - offset).toISOString();
 }
+
+/** "11:24" in the tenant time zone. */
+export function formatTime(iso: string) {
+  const { h, min } = wallClock(new Date(iso));
+  return `${h}:${min}`;
+}
+
+/** "2026-10-31" — the tenant-zone calendar day, for grouping by day. */
+export function dayKey(iso: string | Date) {
+  const { y, m, d } = wallClock(new Date(iso));
+  return `${y}-${m}-${d}`;
+}

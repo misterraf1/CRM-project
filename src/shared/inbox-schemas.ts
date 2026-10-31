@@ -51,6 +51,9 @@ export type ChannelCreateInput = z.infer<typeof channelCreateSchema>;
 export const conversationListQuerySchema = z.object({
   status: z.enum([...CONVERSATION_STATUSES, "ALL"]).default("OPEN"),
   assignee: z.enum(["me", "unassigned", "all"]).default("all"),
+  /** Tabs: everything, only unread, only the team's important ones */
+  view: z.enum(["all", "unread", "starred"]).default("all"),
+  channelType: z.enum(CHANNEL_TYPES).optional(),
   channelId: id.optional(),
   contactId: id.optional(),
   q: z.string().trim().max(100).optional(),
@@ -69,6 +72,7 @@ export const conversationUpdateSchema = z
     status: z.enum(CONVERSATION_STATUSES),
     assigneeId: id.nullable(),
     departmentId: id.nullable(),
+    starred: z.boolean(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update" });

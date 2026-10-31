@@ -32,11 +32,11 @@ export function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md"
       aria-hidden
       className={clsx(
         "inline-grid shrink-0 place-items-center rounded-full font-semibold",
-        size === "sm" ? "h-6 w-6 text-[11px]" : size === "lg" ? "h-10 w-10 text-sm" : "h-8 w-8 text-xs",
+        size === "sm" ? "h-6 w-6 text-[11px]" : size === "lg" ? "h-10 w-10 text-base" : "h-8 w-8 text-xs",
         PALETTE[hash(name) % PALETTE.length],
       )}
     >
-      {initials(name) || <User className={size === "sm" ? "h-3 w-3" : "h-1/2 w-1/2"} />}
+      {(size === "lg" ? initials(name).slice(0, 1) : initials(name)) || <User className={size === "sm" ? "h-3 w-3" : "h-1/2 w-1/2"} />}
     </span>
   );
 }

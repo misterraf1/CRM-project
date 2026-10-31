@@ -251,6 +251,44 @@ describe("Inbox: website chat, Meta channels, routing, metrics", () => {
     await http().post(`/v1/inbox/channels/${live.id}/simulate`).set(owner.auth).send({ from: "x", body: "y" }).expect(403);
   });
 
+  it("tabs: unread and important views with counts, channel type filter", async () => {
+    const owner = await signup(app);
+    const wa = await channel(owner, { type: "WHATSAPP", name: "WA (demo)", demo: true });
+    const ig = await channel(owner, { type: "INSTAGRAM", name: "IG (demo)", demo: true });
+    const sim = async (id: string, from: string) =>
+      (await http().post(`/v1/inbox/channels/${id}/simulate`).set(owner.auth).send({ from, body: "Salam" }).expect(201)).body.conversationId as string;
+    const a = await sim(wa.id, "+994 50 000 00 01");
+    const b = await sim(ig.id, "@leyla");
+    await http().post(`/v1/inbox/conversations/${a}/read`).set(owner.auth).expect(204);
+    const starred = (await http().patch(`/v1/inbox/conversations/${b}`).set(owner.auth).send({ starred: true }).expect(200)).body as ConversationListItemDto;
+    expect(starred.starred).toBe(true);
+
+    const ids = async (qs: string) => ((await http().get(`/v1/inbox/conversations?${qs}`).set(owner.auth).expect(200)).body as ConversationListItemDto[]).map((c) => c.id);
+    expect(await ids("view=unread")).toEqual([b]);
+    expect(await ids("view=starred")).toEqual([b]);
+    expect(await ids("channelType=WHATSAPP")).toEqual([a]);
+    expect((await http().get("/v1/inbox/conversations/counts").set(owner.auth).expect(200)).body).toEqual({ all: 2, unread: 1, starred: 1 });
+    expect((await http().get("/v1/inbox/conversations/counts?channelType=INSTAGRAM").set(owner.auth).expect(200)).body).toEqual({ all: 1, unread: 1, starred: 1 });
+
+  });
+
+  it("chat images preview inline; other files stay downloads", async () => {
+    const owner = await signup(app);
+    const up = (name: string, type: string) =>
+      http().post("/v1/files").set(owner.auth).attach("file", Buffer.from("DATA"), { filename: name, contentType: type }).expect(201);
+    const png = (await up("foto.png", "image/png")).body as { id: string };
+    const svg = (await up("logo.svg", "image/svg+xml")).body as { id: string };
+    const inline = await http().get(`/v1/files/${png.id}?inline=1`).set(owner.auth).expect(200);
+    expect(inline.headers["content-type"]).toBe("image/png");
+    expect(inline.headers["content-disposition"]).toMatch(/^inline;/);
+    expect(inline.headers["x-content-type-options"]).toBe("nosniff");
+    const plain = await http().get(`/v1/files/${png.id}`).set(owner.auth).expect(200);
+    expect(plain.headers["content-disposition"]).toMatch(/^attachment;/);
+    const script = await http().get(`/v1/files/${svg.id}?inline=1`).set(owner.auth).expect(200);
+    expect(script.headers["content-type"]).toBe("application/octet-stream");
+    expect(script.headers["content-disposition"]).toMatch(/^attachment;/);
+  });
+
   it("routing and visibility: employee sees assigned only; assigning needs inbox.assign; forward to department", async () => {
     const owner = await signup(app);
     const manager = await addMember(app, owner, "MANAGER");
