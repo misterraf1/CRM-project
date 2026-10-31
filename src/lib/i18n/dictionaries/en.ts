@@ -1258,6 +1258,9 @@ const en: Dictionary = {
     "ctaText": "Signing up takes a minute.",
     "footer": "All rights reserved."
   },
+  record: {"actions": "Actions", "sections": "Sections", "tabs": {"overview": "Overview", "details": "Details", "deals": "Deals", "work": "Tasks and calls", "files": "Files and portal", "docs": "Documents"}, "call": "Call", "email": "Email", "task": "Task", "meeting": "Meeting", "quote": "Quote", "case": "Case", "order": "Order", "invoice": "Invoice", "openDeals": "Open deals", "paid": "Paid", "lastActivity": "Last contact", "never": "—", "stage": "Stage", "moveTo": "Move to {stage}", "lostHint": "Pick a reason for «Lost»", "current": "current stage"},
+  lists: {"summary": "Summary", "contacts": {"all": "All customers", "hot": "Hot leads", "passive": "Passive (30+ days)", "customers": "Customers"}, "cases": {"active": "Open", "overdue": "Overdue", "mine": "Mine", "resolved": "Resolved"}, "tasks": {"mine": "Mine", "overdue": "Overdue", "all": "All"}},
+  empties: {"contacts": {"title": "No customers yet", "action": "Add your first customer", "hint": "Add a customer or import from Excel — history, deals and documents collect here.", "filtered": "No customers match this filter"}, "cases": {"title": "No cases", "hint": "When a complaint or service request comes in, follow it here: SLA, warranty and resolution."}, "orders": {"title": "No orders", "hint": "Create an order from an accepted quote — the customer can follow the steps too."}, "sales": {"title": "No documents yet", "hint": "Build a quote from the catalog, send the customer a link, invoice it once accepted."}, "tasks": {"title": "No tasks", "hint": "Type in the field above and press Enter — you can set a due date and an owner."}},
   notificationPrefs: {
     title: "Notifications",
     subtitle: "Choose which notifications you receive. This only affects you.",

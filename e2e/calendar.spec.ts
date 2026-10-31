@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signupCompany } from "./helpers";
+import { recordTab, signupCompany } from "./helpers";
 
 const todayKey = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baku" }).format(new Date());
 
@@ -32,9 +32,11 @@ test("calendar: plan a meeting with a customer, see it in month and week views, 
 
   // The meeting is on the customer's card and timeline
   await page.goto(`/crm/${c.id}`);
+  await recordTab(page, "Tapşırıq və zənglər");
   const calls = page.getByRole("region", { name: "Zənglər və görüşlər" });
   await expect(calls.getByText("Layihə təqdimatı")).toBeVisible();
   await expect(calls.getByText("Baş tutdu")).toBeVisible();
+  await recordTab(page, "Ümumi");
   await expect(page.getByText(/«Layihə təqdimatı» görüşünü qeyd etdi: Baş tutdu/)).toBeVisible();
 });
 
@@ -46,6 +48,7 @@ test("call log on the contact card, and the Today page gathers the day's work", 
   await post("/tasks", { title: "Dünən bitməli idi", dueAt: new Date(Date.now() - 30 * 3_600_000).toISOString() });
 
   await page.goto(`/crm/${c.id}`);
+  await recordTab(page, "Tapşırıq və zənglər");
   const calls = page.getByRole("region", { name: "Zənglər və görüşlər" });
   await expect(calls.getByRole("link", { name: "+994501110022" })).toHaveAttribute("href", "tel:+994501110022");
   await calls.getByRole("button", { name: "Zəngi qeyd et" }).click();
@@ -55,6 +58,7 @@ test("call log on the contact card, and the Today page gathers the day's work", 
   await calls.getByRole("button", { name: "Yadda saxla" }).click();
   await expect(calls.getByText("Sabah qiymət soruşacaq")).toBeVisible();
   await expect(calls.getByText("Geri zəng lazımdır")).toBeVisible();
+  await recordTab(page, "Ümumi");
   await expect(page.getByText(/zəng qeyd etdi: Geri zəng lazımdır/)).toBeVisible();
 
   await page.locator("aside nav").getByRole("link", { name: "Bu gün" }).click();

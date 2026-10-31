@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { navTo, PASSWORD, signupCompany, uniqueEmail } from "./helpers";
+import { navTo, PASSWORD, recordTab, signupCompany, uniqueEmail } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -104,6 +104,7 @@ test("contact card: add a reminder task linked to the customer", async ({ page }
   await page.goto("/crm/new");
   await page.getByLabel("Ad", { exact: true }).fill("Fərid Nəsirov");
   await page.getByRole("button", { name: "Yarat", exact: true }).click();
+  await recordTab(page, "Tapşırıq və zənglər");
   await expect(page.getByText("Açıq tapşırıq yoxdur")).toBeVisible();
   await page.getByLabel("Yeni tapşırıq").fill("Fəridə geri zəng");
   await page.getByLabel("Son tarix").fill("2031-05-02T15:30");

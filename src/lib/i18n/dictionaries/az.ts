@@ -1257,6 +1257,9 @@ const az = {
     "ctaText": "Qeydiyyat bir dəqiqə çəkir.",
     "footer": "Bütün hüquqlar qorunur."
   },
+  record: {"actions": "Əməliyyatlar", "sections": "Bölmələr", "tabs": {"overview": "Ümumi", "details": "Məlumatlar", "deals": "Satışlar", "work": "Tapşırıq və zənglər", "files": "Fayllar və kabinet", "docs": "Sənədlər"}, "call": "Zəng et", "email": "E-poçt", "task": "Tapşırıq", "meeting": "Görüş", "quote": "Təklif", "case": "Müraciət", "order": "Sifariş", "invoice": "Faktura", "openDeals": "Açıq satışlar", "paid": "Ödənilib", "lastActivity": "Son əlaqə", "never": "—", "stage": "Mərhələ", "moveTo": "{stage} mərhələsinə keçir", "lostHint": "«İtirildi» üçün səbəb seçin", "current": "cari mərhələ"},
+  lists: {"summary": "Xülasə", "contacts": {"all": "Bütün müştərilər", "hot": "İsti lead", "passive": "Passiv (30+ gün)", "customers": "Müştərilər"}, "cases": {"active": "Açıq", "overdue": "Vaxtı keçən", "mine": "Mənimkilər", "resolved": "Həll olunan"}, "tasks": {"mine": "Mənim", "overdue": "Gecikən", "all": "Hamısı"}},
+  empties: {"contacts": {"title": "Hələ müştəri yoxdur", "action": "İlk müştərini əlavə edin", "hint": "Müştəri əlavə edin və ya Excel-dən import edin — tarixçə, satış və sənədlər burada yığılacaq.", "filtered": "Bu filtrə uyğun müştəri yoxdur"}, "cases": {"title": "Müraciət yoxdur", "hint": "Müştəri şikayəti və ya servis sorğusu gələndə burada izləyin: SLA, zəmanət və həll."}, "orders": {"title": "Sifariş yoxdur", "hint": "Qəbul edilmiş təklifdən sifariş yaradın — icra addımlarını müştəri də izləyə bilər."}, "sales": {"title": "Hələ sənəd yoxdur", "hint": "Kataloqdan təklif hazırlayın, müştəriyə link göndərin, qəbul olunanda faktura edin."}, "tasks": {"title": "Tapşırıq yoxdur", "hint": "Yuxarıdakı sahəyə yazın və Enter basın — son tarix və məsul seçə bilərsiniz."}},
   notificationPrefs: {
     title: "Bildirişlər",
     subtitle: "Hansı bildirişləri almaq istədiyinizi seçin. Bu yalnız sizə aiddir.",

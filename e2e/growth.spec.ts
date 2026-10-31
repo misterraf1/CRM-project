@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signupCompany } from "./helpers";
+import { recordTab, signupCompany } from "./helpers";
 
 test("website form: built in settings, filled in by a visitor, the lead lands in the CRM", async ({ page, browser }) => {
   await signupCompany(page, "Forma MMC");
@@ -63,6 +63,7 @@ test("customer portal: link from the card, the customer answers a quote and open
   await post(`/docs/${q.id}/send`, { email: false });
 
   await page.goto(`/crm/${c.id}`);
+  await recordTab(page, "Fayllar və kabinet");
   const card = page.getByRole("region", { name: "Müştəri kabineti" });
   await card.getByRole("button", { name: "Kabinet linki yarat" }).click();
   const link = await card.getByRole("textbox", { name: "Kabinet linki" }).inputValue();

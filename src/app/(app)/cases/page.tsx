@@ -1,9 +1,11 @@
 import type { CaseStatus } from "@/shared";
 import clsx from "clsx";
-import { Plus } from "lucide-react";
+import { AlertTriangle, Headset, Plus, UserRound } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CaseStatusBadge } from "@/components/cases/CaseBadges";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { StatChips } from "@/components/ui/StatChips";
 import { PriorityDot } from "@/components/tasks/meta";
 import { getCases, getSession } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -21,7 +23,12 @@ export default async function CasesPage({ searchParams }: Props) {
   const k = t.cases;
   if (!me.permissions.includes("cases.manage")) return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;
   const f: Filter = (FILTERS as readonly string[]).includes(sp.f ?? "") ? (sp.f as Filter) : "active";
-  const cases = await getCases(f === "mine" ? { status: "active", mine: "true" } : f === "all" ? {} : { status: f });
+  const [cases, active, overdue, mine] = await Promise.all([
+    getCases(f === "mine" ? { status: "active", mine: "true" } : f === "all" ? {} : { status: f }),
+    getCases({ status: "active" }),
+    getCases({ status: "overdue" }),
+    getCases({ status: "active", mine: "true" }),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -35,6 +42,14 @@ export default async function CasesPage({ searchParams }: Props) {
           {k.new}
         </Link>
       </div>
+      <StatChips
+        label={t.lists.summary}
+        chips={[
+          { label: t.lists.cases.active, value: active.length, href: "/cases", icon: Headset, tone: "accent", active: f === "active" },
+          { label: t.lists.cases.overdue, value: overdue.length, href: "/cases?f=overdue", icon: AlertTriangle, tone: overdue.length ? "danger" : "default", active: f === "overdue" },
+          { label: t.lists.cases.mine, value: mine.length, href: "/cases?f=mine", icon: UserRound, active: f === "mine" },
+        ]}
+      />
       <section className="card">
         <nav aria-label={k.title} className="flex flex-wrap gap-1 border-b border-border p-3">
           {FILTERS.map((x) => (
@@ -49,7 +64,7 @@ export default async function CasesPage({ searchParams }: Props) {
           ))}
         </nav>
         {cases.length === 0 ? (
-          <p className="px-5 py-10 text-center text-sm text-fg-muted">{k.empty}</p>
+          <EmptyState icon={Headset} title={k.empty} hint={t.empties.cases.hint} action={{ href: "/cases/new", label: k.new }} />
         ) : (
           <ul className="divide-y divide-border">
             {cases.map((c) => (

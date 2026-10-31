@@ -30,3 +30,7 @@ export const card = (page: Page, stage: string, title: string) => column(page, s
 /** Drags a card by its top edge (the stage <select> sits in the middle of short cards). */
 export const dragCard = (page: Page, from: string, title: string, to: string) =>
   card(page, from, title).dragTo(column(page, to), { sourcePosition: { x: 12, y: 8 } });
+
+/** A section of the contact card (the card keeps its parts in tabs). */
+export const recordTab = (page: Page, name: "Ümumi" | "Məlumatlar" | "Satışlar" | "Tapşırıq və zənglər" | "Fayllar və kabinet") =>
+  page.getByRole("tab", { name: new RegExp(`^${name}( \\d+)?$`) }).click();

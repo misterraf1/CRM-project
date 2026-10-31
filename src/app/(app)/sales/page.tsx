@@ -1,6 +1,7 @@
 import type { DocKind } from "@/shared";
+import { EmptyState } from "@/components/ui/EmptyState";
 import clsx from "clsx";
-import { Plus } from "lucide-react";
+import { FileText, Plus } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DocStatusBadge } from "@/components/sales/DocStatusBadge";
@@ -59,7 +60,7 @@ export default async function SalesPage({ searchParams }: Props) {
           ))}
         </nav>
         {docs.length === 0 ? (
-          <p className="px-5 py-10 text-center text-sm text-fg-muted">{kind === "quote" ? k.noQuotes : k.noInvoices}</p>
+          <EmptyState icon={FileText} title={kind === "quote" ? k.noQuotes : k.noInvoices} hint={t.empties.sales.hint} />
         ) : (
           <div className="relative overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">

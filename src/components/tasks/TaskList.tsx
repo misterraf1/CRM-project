@@ -1,8 +1,9 @@
 "use client";
 
 import type { TaskDto } from "@/shared";
+import { EmptyState } from "@/components/ui/EmptyState";
 import clsx from "clsx";
-import { Check, MessageSquare, Paperclip, Repeat } from "lucide-react";
+import { Check, MessageSquare, Paperclip, Repeat, CheckSquare } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -49,9 +50,8 @@ export function TaskList({ tasks: initial, compact }: { tasks: TaskDto[]; compac
     return compact ? (
       <p className="px-5 py-4 text-sm text-fg-muted">{k.noReminders}</p>
     ) : (
-      <div className="card px-4 py-12 text-center">
-        <p className="text-sm font-medium">{k.empty}</p>
-        <p className="mt-1 text-sm text-fg-muted">{k.emptyHint}</p>
+      <div className="card">
+        <EmptyState icon={CheckSquare} title={k.empty} hint={k.emptyHint} />
       </div>
     );
   }

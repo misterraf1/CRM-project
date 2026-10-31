@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { navTo, signupCompany } from "./helpers";
+import { navTo, recordTab, signupCompany } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -44,6 +44,7 @@ test("custom fields, company link, second pipeline and a USD deal", async ({ pag
   await page.getByLabel("VÖEN").fill("1400123456");
   await page.getByRole("button", { name: "Yarat", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Araz MMC" })).toBeVisible();
+  await recordTab(page, "Məlumatlar");
   await expect(page.getByText("Bu şirkətə hələ şəxs bağlanmayıb")).toBeVisible();
 
   await page.getByRole("link", { name: "Şəxs əlavə et" }).click();

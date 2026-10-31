@@ -1,6 +1,7 @@
 import { ORDER_STATUSES } from "@/shared";
+import { EmptyState } from "@/components/ui/EmptyState";
 import clsx from "clsx";
-import { Plus } from "lucide-react";
+import { PackageCheck, Plus } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { OrderProgress, OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
@@ -47,7 +48,7 @@ export default async function OrdersPage({ searchParams }: Props) {
           ))}
         </nav>
         {orders.length === 0 ? (
-          <p className="px-5 py-10 text-center text-sm text-fg-muted">{k.noOrders}</p>
+          <EmptyState icon={PackageCheck} title={k.noOrders} hint={t.empties.orders.hint} action={{ href: "/orders/new", label: k.new }} />
         ) : (
           <div className="relative overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">

@@ -1,10 +1,12 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CalendarPlus, FilePlus2, PackagePlus } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DeleteButton } from "@/components/crm/DeleteButton";
 import { Timeline } from "@/components/crm/Timeline";
 import { DealEditor } from "@/components/deals/DealEditor";
+import { StageStepper } from "@/components/deals/StageStepper";
+import { ActionBar } from "@/components/ui/ActionBar";
 import { DealDocs } from "@/components/sales/DealDocs";
 import { RecordFiles } from "@/components/crm/RecordFiles";
 import { AiInsight } from "@/components/ai/AiInsight";
@@ -70,6 +72,19 @@ export default async function DealPage({ params }: Props) {
           <DeleteButton path={`/deals/${deal.id}`} confirmText={interpolate(d.confirmDelete, { title: deal.title })} label={d.delete} redirectTo="/deals" />
         )}
       </div>
+      <section className="card space-y-4 p-4">
+        <StageStepper key={deal.stageId} dealId={deal.id} pipeline={pipeline} stageId={deal.stageId} canMove={me.permissions.includes("deals.edit")} />
+        <ActionBar
+          label={t.record.actions}
+          actions={[
+            ...(me.permissions.includes("tasks.create") && deal.contact
+              ? [{ label: t.record.meeting, href: `/calendar?new=1&contact=${encodeURIComponent(deal.contact.id)}&contactName=${encodeURIComponent(deal.contact.name)}`, icon: CalendarPlus }]
+              : []),
+            ...(me.permissions.includes("quotes.manage") ? [{ label: t.record.quote, href: `/sales/new?dealId=${encodeURIComponent(deal.id)}`, icon: FilePlus2 }] : []),
+            ...(me.permissions.includes("orders.manage") && deal.contact ? [{ label: t.record.order, href: `/orders/new?contactId=${encodeURIComponent(deal.contact.id)}`, icon: PackagePlus }] : []),
+          ]}
+        />
+      </section>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section className="card min-w-0 p-5">
           <DealEditor

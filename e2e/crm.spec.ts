@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { card as dealCard, column, dragCard, navTo, PASSWORD, signupCompany, uniqueEmail } from "./helpers";
+import { card as dealCard, column, dragCard, navTo, PASSWORD, recordTab, signupCompany, uniqueEmail } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -22,15 +22,18 @@ test("signup → contact → note → deal → kanban → won makes a customer",
   await expect(page.getByText("yeni müştəri əlavə etdi: Orxan Səfərov")).toBeVisible();
 
   // Edit stage, then add a note
+  await recordTab(page, "Məlumatlar");
   await page.getByLabel("Status").selectOption("QUALIFIED");
   await page.getByRole("button", { name: "Yadda saxla" }).click();
   await expect(page.getByRole("status")).toHaveText("Yadda saxlanıldı");
+  await recordTab(page, "Ümumi");
   await expect(page.getByText("Orxan Səfərov: Lead → Kvalifikasiya")).toBeVisible();
   await page.getByLabel("Qeyd əlavə et").fill("Zəng etdim, təklif istəyir");
   await page.getByRole("button", { name: "Qeyd əlavə et" }).click();
   await expect(page.getByText("Zəng etdim, təklif istəyir")).toBeVisible();
 
   // Deal from the contact card
+  await recordTab(page, "Satışlar");
   await page.getByRole("button", { name: "Satış əlavə et" }).click();
   await page.getByLabel("Satışın adı").fill("CRM lisenziyası");
   await page.getByLabel("Məbləğ", { exact: true }).fill("4 800");

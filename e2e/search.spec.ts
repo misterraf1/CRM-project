@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signupCompany } from "./helpers";
+import { recordTab, signupCompany } from "./helpers";
 
 test("Ctrl+K finds a contact; files on the contact card; @mention picks a colleague", async ({ page }) => {
   await signupCompany(page, "Axtarış MMC");
@@ -15,10 +15,12 @@ test("Ctrl+K finds a contact; files on the contact card; @mention picks a collea
   await expect(page).toHaveURL(new RegExp(`/crm/${contact.id}$`));
 
   // A document on the contact card
+  await recordTab(page, "Fayllar və kabinet");
   await page.locator('section:has(h2:text-is("Fayllar")) input[type="file"]').setInputFiles({ name: "muqavile.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
   await expect(page.getByRole("link", { name: "muqavile.pdf" })).toBeVisible();
 
   // "@" suggests colleagues; Enter inserts the full name
+  await recordTab(page, "Ümumi");
   const note = page.getByRole("combobox", { name: "Qeyd əlavə et" });
   await note.click();
   await note.pressSequentially("Zəng et @Elv");

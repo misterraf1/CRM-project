@@ -1,11 +1,13 @@
 import { CONTACT_SOURCES, LIFECYCLE_STAGES, type LifecycleStage } from "@/shared";
 import clsx from "clsx";
-import { Building2, Plus, Search, Upload } from "lucide-react";
+import { BadgeCheck, Building2, Flame, Moon, Plus, Search, Upload, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ExportMenu } from "@/components/crm/ExportMenu";
 import { ScoreBadge } from "@/components/crm/ScoreBadge";
 import { StageBadge } from "@/components/crm/StageBadge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { StatChips } from "@/components/ui/StatChips";
 import { Avatar } from "@/components/ui/Avatar";
 import { getContacts, getFields, getMembers, getSession } from "@/lib/api";
 import { formatDate } from "@/lib/format";
@@ -26,13 +28,20 @@ export default async function ContactsPage({ searchParams }: Props) {
   const level = params.level === "hot" || params.level === "warm" || params.level === "cold" ? params.level : undefined;
   const activity = params.activity === "active" || params.activity === "passive" ? params.activity : undefined;
   const filters = { q: params.q, stage, ownerId: params.ownerId, type, source, tag: params.tag || undefined, field, value, level, activity };
-  const [{ t, locale }, me, list, members, fields] = await Promise.all([
+  const one = (extra: Record<string, string>) => getContacts({ ...extra, limit: "1" }).then((r) => r.total);
+  const [{ t, locale }, me, list, members, fields, all, hot, customers, passive] = await Promise.all([
     getI18n(),
     getSession(),
     getContacts({ ...filters, cursor: params.cursor, limit: "25" }),
     getMembers(),
     getFields(),
+    // Summary counts (each a one-row query for its total)
+    one({}),
+    one({ level: "hot" }),
+    one({ stage: "CUSTOMER" }),
+    one({ activity: "passive" }),
   ]);
+  const counts = { all, hot, customers, passive };
   const filterFields = fields.filter((f) => f.entity !== "deal");
   const filtered = Object.entries(filters).some(([k, v]) => k !== "stage" && k !== "q" && v);
   const c = t.crm;
@@ -69,6 +78,16 @@ export default async function ContactsPage({ searchParams }: Props) {
           )}
         </div>
       </div>
+
+      <StatChips
+        label={t.lists.summary}
+        chips={[
+          { label: t.lists.contacts.all, value: counts.all, href: "/crm", icon: Users, active: !filtered && !stage && !params.q },
+          { label: t.lists.contacts.hot, value: counts.hot, href: "/crm?level=hot", icon: Flame, tone: "danger", active: level === "hot" && !stage },
+          { label: t.lists.contacts.customers, value: counts.customers, href: "/crm?stage=CUSTOMER", icon: BadgeCheck, tone: "success", active: stage === "CUSTOMER" && !level },
+          { label: t.lists.contacts.passive, value: counts.passive, href: "/crm?activity=passive", icon: Moon, tone: "warning", active: activity === "passive" && !stage },
+        ]}
+      />
 
       <section className="card">
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
@@ -157,10 +176,12 @@ export default async function ContactsPage({ searchParams }: Props) {
         </div>
 
         {list.items.length === 0 ? (
-          <div className="px-4 py-12 text-center">
-            <p className="text-sm font-medium">{c.empty}</p>
-            <p className="mt-1 text-sm text-fg-muted">{c.emptyHint}</p>
-          </div>
+          <EmptyState
+            icon={Users}
+            title={c.empty}
+            hint={filtered || stage || params.q ? c.emptyHint : t.empties.contacts.hint}
+            action={!filtered && !stage && !params.q && me.permissions.includes("contacts.create") ? { href: "/crm/new", label: t.empties.contacts.action } : undefined}
+          />
         ) : (
           <div className="relative overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
