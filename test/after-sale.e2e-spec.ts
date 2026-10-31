@@ -7,7 +7,8 @@ import { RenewalsService } from "@/server/service/renewals.service";
 import { addMember, createApp, signup, withRawDb, type Company, type TestApp } from "./helpers";
 
 const DAY = 86_400_000;
-const today = () => new Date().toISOString().slice(0, 10);
+// The company's date (Asia/Baku), not UTC
+const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baku" }).format(new Date());
 
 describe("After the sale: cases with warranty, renewals, targets, automation v2, lead score", () => {
   let app: TestApp;

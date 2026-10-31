@@ -3,7 +3,8 @@ import request from "supertest";
 import { addMember, createApp, signup, withRawDb, type Company, type TestApp } from "./helpers";
 
 const DAY = 86_400_000;
-const isoDate = (offsetDays: number) => new Date(Date.now() + offsetDays * DAY).toISOString().slice(0, 10);
+// Dates as the app sees them (company time zone), not UTC
+const isoDate = (offsetDays: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baku" }).format(new Date(Date.now() + offsetDays * DAY));
 
 describe("Products, quotes and invoices", () => {
   let app: TestApp;
