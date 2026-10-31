@@ -90,8 +90,17 @@ export class Database {
    * request until the server (or serverless instance) is recycled.
    */
   private connect(): MongoClient {
-    // Warm connections: a new one costs a TLS + auth handshake (several round trips)
-    const client = new MongoClient(this.url, { minPoolSize: 5, maxIdleTimeMS: 10 * 60_000 });
+    // Warm connections: a new one costs a TLS + auth handshake (several round trips).
+    // A serverless instance is frozen between requests and its sockets can die meanwhile;
+    // the timeouts make an operation on a dead socket fail (and be retried by the driver
+    // on a fresh connection) instead of hanging until the function is killed.
+    const client = new MongoClient(this.url, {
+      minPoolSize: 5,
+      maxIdleTimeMS: 10 * 60_000,
+      serverSelectionTimeoutMS: 10_000,
+      connectTimeoutMS: 10_000,
+      socketTimeoutMS: 60_000,
+    });
     client.once("topologyClosed", () => {
       if (!this.closed && this.conn === client) this.conn = this.connect();
     });

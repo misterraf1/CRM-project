@@ -1,6 +1,9 @@
 const PING_MS = 25_000;
-/** Long-lived streams outlive token checks; close periodically so the client reconnects re-authenticated */
-const STREAM_MAX_MS = 30 * 60_000;
+/**
+ * Long-lived streams outlive token checks; close periodically so the client reconnects
+ * re-authenticated. On Vercel a function is cut off at 300 s, so close well before that.
+ */
+const STREAM_MAX_MS = process.env.VERCEL ? 240_000 : 30 * 60_000;
 
 /**
  * Server-sent events: `subscribe` registers a listener and returns its unsubscribe.
