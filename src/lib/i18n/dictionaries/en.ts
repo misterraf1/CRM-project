@@ -918,6 +918,8 @@ const en: Dictionary = {
     subtitle: "A few steps to fit Axis to your company",
     progress: "{done}/{total} done",
     hide: "Hide",
+    expand: "Show",
+    collapse: "Hide steps",
     steps: {
       profile: { label: "Company details and logo", href: "/settings/crm" },
       team: { label: "Invite your team", href: "/settings/members" },
@@ -1841,6 +1843,11 @@ const en: Dictionary = {
     roles: { OWNER: "Owner", ADMIN: "Admin", MANAGER: "Manager", EMPLOYEE: "Employee" },
   },
   dashboard: {
+    quick: {"title": "Quick actions", "contact": "Customer", "deal": "Deal", "task": "Task", "meeting": "Meeting", "quote": "Quote", "case": "Case"},
+    today: {"title": "Today", "events": "meetings", "overdue": "overdue tasks", "tasks": "tasks today", "chats": "waiting for a reply", "callbacks": "call-backs", "cases": "cases", "allClear": "Nothing urgent today — enjoy the day!", "open": "Open all"},
+    queue: {"title": "Waiting for you", "chats": "Messages", "tasks": "Tasks", "payments": "Payments"},
+    pipeline: {"title": "Sales funnel", "subtitle": "Open deals by stage", "empty": "No open deals yet.", "open": "Open the board", "deals": "{n} deals"},
+    customize: {"button": "Customise", "title": "What to show on the dashboard", "hint": "Your choice is saved for you only.", "reset": "Show everything", "done": "Done", "widgets": {"onboarding": "Getting started", "quick": "Quick actions", "today": "Today", "kpis": "Key figures", "revenue": "Revenue chart", "pipeline": "Sales funnel", "team": "Team performance", "ai": "Ask AI", "targets": "Targets", "attention": "Needs attention", "queue": "Waiting for you", "activity": "Recent activity"}},
     attention: {
       title: "Needs attention",
       subtitle: "Work about to be forgotten — and why",
@@ -1879,6 +1886,8 @@ const en: Dictionary = {
       openTasksHint: "{n} overdue",
     },
     revenue: {
+      empty: "No deals closed in this period yet. The chart fills as deals are won.",
+      emptyAction: "Go to deals",
       keyboardHint: "Use ← → to move between days",
       title: "Sales trend",
       subtitle: "Closed deals, {unit}",

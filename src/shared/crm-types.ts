@@ -163,6 +163,8 @@ export interface DashboardCrmDto {
   currency: string;
   /** Open invoices in the company currency; null without finance rights */
   payments: { due: number; overdue: number; count: number; overdueCount: number } | null;
+  /** Open deals of the default pipeline by stage (within the caller's view) */
+  pipeline: { id: string; name: string; stages: { id: string; name: string; probability: number; count: number; amount: number }[] } | null;
   kpis: {
     newContacts: Comparable;
     activeDeals: { value: number; pipelineValue: number };

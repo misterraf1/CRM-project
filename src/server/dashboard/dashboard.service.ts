@@ -5,6 +5,7 @@ import { ActivityService, TIMELINE_ORDER } from "../crm/activity.service";
 import { stageIds } from "../crm/deals.service";
 import { memberRefs, ownerScope } from "../crm/scope";
 import type { Database, Tx } from "../db/database";
+import type { Filter } from "../db/repo";
 import { and, countBy, sumOf } from "../db/query";
 import { computeInboxMetrics, inboxScope } from "../inbox/inbox.service";
 import { taskScope } from "../tasks/tasks.service";
@@ -138,13 +139,17 @@ export class DashboardService {
       });
 
       const revenue = won.reduce((a, d) => a + d.baseAmount, 0);
-      const payments = ctx.permissions.includes("finance.view") ? await this.payments(tx, ctx.tenantId, now) : null;
+      const [payments, pipeline] = await Promise.all([
+        ctx.permissions.includes("finance.view") ? this.payments(tx, ctx.tenantId, now) : null,
+        this.pipeline(tx, ctx.tenantId, scoped),
+      ]);
       return {
         period,
         generatedAt: now.toISOString(),
         scope,
         currency: tenant.currency,
         payments,
+        pipeline,
         kpis: {
           newContacts: { value: newContacts, previous: prevContacts },
           activeDeals: { value: openDeals.count, pipelineValue: openDeals.sum },
@@ -182,6 +187,21 @@ export class DashboardService {
   }
 
   /** What customers still owe on issued invoices, in the company currency (each invoice's own rate). */
+  /** Where the open deals stand: the default pipeline's open stages, counts and amounts. */
+  private async pipeline(tx: Tx, tenantId: string, scoped: Filter) {
+    const p = (await tx.pipeline.findOne({ tenantId, isDefault: true })) ?? (await tx.pipeline.findOne({ tenantId }));
+    if (!p) return null;
+    const [stages, byStage] = await Promise.all([
+      tx.pipelineStage.find({ tenantId, pipelineId: p.id, kind: "open" }, { sort: { order: 1 } }),
+      countBy(tx.deal, "stageId", and({ tenantId, pipelineId: p.id, closedAt: null }, scoped), "baseAmount"),
+    ]);
+    return {
+      id: p.id,
+      name: p.name,
+      stages: stages.map((s) => ({ id: s.id, name: s.name, probability: s.probability, count: byStage.get(s.id)?.count ?? 0, amount: byStage.get(s.id)?.sum ?? 0 })),
+    };
+  }
+
   private async payments(tx: Tx, tenantId: string, now: Date) {
     const open = await tx.salesDoc.find({ tenantId, kind: "invoice", status: "issued" }, { projection: { total: 1, paidAmount: 1, baseTotal: 1, dueDate: 1 }, limit: 5000 });
     let due = 0;

@@ -918,6 +918,8 @@ const ru: Dictionary = {
     subtitle: "Несколько шагов, чтобы настроить Axis под вашу компанию",
     progress: "Готово {done}/{total}",
     hide: "Скрыть",
+    expand: "Показать",
+    collapse: "Свернуть",
     steps: {
       profile: { label: "Реквизиты и логотип", href: "/settings/crm" },
       team: { label: "Пригласите команду", href: "/settings/members" },
@@ -1841,6 +1843,11 @@ const ru: Dictionary = {
     roles: { OWNER: "Владелец", ADMIN: "Админ", MANAGER: "Руководитель", EMPLOYEE: "Сотрудник" },
   },
   dashboard: {
+    quick: {"title": "Быстрые действия", "contact": "Клиент", "deal": "Сделка", "task": "Задача", "meeting": "Встреча", "quote": "КП", "case": "Обращение"},
+    today: {"title": "Сегодня", "events": "встреч", "overdue": "просроченных задач", "tasks": "задач на сегодня", "chats": "ждут ответа", "callbacks": "перезвонить", "cases": "обращений", "allClear": "Срочных дел сегодня нет — хорошего дня!", "open": "Открыть всё"},
+    queue: {"title": "Ждут вас", "chats": "Сообщения", "tasks": "Задачи", "payments": "Оплаты"},
+    pipeline: {"title": "Воронка продаж", "subtitle": "Открытые сделки по этапам", "empty": "Открытых сделок пока нет.", "open": "Открыть доску", "deals": "Сделок: {n}"},
+    customize: {"button": "Настроить", "title": "Что показывать на панели", "hint": "Выбор сохраняется только для вас.", "reset": "Показать всё", "done": "Готово", "widgets": {"onboarding": "С чего начать", "quick": "Быстрые действия", "today": "Сегодня", "kpis": "Ключевые показатели", "revenue": "График выручки", "pipeline": "Воронка продаж", "team": "Результаты команды", "ai": "Спросить AI", "targets": "Планы", "attention": "Требует внимания", "queue": "Ждут вас", "activity": "Последние действия"}},
     attention: {
       title: "Требует внимания",
       subtitle: "Дела, о которых вот-вот забудут, — с причиной",
@@ -1879,6 +1886,8 @@ const ru: Dictionary = {
       openTasksHint: "{n} просрочено",
     },
     revenue: {
+      empty: "В этом периоде ещё нет закрытых сделок. График заполнится, когда сделки будут выиграны.",
+      emptyAction: "К сделкам",
       keyboardHint: "Переходите между днями стрелками ← →",
       title: "Динамика продаж",
       subtitle: "Закрытые сделки, {unit}",

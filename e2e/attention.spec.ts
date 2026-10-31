@@ -19,5 +19,7 @@ test("duplicate warning while adding a contact; the dashboard lists what needs a
   await expect(page.getByRole("heading", { name: "Diqqət tələb edir" })).toBeVisible();
   await expect(page.getByText("Hər şey nəzarətdədir")).toBeVisible();
   // Owners see what customers owe
+  // Payments sit behind their tab in "Waiting for you"
+  await page.getByRole("tab", { name: /Ödənişlər/ }).click();
   await expect(page.getByRole("heading", { name: "Gözlənilən ödənişlər" })).toBeVisible();
 });

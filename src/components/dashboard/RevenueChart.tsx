@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { DashboardCrmDto } from "@/shared";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -29,6 +30,23 @@ export function RevenueChart({ revenue, currency }: { revenue: DashboardCrmDto["
     const box = e.currentTarget.getBoundingClientRect();
     return Math.min(points.length - 1, Math.max(0, Math.floor(((e.clientX - box.left) / box.width) * points.length)));
   };
+
+  // Nothing closed yet: a hint instead of an empty grid
+  if (points.every((p) => p.amount === 0)) {
+    return (
+      <div className="px-5 pb-6 pt-4">
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border px-6 py-10 text-center">
+          <svg aria-hidden viewBox="0 0 120 40" className="h-10 w-28 text-accent/40">
+            <path d="M2 36 C20 34 28 26 44 28 S70 14 84 18 108 6 118 4" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray="6 6" />
+          </svg>
+          <p className="text-sm text-fg-muted">{t.dashboard.revenue.empty}</p>
+          <Link href="/deals" className="btn-ghost h-9 border border-border">
+            {t.dashboard.revenue.emptyAction}
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-5 pb-4 pt-3">

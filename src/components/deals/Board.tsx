@@ -40,9 +40,11 @@ interface BoardProps {
   /** The member's role allows adding deals / moving them between stages */
   canCreate: boolean;
   canMove: boolean;
+  /** Open the new-deal form right away (dashboard quick action) */
+  startCreating?: boolean;
 }
 
-export function Board({ pipeline, deals: initial, currency, requiredFields, canCreate, canMove }: BoardProps) {
+export function Board({ pipeline, deals: initial, currency, requiredFields, canCreate, canMove, startCreating = false }: BoardProps) {
   const { t, locale } = useI18n();
   const d = t.deals;
   const router = useRouter();
@@ -50,7 +52,7 @@ export function Board({ pipeline, deals: initial, currency, requiredFields, canC
   const [error, setError] = useState<string>();
   const [lostMove, setLostMove] = useState<PendingMove | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(startCreating && canCreate);
   const [, startTransition] = useTransition();
   const dragged = useRef<string | null>(null);
 

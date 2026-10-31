@@ -917,6 +917,8 @@ const az = {
     subtitle: "Axis-i şirkətinizə uyğunlaşdırmaq üçün bir neçə addım",
     progress: "{done}/{total} hazırdır",
     hide: "Gizlət",
+    expand: "Aç",
+    collapse: "Bağla",
     steps: {
       profile: { label: "Şirkət rekvizitləri və loqo", href: "/settings/crm" },
       team: { label: "Komandanı dəvət edin", href: "/settings/members" },
@@ -1840,6 +1842,11 @@ const az = {
     roles: { OWNER: "Sahib", ADMIN: "Admin", MANAGER: "Rəhbər", EMPLOYEE: "İşçi" },
   },
   dashboard: {
+    quick: {"title": "Sürətli əməliyyatlar", "contact": "Müştəri", "deal": "Satış", "task": "Tapşırıq", "meeting": "Görüş", "quote": "Təklif", "case": "Müraciət"},
+    today: {"title": "Bu gün", "events": "görüş", "overdue": "gecikən tapşırıq", "tasks": "bugünkü tapşırıq", "chats": "cavab gözləyən", "callbacks": "geri zəng", "cases": "müraciət", "allClear": "Bu gün üçün təcili iş yoxdur — gözəl gün!", "open": "Hamısını aç"},
+    queue: {"title": "Gözləyən işlər", "chats": "Mesajlar", "tasks": "Tapşırıqlar", "payments": "Ödənişlər"},
+    pipeline: {"title": "Satış hunisi", "subtitle": "Açıq satışlar mərhələlər üzrə", "empty": "Hələ açıq satış yoxdur.", "open": "Lövhəni aç", "deals": "{n} satış"},
+    customize: {"button": "Paneli fərdiləşdir", "title": "Paneldə nələr görünsün?", "hint": "Seçiminiz yalnız sizin üçün saxlanılır.", "reset": "Hamısını göstər", "done": "Hazırdır", "widgets": {"onboarding": "Başlanğıc addımları", "quick": "Sürətli əməliyyatlar", "today": "Bu gün", "kpis": "Əsas göstəricilər", "revenue": "Gəlir qrafiki", "pipeline": "Satış hunisi", "team": "İşçi performansı", "ai": "AI-dan soruş", "targets": "Hədəflər", "attention": "Diqqət tələb edir", "queue": "Gözləyən işlər", "activity": "Son fəaliyyətlər"}},
     attention: {
       title: "Diqqət tələb edir",
       subtitle: "Unudulmaq üzrə olan işlər — səbəbi ilə",
@@ -1878,6 +1885,8 @@ const az = {
       openTasksHint: "{n} gecikmiş",
     },
     revenue: {
+      empty: "Bu dövrdə hələ bağlanmış satış yoxdur. Satışı «Qazanıldı»-ya keçirəndə qrafik dolacaq.",
+      emptyAction: "Satışlara keç",
       keyboardHint: "Günlər arasında ← → oxları ilə keçin",
       title: "Satış dinamikası",
       subtitle: "Bağlanmış satışlar, {unit}",

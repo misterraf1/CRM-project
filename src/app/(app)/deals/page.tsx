@@ -11,12 +11,12 @@ import { planGate } from "@/components/billing/UpgradeGate";
 
 export const metadata: Metadata = { title: "Deals" };
 
-type Props = { searchParams: Promise<{ q?: string; pipeline?: string }> };
+type Props = { searchParams: Promise<{ q?: string; pipeline?: string; new?: string }> };
 
 export default async function DealsPage({ searchParams }: Props) {
   const gate = await planGate("deals.pipeline");
   if (gate) return gate;
-  const { q, pipeline: pipelineId } = await searchParams;
+  const { q, pipeline: pipelineId, new: startNew } = await searchParams;
   const [{ t, locale }, pipelines, me, dealFields] = await Promise.all([getI18n(), getPipelines(), getSession(), getFields("deal")]);
   // Default pipeline first (API order); ?pipeline= picks another
   const pipeline = pipelines.find((p) => p.id === pipelineId) ?? pipelines[0];
@@ -72,6 +72,7 @@ export default async function DealsPage({ searchParams }: Props) {
         requiredFields={dealFields.filter((f) => f.required)}
         canCreate={me.permissions.includes("deals.create")}
         canMove={me.permissions.includes("deals.edit")}
+        startCreating={startNew === "1"}
       />
     </div>
   );

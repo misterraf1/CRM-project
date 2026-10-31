@@ -16,6 +16,7 @@ test("getting started: sample data in and out, a business template, the checklis
   await page.getByRole("region", { name: "Başlanğıc addımları" }).getByRole("button", { name: "Nümunə məlumatı sil" }).click();
   await expect(page.getByRole("region", { name: "Başlanğıc addımları" }).getByRole("button", { name: "Nümunə məlumat əlavə et" })).toBeVisible();
 
+  await page.getByRole("region", { name: "Başlanğıc addımları" }).getByRole("button", { name: "Biznes şablonu seçin" }).click();
   await page.getByRole("button", { name: "Tətbiq et: Sifarişli istehsal" }).click();
   await expect(page.getByText(/Şablon əlavə olundu: 3 sahə, 2 məhsul/)).toBeVisible();
   await page.goto("/settings/crm");
