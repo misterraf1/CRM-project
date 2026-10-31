@@ -55,6 +55,8 @@ export const contactUpdateSchema = contactCreateSchema
   .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update" });
 export type ContactUpdateInput = z.infer<typeof contactUpdateSchema>;
 
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
 export const contactListQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   stage: z.enum(LIFECYCLE_STAGES).optional(),
@@ -71,6 +73,13 @@ export const contactListQuerySchema = z.object({
   /** Custom field filter: field id + value (text: contains; select/multiselect: has option; checkbox: "true"/"false") */
   field: z.string().min(1).max(64).optional(),
   value: z.string().trim().min(1).max(200).optional(),
+  /** Created between these days (company time zone), inclusive */
+  from: isoDay.optional(),
+  to: isoDay.optional(),
+  /** Numbered pages (the list view); without it, keyset pages via cursor */
+  page: z.coerce.number().int().min(1).max(10_000).optional(),
+  sort: z.enum(["created", "activity", "name"]).default("created"),
+  dir: z.enum(["asc", "desc"]).default("desc"),
   cursor: z.string().min(1).max(64).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });

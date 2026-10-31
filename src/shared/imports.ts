@@ -68,6 +68,10 @@ export const contactExportQuerySchema = z.object({
   tag: z.string().trim().min(1).max(40).optional(),
   field: z.string().min(1).max(64).optional(),
   value: z.string().trim().min(1).max(200).optional(),
+  level: z.enum(["hot", "warm", "cold"]).optional(),
+  activity: z.enum(["active", "passive"]).optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 export type ContactExportQuery = z.infer<typeof contactExportQuerySchema>;
 

@@ -1,3 +1,4 @@
+import { addDays, startOfDay } from "../common/time";
 import { AutomationRunner } from "../automations/automation.runner";
 import type { Contact } from "../db/models";
 import type {
@@ -42,10 +43,17 @@ async function openDealCounts(tx: Tx, tenantId: string, contactIds: string[]) {
 }
 
 /** The contact list's filter (visibility plus the list's query), shared by the list and its export. */
-export async function contactListWhere(tx: Tx, ctx: AuthedContext, query: Omit<ContactListQuery, "cursor" | "limit">) {
+export async function contactListWhere(tx: Tx, ctx: AuthedContext, query: Omit<ContactListQuery, "cursor" | "limit" | "page" | "sort" | "dir">) {
   const { where: scoped } = await ownerScope(tx, ctx, "contacts.view_all");
   const q = query.q?.trim();
   const fieldFilter = query.field && query.value ? await customFieldFilter(tx, ctx.tenantId, query.field, query.value) : {};
+  // Day bounds in the company's time zone
+  const zone = query.from || query.to ? (await tx.tenant.get({ id: ctx.tenantId })).timezone : "";
+  const day = (d: string) => startOfDay(new Date(`${d}T12:00:00Z`), zone);
+  const created = {
+    ...(query.from ? { $gte: day(query.from) } : {}),
+    ...(query.to ? { $lt: addDays(day(query.to), 1, zone) } : {}),
+  };
   return and(
     { tenantId: ctx.tenantId, deletedAt: null },
     scoped,
@@ -58,9 +66,12 @@ export async function contactListWhere(tx: Tx, ctx: AuthedContext, query: Omit<C
     query.level ? { scoreLevel: query.level } : {},
     query.activity ? { lastActivityAt: { [query.activity === "passive" ? "$lt" : "$gte"]: new Date(Date.now() - 30 * 86_400_000) } } : {},
     fieldFilter,
+    Object.keys(created).length ? { createdAt: created } : {},
     q ? { $or: [{ name: contains(q) }, { email: contains(q) }, { companyName: contains(q) }, { phone: contains(q.replace(/[\s()-]/g, ""), false) }] } : {},
   );
 }
+
+const SORT_FIELDS = { created: "createdAt", activity: "lastActivityAt", name: "name" } as const;
 
 export class ContactsService {
   constructor(
@@ -76,6 +87,16 @@ export class ContactsService {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
       const where = await contactListWhere(tx, ctx, query);
+      if (query.page) {
+        // Numbered pages: any sort, skip to the page
+        const field = SORT_FIELDS[query.sort];
+        const order = query.dir === "asc" ? 1 : -1;
+        const [rows, total] = await Promise.all([
+          tx.contact.find(where, { sort: { [field]: order, id: order }, skip: (query.page - 1) * query.limit, limit: query.limit }),
+          tx.contact.count(where),
+        ]);
+        return { items: await this.toDtos(tx, ctx.tenantId, rows), nextCursor: null, total };
+      }
       // Keyset pagination: rows after the cursor in (createdAt desc, id desc) order
       const cursor = query.cursor ? await tx.contact.findOne({ id: query.cursor, tenantId: ctx.tenantId }, { projection: { id: 1, createdAt: 1 } }) : null;
       const after = cursor ? { $or: [{ createdAt: { $lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { $lt: cursor.id } }] } : {};

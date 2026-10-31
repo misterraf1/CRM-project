@@ -17,6 +17,31 @@ describe("CRM: contacts, deals, dashboard", () => {
   const stage = (p: PipelineDto, kind: "open" | "won" | "lost", n = 0) => p.stages.filter((s) => s.kind === kind)[n]!;
 
   describe("contacts", () => {
+    it("numbered pages, sorting by name or last activity, created-date range", async () => {
+      const owner = await signup(app);
+      for (const name of ["Cavid", "Aynur", "Bəxtiyar", "Dəniz", "Elçin"]) await contact(owner, { name }).expect(201);
+      const list = (q: Record<string, string>) => http().get("/v1/contacts").query(q).set(owner.auth).expect(200).then((r) => r.body as { items: ContactDto[]; total: number; nextCursor: string | null });
+      const p1 = await list({ page: "1", limit: "2", sort: "name", dir: "asc" });
+      const p3 = await list({ page: "3", limit: "2", sort: "name", dir: "asc" });
+      expect(p1.items.map((c) => c.name)).toEqual(["Aynur", "Bəxtiyar"]);
+      expect(p3.items.map((c) => c.name)).toEqual(["Elçin"]);
+      expect(p1).toMatchObject({ total: 5, nextCursor: null });
+
+      // Last activity: the one touched most recently first; never-touched ones last
+      const all = (await list({ limit: "10" })).items;
+      const cavid = all.find((c) => c.name === "Cavid")!;
+      await http().post(`/v1/contacts/${cavid.id}/notes`).set(owner.auth).send({ body: "Zəng etdim" }).expect(201);
+      expect((await list({ page: "1", limit: "1", sort: "activity" })).items[0]!.name).toBe("Cavid");
+
+      // Created range in the company's day: an old contact drops out
+      const elcin = all.find((c) => c.name === "Elçin")!;
+      await withRawDb((db) => db.contact.update({ id: elcin.id }, { $set: { createdAt: new Date("2025-01-10T10:00:00Z") } }));
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baku" }).format(new Date());
+      expect((await list({ from: today, to: today })).total).toBe(4);
+      expect((await list({ from: "2025-01-10", to: "2025-01-10" })).items.map((c) => c.name)).toEqual(["Elçin"]);
+      await http().get("/v1/contacts").query({ from: "10.01.2025" }).set(owner.auth).expect(400);
+    });
+
     it("create, normalise input, search, filter, paginate", async () => {
       const owner = await signup(app);
       const created = await contact(owner, { name: "Orxan Səfərov", email: " ORXAN@Mail.AZ ", phone: "+994 (50) 123-45-67", companyName: "" }).expect(201);

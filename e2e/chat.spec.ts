@@ -115,7 +115,7 @@ test("group chat: create with members, add member, leave", async ({ page, browse
   await expect(page.getByText("Qrup · 3 üzv")).toBeVisible();
   await leyla.reload();
   await leyla.getByRole("link", { name: /Layihə X/ }).click();
-  await expect(leyla.getByText("Xoş gəldiniz!")).toBeVisible();
+  await expect(leyla.getByRole("log").getByText("Xoş gəldiniz!")).toBeVisible();
 
   leyla.once("dialog", (d) => d.accept());
   await leyla.getByRole("button", { name: "Qrupdan çıx" }).click();

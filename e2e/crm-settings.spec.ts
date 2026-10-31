@@ -59,6 +59,7 @@ test("custom fields, company link, second pipeline and a USD deal", async ({ pag
 
   // Filter by the custom field
   await page.goto("/crm");
+  await page.getByRole("button", { name: "Filtrlər" }).click();
   await page.getByLabel("Əlavə sahə").selectOption({ label: "Filial" });
   await page.getByLabel("Dəyər").fill("Bakı");
   await page.getByRole("button", { name: "Ad, email, telefon və ya şirkət" }).click();
