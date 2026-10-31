@@ -19,7 +19,7 @@ export default async function NewCasePage({ searchParams }: Props) {
         <ArrowLeft className="h-4 w-4" aria-hidden />
         {k.back}
       </Link>
-      <h1 className="text-xl font-semibold tracking-tight">{k.new}</h1>
+      <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{k.new}</h1>
       <CaseForm
         members={members}
         meId={me.membership.id}

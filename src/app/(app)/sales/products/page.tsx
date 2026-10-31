@@ -15,7 +15,7 @@ export default async function ProductsPage() {
     <div>
       <SalesTabs invoices={me.permissions.includes("finance.view") || me.permissions.includes("invoices.manage")} />
       <div className="mb-4">
-        <h1 className="text-xl font-semibold tracking-tight">{k.products}</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{k.products}</h1>
         <p className="mt-0.5 text-sm text-fg-muted">{k.productsSubtitle}</p>
       </div>
       <ProductsManager products={products} canManage={canManage} baseCurrency={me.tenant.currency} />

@@ -57,7 +57,7 @@ export function CaseView({ initial, members, canAssign }: { initial: CaseDto; me
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-fg-muted">{k.types[c.type]}</span>
             {c.overdue && <span className="rounded-full bg-danger/10 px-2 py-0.5 text-[11px] font-medium text-danger">{k.overdue}</span>}
           </div>
-          <h1 className="mt-2 text-xl font-semibold tracking-tight">{c.subject}</h1>
+          <h1 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">{c.subject}</h1>
           <p className="mt-1 text-sm text-fg-muted">
             <Link href={`/crm/${c.contact.id}`} className="font-medium text-accent hover:underline">
               {c.contact.name}

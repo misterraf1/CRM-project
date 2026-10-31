@@ -36,7 +36,7 @@ export default async function SalesPage({ searchParams }: Props) {
       <SalesTabs invoices={finance} />
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">{kind === "quote" ? k.quotes : k.invoices}</h1>
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{kind === "quote" ? k.quotes : k.invoices}</h1>
           <p className="mt-0.5 text-sm text-fg-muted">{kind === "quote" ? k.quotesSubtitle : k.invoicesSubtitle}</p>
         </div>
         {canCreate && (

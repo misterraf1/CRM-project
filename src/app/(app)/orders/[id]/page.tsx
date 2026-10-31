@@ -29,7 +29,7 @@ export default async function OrderPage({ params }: Props) {
         {k.back}
       </Link>
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold tracking-tight">
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
           {order.title} <span className="font-mono text-base text-fg-muted">{order.number}</span>
         </h1>
         <OrderStatusBadge order={order} t={t} />

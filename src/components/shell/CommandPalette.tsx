@@ -65,10 +65,13 @@ export function CommandPalette() {
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="inline-flex h-8 items-center gap-2 rounded-lg border border-border px-2.5 text-xs text-fg-muted hover:bg-muted" aria-keyshortcuts="Control+K Meta+K">
+      <button type="button" onClick={() => setOpen(true)} className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-muted/60 px-2.5 text-xs text-fg-muted transition-colors hover:border-accent/40 hover:bg-surface lg:w-72" aria-keyshortcuts="Control+K Meta+K">
         <Search className="h-3.5 w-3.5" aria-hidden />
         <span className="hidden sm:inline">{k.button}</span>
-        <kbd className="hidden rounded border border-border px-1 font-sans text-[10px] sm:inline">⌘K</kbd>
+        <span className="hidden flex-1 truncate text-left text-fg-subtle lg:inline" aria-hidden>
+          — {k.placeholder}
+        </span>
+        <kbd className="hidden rounded border border-border bg-surface px-1 font-sans text-[10px] sm:inline">⌘K</kbd>
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 pt-[12vh]" onMouseDown={() => setOpen(false)}>

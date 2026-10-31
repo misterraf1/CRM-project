@@ -27,7 +27,7 @@ export function PresenceToggle({ initial }: { initial: "available" | "away" }) {
           if (!res.ok) setPresence(presence);
         });
       }}
-      className="mt-0.5 inline-flex items-center gap-1 rounded text-[11px] text-fg-muted hover:text-fg"
+      className="mt-0.5 inline-flex items-center gap-1 rounded text-[11px] text-nav-muted hover:text-white"
     >
       <span className={clsx("h-2 w-2 rounded-full", away ? "bg-warning" : "bg-success")} aria-hidden />
       {away ? k.away : k.available}

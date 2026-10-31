@@ -88,7 +88,7 @@ export function BillingManager({ data, paid }: { data: BillingOverviewDto; paid:
   return (
     <div className="space-y-5" aria-busy={pending}>
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{b.title}</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{b.title}</h1>
         <p className="mt-0.5 text-sm text-fg-muted">{b.subtitle}</p>
       </div>
       {data.provider === "demo" && (

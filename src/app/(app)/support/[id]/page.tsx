@@ -27,7 +27,7 @@ export default async function TicketPage({ params }: Props) {
         {s.back}
       </Link>
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-semibold tracking-tight">{ticket.subject}</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{ticket.subject}</h1>
         <TicketStatusBadge status={ticket.status} label={s.statuses[ticket.status]} />
       </div>
       <TicketThread ticket={ticket} staff={false} />

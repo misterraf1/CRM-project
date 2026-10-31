@@ -26,6 +26,11 @@ export default {
         danger: token("danger"),
         "brand-violet": token("brand-violet"),
         "brand-teal": token("brand-teal"),
+        "nav-bg": token("nav-bg"),
+        "nav-fg": token("nav-fg"),
+        "nav-muted": token("nav-muted"),
+        "nav-hover": token("nav-hover"),
+        "nav-border": token("nav-border"),
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],

@@ -27,7 +27,7 @@ export default async function NewContactPage({ searchParams }: Props) {
         <ArrowLeft className="h-4 w-4" aria-hidden />
         {t.crm.back}
       </Link>
-      <h1 className="text-xl font-semibold tracking-tight">{t.crm.new}</h1>
+      <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{t.crm.new}</h1>
       <section className="card p-5">
         <ContactForm
           members={members}

@@ -17,7 +17,7 @@ export default async function RenewalsPage({ searchParams }: Props) {
     <div>
       <SalesTabs invoices={me.permissions.includes("finance.view") || me.permissions.includes("invoices.manage")} />
       <div className="mb-4">
-        <h1 className="text-xl font-semibold tracking-tight">{t.renewals.title}</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{t.renewals.title}</h1>
         <p className="mt-0.5 max-w-3xl text-sm text-fg-muted">{t.renewals.subtitle}</p>
       </div>
       <RenewalsList key={status} renewals={renewals} status={status} />

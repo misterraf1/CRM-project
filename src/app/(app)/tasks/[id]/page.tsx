@@ -34,7 +34,7 @@ export default async function TaskPage({ params }: Props) {
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">{task.title}</h1>
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{task.title}</h1>
           <p className="mt-1 flex flex-wrap gap-x-3 text-sm text-fg-muted">
             <span>{k.statuses[task.status]}</span>
             {task.dueAt && <span className={task.overdue ? "font-medium text-danger" : ""}>{formatDateTime(task.dueAt, locale)}{task.overdue ? ` · ${k.overdue}` : ""}</span>}

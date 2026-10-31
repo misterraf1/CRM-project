@@ -21,7 +21,7 @@ export default async function TargetsPage({ searchParams }: Props) {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{t.targets.title}</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{t.targets.title}</h1>
         <p className="mt-0.5 text-sm text-fg-muted">{t.targets.subtitle}</p>
       </div>
       <TargetsBoard data={data} label={label} />

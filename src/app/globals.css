@@ -4,7 +4,7 @@
 
 /* Design tokens as RGB channels (consumed by tailwind.config.ts) */
 :root {
-  --bg: 248 250 252;
+  --bg: 245 247 251;
   --surface: 255 255 255;
   --muted: 241 245 249;
   --border: 226 232 240;
@@ -24,6 +24,12 @@
   /* Landing page brand glow (with the accent) */
   --brand-violet: 124 58 237;
   --brand-teal: 13 148 136;
+  /* App navigation: a deep brand panel in both themes */
+  --nav-bg: 12 18 36;
+  --nav-fg: 203 213 233; /* ≥10:1 on nav-bg */
+  --nav-muted: 148 160 186; /* ≥6.5:1 on nav-bg */
+  --nav-hover: 27 36 62;
+  --nav-border: 33 43 72;
   color-scheme: light;
 }
 
@@ -45,6 +51,11 @@
   --series-2: 217 89 38;
   --brand-violet: 167 139 250;
   --brand-teal: 45 212 191;
+  --nav-bg: 7 10 20;
+  --nav-fg: 203 213 233;
+  --nav-muted: 148 160 186;
+  --nav-hover: 22 29 50;
+  --nav-border: 28 36 60;
   color-scheme: dark;
 }
 
@@ -64,7 +75,7 @@
 
 @layer components {
   .card {
-    @apply rounded-xl border border-border bg-surface;
+    @apply rounded-xl border border-border bg-surface shadow-[0_1px_2px_rgb(15_23_42/0.04),0_1px_3px_rgb(15_23_42/0.03)] dark:shadow-none;
   }
   .tabular {
     font-variant-numeric: tabular-nums;
@@ -76,7 +87,7 @@
     @apply mt-1 block h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none placeholder:text-fg-subtle focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60;
   }
   .btn-primary {
-    @apply inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-accent px-3.5 text-sm font-semibold text-accent-fg hover:bg-accent/90 disabled:opacity-60;
+    @apply inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-accent bg-gradient-to-br from-accent to-brand-violet px-3.5 text-sm font-semibold text-accent-fg shadow-sm shadow-accent/20 transition-[filter,box-shadow] hover:shadow-md hover:shadow-accent/25 hover:brightness-110 disabled:opacity-60;
   }
   .btn-ghost {
     @apply inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-fg-muted hover:bg-muted hover:text-fg disabled:opacity-60;

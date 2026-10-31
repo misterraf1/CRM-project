@@ -44,7 +44,7 @@ export default async function MemberProfilePage({ params }: Props) {
       <div className="flex items-center gap-4">
         <Avatar name={profile.member.name} />
         <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold tracking-tight">{profile.member.name}</h1>
+          <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">{profile.member.name}</h1>
           <p className="text-sm text-fg-muted">
             {[profile.member.title, t.shell.roles[profile.member.role as keyof typeof t.shell.roles], profile.department ?? k.noDepartment, profile.member.email]
               .filter(Boolean)

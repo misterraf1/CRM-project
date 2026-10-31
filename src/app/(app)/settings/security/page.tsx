@@ -15,7 +15,7 @@ export default async function SecuritySettingsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{k.title}</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{k.title}</h1>
         <p className="mt-0.5 text-sm text-fg-muted">{k.subtitle}</p>
       </div>
       <section className="space-y-3">

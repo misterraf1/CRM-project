@@ -14,7 +14,7 @@ export default async function MembersPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{m.title}</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{m.title}</h1>
         <p className="mt-0.5 text-sm text-fg-muted">
           {m.subtitle} · {interpolate(m.seats, me.subscription.seats)}
         </p>

@@ -14,7 +14,7 @@ export default async function SupportPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{s.title}</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{s.title}</h1>
         <p className="mt-0.5 text-sm text-fg-muted">{s.subtitle}</p>
       </div>
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">

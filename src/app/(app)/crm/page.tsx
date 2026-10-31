@@ -57,7 +57,7 @@ export default async function ContactsPage({ searchParams }: Props) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">{c.title}</h1>
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{c.title}</h1>
           <p className="mt-0.5 text-sm text-fg-muted">
             {c.subtitle} · {interpolate(c.total, { n: list.total })}
           </p>

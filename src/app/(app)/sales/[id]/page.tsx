@@ -72,7 +72,7 @@ export default async function DocPage({ params, searchParams }: Props) {
     return (
       <div className="mx-auto max-w-5xl space-y-4">
         {back}
-        <h1 className="text-xl font-semibold tracking-tight">{interpolate(k.editTitle, { number: doc.number ?? k.draftNumber })}</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{interpolate(k.editTitle, { number: doc.number ?? k.draftNumber })}</h1>
         {doc.kind === "quote" && doc.status === "sent" && <p className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning">{k.editSentHint}</p>}
         <DocEditor
           kind={doc.kind}
@@ -98,7 +98,7 @@ export default async function DocPage({ params, searchParams }: Props) {
     <div className="mx-auto max-w-4xl space-y-4">
       {back}
       <div className="flex flex-wrap items-center gap-3 print:hidden">
-        <h1 className="text-xl font-semibold tracking-tight">
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
           {doc.kind === "quote" ? k.quoteTitle : k.invoiceTitle} <span className="font-mono text-base text-fg-muted">{doc.number ?? k.draftNumber}</span>
         </h1>
         <DocStatusBadge doc={doc} t={t} />

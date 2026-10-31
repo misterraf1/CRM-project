@@ -11,7 +11,7 @@ export default async function NotificationsSettingsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{t.notificationPrefs.title}</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{t.notificationPrefs.title}</h1>
         <p className="mt-0.5 text-sm text-fg-muted">{t.notificationPrefs.subtitle}</p>
       </div>
       <NotificationPrefs muted={prefs.muted} />

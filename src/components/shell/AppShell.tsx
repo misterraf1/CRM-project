@@ -2,16 +2,19 @@
 
 import { CommandPalette } from "./CommandPalette";
 import clsx from "clsx";
-import { AlertTriangle, Menu } from "lucide-react";
+import { AlertTriangle, Menu, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import type { MeResponse } from "@/shared";
 import type { ShellSummary } from "@/lib/api/types";
 import { formatDate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { interpolate } from "@/lib/i18n/locales";
+import { NAV_GROUPS, type NavItem } from "@/lib/navigation";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { NotificationBell } from "./NotificationBell";
+import { QuickCreate } from "./QuickCreate";
 import { SkipLink } from "@/components/ui/SkipLink";
 import { Sidebar } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
@@ -60,7 +63,7 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
         onCloseMobile={() => setMobileOpen(false)}
       />
       <div className={clsx("transition-[padding] duration-200 print:!pl-0", collapsed ? "lg:pl-[68px]" : "lg:pl-60")}>
-        <header className="sticky top-0 z-20 flex print:hidden h-14 items-center gap-3 border-b border-border bg-surface/85 px-4 backdrop-blur lg:px-6">
+        <header className="sticky top-0 z-20 flex print:hidden h-14 items-center gap-3 border-b border-border bg-surface/80 px-4 backdrop-blur-md lg:px-6">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
@@ -69,16 +72,19 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
           >
             <Menu className="h-5 w-5" />
           </button>
-          <div className="ml-auto flex items-center gap-2">
+          <Section />
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <CommandPalette />
+            <QuickCreate permissions={session.permissions} />
             <NotificationBell unread={summary.unreadNotifications} />
             <LocaleSwitcher />
             <ThemeToggle />
           </div>
         </header>
         <SubscriptionBanner session={session} />
-        <main id="main" tabIndex={-1} className="mx-auto max-w-[1400px] px-4 py-6 outline-none lg:px-6 print:p-0">{children}</main>
+        <main id="main" tabIndex={-1} className="mx-auto max-w-[1400px] px-4 pb-24 pt-6 outline-none lg:px-6 lg:pb-6 print:p-0">{children}</main>
       </div>
+      <BottomNav session={session} summary={summary} onMore={() => setMobileOpen(true)} />
     </div>
   );
 }
@@ -109,5 +115,67 @@ function SubscriptionBanner({ session }: { session: MeResponse }) {
         </Link>
       )}
     </div>
+  );
+}
+
+const items = NAV_GROUPS.flatMap((g) => g.items);
+const current = (pathname: string) => items.find((i) => pathname === i.href || pathname.startsWith(`${i.href}/`));
+
+/** Where the member is: the module's icon and name, so a glance at the header answers it. */
+function Section() {
+  const { t } = useI18n();
+  const item = current(usePathname());
+  if (!item) return null;
+  return (
+    <p className="hidden min-w-0 items-center gap-2 text-sm font-medium text-fg-muted md:flex" aria-hidden>
+      <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-accent/15 to-brand-violet/15 text-accent">
+        <item.icon className="h-4 w-4" />
+      </span>
+      <span className="truncate">{t.nav[item.key]}</span>
+    </p>
+  );
+}
+
+const BOTTOM: NavItem["key"][] = ["dashboard", "inbox", "crm", "tasks"];
+
+/** Phones: the four everyday modules a thumb away; everything else under "More". */
+function BottomNav({ session, summary, onMore }: { session: MeResponse; summary: ShellSummary; onMore: () => void }) {
+  const { t } = useI18n();
+  const pathname = usePathname();
+  const active = current(pathname);
+  const links = BOTTOM.map((key) => items.find((i) => i.key === key)!).filter((i) => !i.permission || session.permissions.includes(i.permission));
+  return (
+    <nav aria-label={t.shell.bottomNav} className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden print:hidden">
+      <ul className="mx-auto flex max-w-md">
+        {links.map((item) => {
+          const on = active?.key === item.key;
+          const count = item.badge ? summary[item.badge] : 0;
+          return (
+            <li key={item.key} className="flex-1">
+              <Link
+                href={item.href}
+                aria-current={on ? "page" : undefined}
+                className={clsx("relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium", on ? "text-accent" : "text-fg-muted")}
+              >
+                {on && <span className="absolute inset-x-6 top-0 h-0.5 rounded-b bg-gradient-to-r from-accent to-brand-violet" aria-hidden />}
+                <span className="relative">
+                  <item.icon className="h-5 w-5" aria-hidden />
+                  {count > 0 && (
+                    <span className="tabular absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-[#dc2626] px-1 text-center text-[10px] font-semibold leading-4 text-white">{count > 99 ? "99+" : count}</span>
+                  )}
+                </span>
+                {t.nav[item.key]}
+              </Link>
+            </li>
+          );
+        })}
+        <li className="flex-1">
+          <button type="button" onClick={onMore} className="flex min-h-14 w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-fg-muted">
+            <MoreHorizontal className="h-5 w-5" aria-hidden />
+            {t.shell.more}
+          </button>
+        </li>
+      </ul>
+    </nav>
   );
 }

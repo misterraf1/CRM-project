@@ -53,7 +53,7 @@ export default async function DealPage({ params }: Props) {
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold tracking-tight">{deal.title}</h1>
+          <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">{deal.title}</h1>
           <p className="mt-1 flex flex-wrap gap-x-3 text-sm text-fg-muted">
             <span className="tabular font-semibold text-fg">{formatMoney(deal.amount, locale, deal.currency)}</span>
             <span className={stage.kind === "won" ? "text-success" : stage.kind === "lost" ? "text-danger" : ""}>{stage.name}</span>

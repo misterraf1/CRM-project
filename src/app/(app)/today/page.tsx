@@ -25,7 +25,7 @@ export default async function TodayPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">{k.title}</h1>
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{k.title}</h1>
           <p className="mt-0.5 text-sm text-fg-muted">
             {formatDate(now.toISOString(), locale, "long")} · {k.subtitle}
           </p>

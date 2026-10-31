@@ -28,7 +28,7 @@ export default async function ImportPage({ searchParams }: Props) {
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
           {initial === "deal" ? t.deals.title : t.crm.back}
         </Link>
-        <h1 className="mt-1 text-xl font-semibold tracking-tight">{k.title}</h1>
+        <h1 className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">{k.title}</h1>
         <p className="mt-0.5 text-sm text-fg-muted">{k.subtitle}</p>
       </div>
       <ImportWizard fields={fields} canDeals={canDeals} history={history} initialEntity={initial} />

@@ -32,7 +32,7 @@ export default async function NewDocPage({ searchParams }: Props) {
         <ArrowLeft className="h-4 w-4" aria-hidden />
         {kind === "quote" ? k.quotes : k.invoices}
       </Link>
-      <h1 className="text-xl font-semibold tracking-tight">{kind === "quote" ? k.newQuote : k.newInvoice}</h1>
+      <h1 className="text-xl font-bold tracking-tight sm:text-2xl">{kind === "quote" ? k.newQuote : k.newInvoice}</h1>
       <DocEditor
         kind={kind}
         contacts={options}
