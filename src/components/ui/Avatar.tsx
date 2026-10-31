@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { User } from "lucide-react";
 
 const PALETTE = [
   "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
@@ -12,7 +13,8 @@ const PALETTE = [
 function initials(name: string) {
   return name
     .split(/\s+/)
-    .filter(Boolean)
+    // Words only: a phone number or an id has no initials
+    .filter((p) => /^\p{L}/u.test(p))
     .slice(0, 2)
     .map((p) => p[0]!.toLocaleUpperCase())
     .join("");
@@ -24,17 +26,17 @@ function hash(value: string) {
   return Math.abs(h);
 }
 
-export function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
+export function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg" }) {
   return (
     <span
       aria-hidden
       className={clsx(
         "inline-grid shrink-0 place-items-center rounded-full font-semibold",
-        size === "sm" ? "h-6 w-6 text-[11px]" : "h-8 w-8 text-xs",
+        size === "sm" ? "h-6 w-6 text-[11px]" : size === "lg" ? "h-10 w-10 text-sm" : "h-8 w-8 text-xs",
         PALETTE[hash(name) % PALETTE.length],
       )}
     >
-      {initials(name)}
+      {initials(name) || <User className={size === "sm" ? "h-3 w-3" : "h-1/2 w-1/2"} />}
     </span>
   );
 }

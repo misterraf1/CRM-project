@@ -38,8 +38,8 @@ export default async function ChatPage({ searchParams }: Props) {
   const now = new Date();
 
   return (
-    <div className="-my-6 -mx-4 lg:-mx-6">
-      <div className="grid h-[calc(100dvh-3.5rem)] grid-cols-[minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)]">
+    <div className="-mx-4 -mb-24 -mt-6 lg:-mx-6 lg:-mb-6">
+      <div className="grid h-[calc(100dvh_-_7rem_-_env(safe-area-inset-bottom))] lg:h-[calc(100dvh-3.5rem)] grid-cols-[minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside aria-label={t.nav.chat} className={clsx("flex min-h-0 flex-col border-r border-border bg-surface", room && "hidden lg:flex")}>
           <div className="space-y-2 border-b border-border p-3">
             <div className="flex items-center justify-between gap-2">
