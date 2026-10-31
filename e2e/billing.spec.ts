@@ -41,7 +41,7 @@ test("trial → demo checkout → failed renewal and grace → pay → scheduled
   // Printable invoice
   await invoices.getByRole("link", { name: "Bax" }).first().click();
   await expect(page.getByText(/AX-\d{4}-\d{6}/)).toBeVisible();
-  await expect(page.getByText("Abunə MMC")).toBeVisible();
+  await expect(page.getByRole("main").getByText("Abunə MMC")).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Abunəlik", exact: true }).first().click();
 
   // PRO: deals and team open, departments locked
