@@ -8,7 +8,8 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
-  reporter: [["list"]],
+  // On CI failures also become annotations on the run, readable without downloading logs
+  reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
     channel: process.env.CI ? undefined : "chrome",
