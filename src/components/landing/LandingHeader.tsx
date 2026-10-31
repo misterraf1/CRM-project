@@ -47,7 +47,7 @@ export function LandingHeader({ signedIn }: { signedIn: boolean }) {
     <header className={clsx("sticky top-0 z-40 transition-colors duration-200", scrolled || open ? "border-b border-border bg-bg/80 backdrop-blur-md" : "border-b border-transparent")}>
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2 font-semibold">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-accent to-brand-violet text-sm font-bold text-white">{APP_NAME[0]}</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-accent to-brand-violet text-sm font-bold text-white dark:text-bg">{APP_NAME[0]}</span>
           {APP_NAME}
         </Link>
         <nav aria-label={APP_NAME} className="ml-6 hidden items-center gap-1 md:flex">

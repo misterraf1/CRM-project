@@ -3,18 +3,17 @@ import clsx from "clsx";
 import {
   ArrowRight,
   BarChart3,
-  Bot,
   CalendarDays,
   Check,
   FileText,
   Handshake,
-  KeyRound,
   LayoutGrid,
   Lock,
   MessagesSquare,
   Server,
   ShieldCheck,
   UserCog,
+  Users,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -22,7 +21,10 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { HeroVisual } from "@/components/landing/HeroVisual";
+import { OwnerSwitch } from "@/components/landing/OwnerSwitch";
+import { PipelineDemo } from "@/components/landing/PipelineDemo";
+import { ProductTour } from "@/components/landing/ProductTour";
+import { Reveal } from "@/components/landing/Reveal";
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { ChannelIcon } from "@/components/ui/ChannelIcon";
 import { apiPublic } from "@/lib/api/server";
@@ -43,13 +45,13 @@ type FeatureKey = keyof Awaited<ReturnType<typeof getI18n>>["t"]["landing"]["fea
 
 /** Four columns with no gaps: a 2×2 tile, then rows of 1+1, 1+1 and 2+1+1 */
 const FEATURES: { key: FeatureKey; icon: LucideIcon; tone: string; span: string }[] = [
-  { key: "inbox", icon: MessagesSquare, tone: "from-accent/20 to-brand-teal/10", span: "lg:col-span-2 lg:row-span-2" },
+  { key: "customers", icon: Users, tone: "from-accent/20 to-brand-teal/10", span: "lg:col-span-2 lg:row-span-2" },
   { key: "pipeline", icon: Handshake, tone: "from-brand-violet/20 to-accent/5", span: "" },
   { key: "docs", icon: FileText, tone: "from-brand-teal/20 to-accent/5", span: "" },
-  { key: "calendar", icon: CalendarDays, tone: "from-accent/15 to-brand-violet/10", span: "" },
-  { key: "ai", icon: Bot, tone: "from-brand-teal/20 to-brand-violet/10", span: "" },
+  { key: "tasks", icon: CalendarDays, tone: "from-accent/15 to-brand-violet/10", span: "" },
+  { key: "team", icon: UserCog, tone: "from-brand-teal/20 to-brand-violet/10", span: "" },
   { key: "automation", icon: Workflow, tone: "from-brand-violet/20 to-brand-teal/10", span: "lg:col-span-2" },
-  { key: "portal", icon: KeyRound, tone: "from-accent/15 to-brand-teal/10", span: "" },
+  { key: "inbox", icon: MessagesSquare, tone: "from-accent/15 to-brand-teal/10", span: "" },
   { key: "analytics", icon: BarChart3, tone: "from-brand-violet/15 to-accent/10", span: "" },
 ];
 
@@ -83,13 +85,13 @@ export default async function LandingPage() {
             <div className="landing-drift absolute bottom-[-12rem] left-1/3 h-[26rem] w-[26rem] rounded-full bg-brand-teal/20 blur-3xl" style={{ animationDelay: "-11s" }} />
             <div className="absolute inset-0 bg-[radial-gradient(rgb(var(--fg)/0.07)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_75%)]" />
           </div>
-          <div className="mx-auto grid max-w-6xl items-center gap-14 px-4 pb-20 pt-12 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:pb-28 lg:pt-20">
+          <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 pb-20 pt-12 sm:px-6 lg:grid-cols-[0.82fr_1.18fr] lg:pb-28 lg:pt-16">
             <div>
               <p className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1 text-xs font-medium text-fg-muted backdrop-blur">
                 <span className="landing-pulse h-2 w-2 rounded-full bg-success" />
                 {k.badge}
               </p>
-              <h1 className="mt-5 text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl">
+              <h1 className="mt-5 text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl xl:text-[3.4rem]">
                 {k.title1} <span className="landing-gradient-text">{k.title2}</span>
               </h1>
               <p className="mt-5 max-w-xl text-base leading-relaxed text-fg-muted sm:text-lg">{k.subtitle}</p>
@@ -105,23 +107,34 @@ export default async function LandingPage() {
                 )}
               </div>
               {!signedIn && <p className="mt-4 text-sm text-fg-subtle">{interpolate(k.trial, { days: trialDays })}</p>}
+              <a href="#tour" className="mt-6 inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">
+                {k.secondary}
+                <ArrowRight className="h-3.5 w-3.5 rotate-90" aria-hidden />
+              </a>
             </div>
-            <HeroVisual t={t} />
+            <PipelineDemo />
           </div>
         </section>
 
-        {/* ── Channels marquee ─────────────────────── */}
-        <section aria-label={k.channels} className="border-y border-border bg-surface/60 py-6">
-          <p className="mb-4 text-center text-xs font-medium uppercase tracking-widest text-fg-subtle">{k.channels}</p>
-          <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)]">
-            <ul className="landing-marquee flex w-max gap-4">
-              {[...CHANNELS, ...CHANNELS, ...CHANNELS, ...CHANNELS].map((ch, i) => (
-                <li key={i} aria-hidden={i >= CHANNELS.length} className="flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium">
-                  <ChannelIcon channel={ch} label="" size="sm" />
-                  {t.channels.types[ch]}
-                </li>
-              ))}
-            </ul>
+        {/* ── For the owner: before / after ───────── */}
+        <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:py-24">
+          <Reveal>
+            <SectionHead title={k.owner.title} subtitle={k.owner.subtitle} />
+            <div className="mt-10">
+              <OwnerSwitch />
+            </div>
+          </Reveal>
+        </section>
+
+        {/* ── Interactive tour ─────────────────────── */}
+        <section id="tour" className="scroll-mt-20 border-y border-border bg-gradient-to-b from-surface/60 to-bg">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:py-24">
+            <Reveal>
+              <SectionHead title={k.tour.title} subtitle={k.tour.subtitle} />
+              <div className="mt-10">
+                <ProductTour />
+              </div>
+            </Reveal>
           </div>
         </section>
 
@@ -139,18 +152,47 @@ export default async function LandingPage() {
                   <h3 className="mt-4 text-base font-semibold">{k.features[key].title}</h3>
                   <p className="mt-1.5 text-sm leading-relaxed text-fg-muted">{k.features[key].text}</p>
                   {key === "inbox" && (
-                    <div aria-hidden className="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-3">
+                    <div aria-hidden className="mt-4 flex flex-wrap gap-1.5">
                       {CHANNELS.map((ch) => (
-                        <span key={ch} className="flex items-center justify-center rounded-xl border border-border bg-surface/80 py-3">
-                          <ChannelIcon channel={ch} label="" />
-                        </span>
+                        <ChannelIcon key={ch} channel={ch} label="" size="sm" />
                       ))}
                     </div>
+                  )}
+                  {key === "customers" && (
+                    <ul aria-hidden className="mt-6 space-y-2">
+                      {t.landing.pipeline.deals.slice(0, 4).map((d, i) => (
+                        <li key={d.c} className="flex items-center gap-3 rounded-xl border border-border bg-surface/80 px-3 py-2.5">
+                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-accent to-brand-violet text-[11px] font-bold text-white dark:text-bg">{d.c.split(" ").map((x) => x[0]).join("").slice(0, 2)}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">{d.c}</span>
+                            <span className="block truncate text-xs text-fg-muted">{d.t}</span>
+                          </span>
+                          <span className={clsx("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium", ["bg-danger/10 text-danger", "bg-warning/10 text-warning", "bg-danger/10 text-danger", "bg-muted text-fg-muted"][i])}>
+                            {t.score.levels[(["hot", "warm", "hot", "cold"] as const)[i]!]}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
               </li>
             ))}
           </ul>
+        </section>
+
+        {/* ── Channels marquee ─────────────────────── */}
+        <section aria-label={k.channels} className="border-y border-border bg-surface/60 py-6">
+          <p className="mb-4 text-center text-xs font-medium uppercase tracking-widest text-fg-subtle">{k.channels}</p>
+          <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)]">
+            <ul className="landing-marquee flex w-max gap-4">
+              {[...CHANNELS, ...CHANNELS, ...CHANNELS, ...CHANNELS].map((ch, i) => (
+                <li key={i} aria-hidden={i >= CHANNELS.length} className="flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium">
+                  <ChannelIcon channel={ch} label="" size="sm" />
+                  {t.channels.types[ch]}
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
 
         {/* ── How it works ─────────────────────────── */}
@@ -161,7 +203,7 @@ export default async function LandingPage() {
               <div aria-hidden className="absolute left-0 right-0 top-6 hidden h-px bg-gradient-to-r from-transparent via-border to-transparent md:block" />
               {k.how.map((step, i) => (
                 <li key={step.title} className="relative rounded-2xl border border-border bg-surface p-6">
-                  <span className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-accent to-brand-violet text-lg font-bold text-white shadow-lg shadow-accent/25">{i + 1}</span>
+                  <span className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-accent to-brand-violet text-lg font-bold text-white dark:text-bg shadow-lg shadow-accent/25">{i + 1}</span>
                   <h3 className="mt-4 font-semibold">{step.title}</h3>
                   <p className="mt-1.5 text-sm text-fg-muted">{step.text}</p>
                 </li>
@@ -208,7 +250,7 @@ export default async function LandingPage() {
                   const hot = p.code === popular;
                   return (
                     <li key={p.code} className={clsx("relative flex flex-col rounded-2xl border bg-surface p-7", hot ? "border-accent shadow-2xl shadow-accent/15 lg:-translate-y-2" : "border-border")}>
-                      {hot && <span className="absolute -top-3 left-7 rounded-full bg-gradient-to-r from-accent to-brand-violet px-3 py-1 text-xs font-semibold text-white">{k.popular}</span>}
+                      {hot && <span className="absolute -top-3 left-7 rounded-full bg-gradient-to-r from-accent to-brand-violet px-3 py-1 text-xs font-semibold text-white dark:text-bg">{k.popular}</span>}
                       <h3 className="text-lg font-semibold">{p.name}</h3>
                       <p className="mt-3 flex items-baseline gap-1">
                         <span className="tabular text-4xl font-bold tracking-tight">{formatMoney(p.priceMonthly, locale, p.currency)}</span>
@@ -251,18 +293,18 @@ export default async function LandingPage() {
 
         {/* ── Final call ───────────────────────────── */}
         <section className="px-4 pb-20 sm:px-6">
-          <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl bg-gradient-to-br from-accent via-brand-violet to-brand-teal p-10 text-center text-white sm:p-14">
+          <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl bg-gradient-to-br from-accent via-brand-violet to-brand-teal p-10 text-center text-white dark:text-bg sm:p-14">
             <div aria-hidden className="absolute inset-0 bg-[radial-gradient(rgb(255_255_255/0.15)_1px,transparent_1px)] [background-size:18px_18px]" />
             <div className="relative">
               <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{k.ctaTitle}</h2>
-              <p className="mt-3 text-white/85">{k.ctaText}</p>
+              <p className="mt-3 text-white/85 dark:text-bg/80">{k.ctaText}</p>
               <div className="mt-8 flex flex-wrap justify-center gap-3">
                 <Link href={primaryHref} className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-5 font-semibold text-slate-900 shadow-lg hover:bg-white/90">
                   {primaryLabel}
                   <ArrowRight className="h-4 w-4" aria-hidden />
                 </Link>
                 {!signedIn && (
-                  <Link href="/login" className="inline-flex h-11 items-center rounded-lg border border-white/40 px-5 font-semibold text-white hover:bg-white/10">
+                  <Link href="/login" className="inline-flex h-11 items-center rounded-lg border border-white/40 px-5 font-semibold text-white dark:text-bg hover:bg-white/10 dark:border-bg/40">
                     {k.login}
                   </Link>
                 )}

@@ -982,75 +982,278 @@ const az = {
     empty: "Müqavilə şablonu hələ yazılmayıb — Ayarlar → CRM → Sənəd ayarları.",
   },
   landing: {
-    nav: { features: "İmkanlar", how: "Necə işləyir", pricing: "Qiymətlər", faq: "Suallar" },
-    login: "Daxil ol",
-    start: "Pulsuz başla",
-    toApp: "Panelə keç",
-    badge: "Azərbaycan biznesi üçün CRM",
-    title1: "Müştəriləriniz hər yerdən yazır.",
-    title2: "Siz isə hamısını bir yerdə görürsünüz.",
-    subtitle: "WhatsApp, Instagram, Telegram və sayt — bir mesaj qutusunda. Satışdan fakturaya, sifarişdən zəmanətə qədər bütün iş bir sistemdə.",
-    trial: "{days} gün pulsuz · kart tələb olunmur",
-    secondary: "İmkanlara bax",
-    mock: {
-      inbox: "Mesajlar",
-      msg1: "Salam, qiymət nə qədərdir?",
-      msg2: "Sabah ölçüyə gələ bilərsiniz?",
-      msg3: "Faktura aldım, təşəkkürlər!",
-      board: "Satışlar",
-      col1: "Yeni",
-      col2: "Təklif",
-      col3: "Qazanıldı",
-      deal1: "Ofis mebeli",
-      deal2: "Sayt yenilənməsi",
-      deal3: "Pəncərələr",
-      paid: "Faktura ödənildi",
-      lead: "Saytdan yeni müraciət",
-      meeting: "11:00 · Təqdimat",
-      ai: "AI: bu müştəri isti lead-dir",
+    "nav": {
+      "features": "İmkanlar",
+      "how": "Necə işləyir",
+      "pricing": "Qiymətlər",
+      "faq": "Suallar"
     },
-    channels: "Bütün kanallar bir mesaj qutusunda",
-    featuresTitle: "Böyük CRM-lərdən sadə, Excel-dən güclü",
-    featuresSubtitle: "Hər modul gündəlik işdən götürülüb: əlavə qurulum, ayrıca proqram, köçürmə yoxdur.",
-    features: {
-      inbox: { title: "Vahid mesaj qutusu", text: "WhatsApp, Instagram, Messenger, Telegram, e-poçt və sayt çatı. Təyinat, hazır cavablar, iş saatları və SLA." },
-      pipeline: { title: "Satış lövhəsi", text: "Bir neçə proses, mərhələlər, proqnoz, itki səbəbləri. Kartı sürüşdür — qalanını sistem edir." },
-      docs: { title: "Təklif → faktura → ödəniş", text: "Kataloqdan təklif, müştəriyə link, onlayn qəbul, faktura, qismən ödəniş, borc xatırlatması." },
-      calendar: { title: "Təqvim və «Bu gün»", text: "Görüş və zənglər, xatırlatmalar, gecikən tapşırıqlar — səhər açıb hamısını görürsünüz." },
-      automation: { title: "Avtomatlaşdırma", text: "«Faktura ödəndi → satış qazanıldı», «30 gün səssiz → zəng tapşırığı». Kod yazmadan." },
-      ai: { title: "AI köməkçi", text: "Cavab qaralaması, söhbət xülasəsi, müştəri riski və növbəti addım — sizin məlumatınızla." },
-      portal: { title: "Müştəri kabineti", text: "Müştəri təkliflərini, fakturalarını və sifarişinin gedişatını öz linkindən izləyir." },
-      analytics: { title: "Hesabatlar", text: "Huni, mənbələr, borclar, məhsul satışı, işçi nəticələri və satış hədəfləri." },
+    "login": "Daxil ol",
+    "start": "Pulsuz başla",
+    "toApp": "Panelə keç",
+    "badge": "CRM — müştəri və satış idarəetməsi",
+    "title1": "Müştərilər, satışlar və komanda —",
+    "title2": "bir sistemdə, bir baxışda.",
+    "subtitle": "Hansı müştəri nə istəyir, hansı satış harada ilişib, kim nə edir, kim nə qədər borcludur — Axis hamısını göstərir və heç nəyin unudulmağına imkan vermir.",
+    "trial": "{days} gün pulsuz · kart tələb olunmur",
+    "secondary": "Necə işlədiyinə baxın",
+    "sample": "Nümunə məlumat",
+    "pipeline": {
+      "title": "Satış lövhəsi",
+      "hint": "Kartı sürüşdürün və ya basıb növbəti mərhələyə keçirin",
+      "stages": [
+        "Yeni müraciət",
+        "Danışıq",
+        "Təklif göndərildi",
+        "Qazanıldı"
+      ],
+      "forecast": "Açıq satışlar",
+      "won": "Qazanılan",
+      "invoiced": "faktura avtomatik yaradıldı",
+      "next": "Növbəti mərhələyə keçir",
+      "replay": "Yenidən oynat",
+      "deals": [
+        {
+          "t": "Ofis mebeli",
+          "c": "Nümunə MMC"
+        },
+        {
+          "t": "Pəncərələr (12 ədəd)",
+          "c": "Rauf Quliyev"
+        },
+        {
+          "t": "Sayt yenilənməsi",
+          "c": "Gül Market"
+        },
+        {
+          "t": "İllik servis",
+          "c": "Aynur Həsənova"
+        },
+        {
+          "t": "Kondisioner quraşdırma",
+          "c": "Kamil Rzayev"
+        }
+      ]
     },
-    howTitle: "Üç addımda işə başlayın",
-    how: [
-      { title: "Qeydiyyat", text: "Bir dəqiqə: şirkət adı, e-poçt, şifrə. Sınaq bütün imkanlarla açılır." },
-      { title: "Kanalları və komandanı qoşun", text: "WhatsApp, Instagram, Telegram; işçiləri dəvət edin, rolları seçin." },
-      { title: "Satışa başlayın", text: "Sahənizə uyğun şablon seçin — proses, sahələr və avtomatlaşdırmalar hazır gəlir." },
+    "owner": {
+      "title": "Sahibkar kimi nə qazanırsınız?",
+      "subtitle": "Açarı çevirin və fərqi görün.",
+      "before": "Axis-dən əvvəl",
+      "after": "Axis ilə",
+      "rows": [
+        {
+          "b": "Müştərilər WhatsApp-da, dəftərdə, Excel-də, işçinin telefonunda səpələnib.",
+          "a": "Bütün müştərilər bir bazada: tarixçəsi, satışları, sənədləri, kimin məsul olduğu."
+        },
+        {
+          "b": "Hansı satışın harada ilişdiyini bilmirsiniz, müştəri unudulur.",
+          "a": "Satış lövhəsi hər mərhələni göstərir; səssiz qalan müştəri üçün tapşırıq özü yaranır."
+        },
+        {
+          "b": "Təklif və fakturalar Word-də, kimin ödəmədiyini yadda saxlamaq lazımdır.",
+          "a": "Təklif bir kliklə faktura olur; gecikən ödəniş özü xəbərdarlıq edir."
+        },
+        {
+          "b": "İşçilərin nə etdiyini ancaq soruşaraq öyrənirsiniz.",
+          "a": "Hər işçinin satışı, tapşırığı, cavab müddəti və hədəfi gözünüzün önündədir."
+        },
+        {
+          "b": "İşçi gedəndə müştəriləri də onunla gedir.",
+          "a": "Məlumat şirkətindir: müştəri başqa işçiyə bir kliklə keçir."
+        },
+        {
+          "b": "Ayın sonunda gəliri hesablamaq üçün saatlar gedir.",
+          "a": "Gəlir, borclar və proqnoz real vaxtda hesabatda."
+        }
+      ]
+    },
+    "tour": {
+      "title": "İçəridə necə görünür?",
+      "subtitle": "Klikləyin, dəyişin, sınayın — hamısı canlıdır.",
+      "tabs": {
+        "customer": "Müştəri kartı",
+        "quote": "Təklif və faktura",
+        "tasks": "Tapşırıqlar",
+        "team": "Komanda",
+        "reports": "Hesabatlar"
+      },
+      "customer": {
+        "name": "Rauf Quliyev",
+        "meta": "Pəncərə sifarişi · məsul: Nigar",
+        "events": [
+          "WhatsApp-dan yazdı: «Qiymət?»",
+          "Zəng edildi — ölçü razılaşdırıldı",
+          "Təklif göndərildi — 4 800 ₼",
+          "Müştəri təklifi qəbul etdi",
+          "Faktura ödənildi"
+        ],
+        "play": "Tarixçəni göstər",
+        "ai": "AI: müştəri 2 dəfə alış edib — servis müqaviləsi təklif edin."
+      },
+      "quote": {
+        "product": "PVC pəncərə",
+        "qty": "Miqdar",
+        "discount": "Endirim",
+        "unit": "Vahid qiymət",
+        "total": "Cəmi",
+        "vat": "ƏDV daxil",
+        "send": "Müştəriyə göndər",
+        "reset": "Yenidən",
+        "statuses": {
+          "draft": "Qaralama",
+          "sent": "Göndərildi",
+          "accepted": "Qəbul edildi",
+          "paid": "Ödənildi"
+        }
+      },
+      "tasks": {
+        "items": [
+          "Rauf bəyə ölçü üçün zəng",
+          "Gül Market-ə təklif göndər",
+          "Nümunə MMC — faktura xatırlatması",
+          "Ofis mebeli — çatdırılma tarixi"
+        ],
+        "done": "{done}/{total} tamamlandı",
+        "today": "Bu gün"
+      },
+      "team": {
+        "week": "Həftə",
+        "month": "Ay",
+        "people": [
+          "Nigar",
+          "Elvin",
+          "Səbinə",
+          "Orxan"
+        ],
+        "deals": "satış",
+        "target": "Hədəf"
+      },
+      "reports": {
+        "revenue": "Gəlir",
+        "funnel": "Satış hunisi",
+        "months": [
+          "İyn",
+          "İyl",
+          "Avq",
+          "Sen",
+          "Okt",
+          "Noy"
+        ],
+        "stages": [
+          "Müraciət",
+          "Danışıq",
+          "Təklif",
+          "Qazanıldı"
+        ]
+      }
+    },
+    "featuresTitle": "Bir sistem — bütün müştəri işi",
+    "featuresSubtitle": "Hər modul gündəlik işdən götürülüb: əlavə proqram, köçürmə, qarışıqlıq yoxdur.",
+    "features": {
+      "customers": {
+        "title": "Müştəri bazası",
+        "text": "Şəxs və şirkətlər, tarixçə, əlavə sahələr, etiketlər, dublikat xəbərdarlığı, Excel-dən import. Hər müştərinin bal (isti/soyuq) və dəyəri."
+      },
+      "pipeline": {
+        "title": "Satış prosesi",
+        "text": "Bir neçə proses, mərhələlər, proqnoz, itki səbəbləri, satış hədəfləri."
+      },
+      "docs": {
+        "title": "Təklif → faktura → ödəniş",
+        "text": "Kataloqdan təklif, müştəriyə link, qəbul, faktura, qismən ödəniş, borc xatırlatması."
+      },
+      "tasks": {
+        "title": "Tapşırıq və təqvim",
+        "text": "Görüş, zəng, xatırlatma, gecikən işlər və «Bu gün» səhifəsi."
+      },
+      "team": {
+        "title": "Komanda nəzarəti",
+        "text": "Rollar və icazələr, şöbələr, işçi nəticələri, komanda çatı."
+      },
+      "automation": {
+        "title": "Avtomatlaşdırma",
+        "text": "«Faktura ödəndi → satış qazanıldı», «30 gün səssiz → zəng tapşırığı». Kod yazmadan."
+      },
+      "inbox": {
+        "title": "Müştəri harada yazırsa",
+        "text": "WhatsApp, Instagram, Telegram, Messenger, e-poçt və sayt — yazışma müştəri kartına bağlanır."
+      },
+      "analytics": {
+        "title": "Hesabatlar və AI",
+        "text": "Gəlir, huni, borclar, məhsul satışı; AI müştəri riskini və növbəti addımı göstərir."
+      }
+    },
+    "channels": "Müştəri harada yazırsa yazsın — yazışma CRM-də",
+    "howTitle": "Üç addımda işə başlayın",
+    "how": [
+      {
+        "title": "Qeydiyyat",
+        "text": "Bir dəqiqə: şirkət adı, e-poçt, şifrə. Sınaq bütün imkanlarla açılır."
+      },
+      {
+        "title": "Müştərilərinizi gətirin",
+        "text": "Excel-dən import edin, sahənizə uyğun şablonu seçin, işçiləri dəvət edin."
+      },
+      {
+        "title": "Satışa başlayın",
+        "text": "Hər müraciət satış lövhəsinə düşür — qalanını sistem izləyir."
+      }
     ],
-    industriesTitle: "Sahənizə uyğun hazır quruluş",
-    industries: ["Sifarişli istehsal", "Marketinq agentliyi", "IT və hosting", "Servis xidmətləri", "Ticarət", "Təlim mərkəzləri"],
-    securityTitle: "Məlumatınız sizindir",
-    security: ["İki mərhələli giriş", "Rollar və icazələr", "Şirkətlər arası tam ayrılıq", "Dəyişiklik jurnalı", "Avropa serverləri (Frankfurt)"],
-    pricingTitle: "Sadə qiymətlər",
-    pricingSubtitle: "Aylıq ödəniş, istənilən vaxt paket dəyişmək mümkündür.",
-    perMonth: "/ay",
-    popular: "Ən çox seçilən",
-    seats: "{n} işçi",
-    storage: "{n} GB yaddaş",
-    aiCredits: "Ayda {n} AI sorğusu",
-    choose: "Sınağa başla",
-    faqTitle: "Tez-tez verilən suallar",
-    faq: [
-      { q: "Sınaq müddətində nə əldə edirəm?", a: "Bütün imkanlar açıq olur. Müddət bitəndə uyğun paketi seçirsiniz; məlumatlarınız qalır." },
-      { q: "WhatsApp-ı necə qoşuram?", a: "WhatsApp Business (Meta) hesabınızla Ayarlar → Kanallar bölməsindən. Telegram üçün bot token kifayətdir." },
-      { q: "Excel-dəki müştərilərimi köçürə bilərəmmi?", a: "Bəli: CSV/Excel importu sütunları uyğunlaşdırır, dublikatları göstərir və xətaları ayrıca fayl kimi qaytarır." },
-      { q: "Komandada hər kəs hər şeyi görürmü?", a: "Yox. Rollar və icazələrlə işçi öz müştərilərini, rəhbər öz şöbəsini, sahib isə hamısını görür." },
-      { q: "Telefondan işləmək olur?", a: "Bəli, sistem telefon və planşet ekranına uyğunlaşır." },
+    "industriesTitle": "Sahənizə uyğun hazır quruluş",
+    "industries": [
+      "Sifarişli istehsal",
+      "Marketinq agentliyi",
+      "IT və hosting",
+      "Servis xidmətləri",
+      "Ticarət",
+      "Təlim mərkəzləri"
     ],
-    ctaTitle: "Müştərilərinizi bu gün bir yerə yığın",
-    ctaText: "Qeydiyyat bir dəqiqə çəkir.",
-    footer: "Bütün hüquqlar qorunur.",
+    "securityTitle": "Məlumatınız sizindir",
+    "security": [
+      "İki mərhələli giriş",
+      "Rollar və icazələr",
+      "Şirkətlər arası tam ayrılıq",
+      "Dəyişiklik jurnalı",
+      "Avropa serverləri (Frankfurt)"
+    ],
+    "pricingTitle": "Sadə qiymətlər",
+    "pricingSubtitle": "Aylıq ödəniş, istənilən vaxt paket dəyişmək mümkündür.",
+    "perMonth": "/ay",
+    "popular": "Ən çox seçilən",
+    "seats": "{n} işçi",
+    "storage": "{n} GB yaddaş",
+    "aiCredits": "Ayda {n} AI sorğusu",
+    "choose": "Sınağa başla",
+    "faqTitle": "Tez-tez verilən suallar",
+    "faq": [
+      {
+        "q": "CRM nədir və mənə niyə lazımdır?",
+        "a": "CRM müştərilərinizi, satışlarınızı və işçilərinizin bu işdəki fəaliyyətini bir yerdə saxlayan sistemdir. Müştəri unudulmur, satış itmir, borc yaddan çıxmır, siz isə biznesin vəziyyətini istənilən an görürsünüz."
+      },
+      {
+        "q": "Sınaq müddətində nə əldə edirəm?",
+        "a": "Bütün imkanlar açıq olur. Müddət bitəndə uyğun paketi seçirsiniz; məlumatlarınız qalır."
+      },
+      {
+        "q": "Excel-dəki müştərilərimi köçürə bilərəmmi?",
+        "a": "Bəli: CSV/Excel importu sütunları uyğunlaşdırır, dublikatları göstərir və xətaları ayrıca fayl kimi qaytarır."
+      },
+      {
+        "q": "Komandada hər kəs hər şeyi görürmü?",
+        "a": "Yox. İşçi öz müştərilərini, rəhbər öz şöbəsini, sahib isə hamısını görür."
+      },
+      {
+        "q": "WhatsApp-ı necə qoşuram?",
+        "a": "WhatsApp Business (Meta) hesabınızla Ayarlar → Kanallar bölməsindən. Telegram üçün bot token kifayətdir."
+      },
+      {
+        "q": "Telefondan işləmək olur?",
+        "a": "Bəli, sistem telefon və planşet ekranına uyğunlaşır."
+      }
+    ],
+    "ctaTitle": "Biznesinizi bir ekrandan idarə edin",
+    "ctaText": "Qeydiyyat bir dəqiqə çəkir.",
+    "footer": "Bütün hüquqlar qorunur."
   },
   notificationPrefs: {
     title: "Bildirişlər",

@@ -983,75 +983,278 @@ const en: Dictionary = {
     empty: "No contract template yet — Settings → CRM → Document settings.",
   },
   landing: {
-    nav: { features: "Features", how: "How it works", pricing: "Pricing", faq: "FAQ" },
-    login: "Sign in",
-    start: "Start free",
-    toApp: "Open the app",
-    badge: "The CRM for growing businesses",
-    title1: "Your customers write from everywhere.",
-    title2: "You see all of it in one place.",
-    subtitle: "WhatsApp, Instagram, Telegram and your website — in one inbox. From the first message to the invoice, the order and the warranty, all in one system.",
-    trial: "{days} days free · no card needed",
-    secondary: "See the features",
-    mock: {
-      inbox: "Inbox",
-      msg1: "Hi, how much is it?",
-      msg2: "Can you come to measure tomorrow?",
-      msg3: "Got the invoice, thanks!",
-      board: "Deals",
-      col1: "New",
-      col2: "Quote",
-      col3: "Won",
-      deal1: "Office furniture",
-      deal2: "Website refresh",
-      deal3: "Windows",
-      paid: "Invoice paid",
-      lead: "New website enquiry",
-      meeting: "11:00 · Presentation",
-      ai: "AI: this customer is a hot lead",
+    "nav": {
+      "features": "Features",
+      "how": "How it works",
+      "pricing": "Pricing",
+      "faq": "FAQ"
     },
-    channels: "Every channel in one inbox",
-    featuresTitle: "Simpler than heavyweight CRMs, stronger than a spreadsheet",
-    featuresSubtitle: "Every module comes from daily work: no extra set-up, no separate apps, no moving data around.",
-    features: {
-      inbox: { title: "One inbox", text: "WhatsApp, Instagram, Messenger, Telegram, email and website chat. Assignment, saved replies, business hours and SLA." },
-      pipeline: { title: "Sales board", text: "Several pipelines, stages, forecast, loss reasons. Drag a card — the system does the rest." },
-      docs: { title: "Quote → invoice → payment", text: "Quotes from the catalog, a link for the customer, online acceptance, invoices, part payments, reminders." },
-      calendar: { title: "Calendar and Today", text: "Meetings and calls, reminders, overdue tasks — open it in the morning and see everything." },
-      automation: { title: "Automation", text: "\"Invoice paid → deal won\", \"quiet for 30 days → call task\". No code." },
-      ai: { title: "AI assistant", text: "Reply drafts, conversation summaries, customer risk and next step — from your own data." },
-      portal: { title: "Customer portal", text: "Customers follow their quotes, invoices and order progress from their own link." },
-      analytics: { title: "Reports", text: "Funnel, sources, receivables, product sales, team results and sales targets." },
+    "login": "Sign in",
+    "start": "Start free",
+    "toApp": "Open the app",
+    "badge": "CRM — customers and sales under control",
+    "title1": "Customers, sales and your team —",
+    "title2": "in one system, at a glance.",
+    "subtitle": "Which customer wants what, where each deal is stuck, who is doing what, who still owes you — Axis shows it all and lets nothing slip.",
+    "trial": "{days} days free · no card needed",
+    "secondary": "See how it works",
+    "sample": "Sample data",
+    "pipeline": {
+      "title": "Sales board",
+      "hint": "Drag a card, or tap it to move it on",
+      "stages": [
+        "New enquiry",
+        "Talking",
+        "Quote sent",
+        "Won"
+      ],
+      "forecast": "Open deals",
+      "won": "Won",
+      "invoiced": "invoice created automatically",
+      "next": "Move to the next stage",
+      "replay": "Play again",
+      "deals": [
+        {
+          "t": "Office furniture",
+          "c": "Sample Ltd"
+        },
+        {
+          "t": "Windows (12 pcs)",
+          "c": "John Brown"
+        },
+        {
+          "t": "Website refresh",
+          "c": "Green Market"
+        },
+        {
+          "t": "Yearly service",
+          "c": "Anna Smith"
+        },
+        {
+          "t": "Air-con install",
+          "c": "Mark Lee"
+        }
+      ]
     },
-    howTitle: "Up and running in three steps",
-    how: [
-      { title: "Sign up", text: "One minute: company name, email, password. The trial opens with every feature." },
-      { title: "Connect channels and your team", text: "WhatsApp, Instagram, Telegram; invite people and pick their roles." },
-      { title: "Sell", text: "Pick a template for your line of business — pipeline, fields and automations come ready." },
+    "owner": {
+      "title": "What do you gain as the owner?",
+      "subtitle": "Flip the switch and see the difference.",
+      "before": "Before Axis",
+      "after": "With Axis",
+      "rows": [
+        {
+          "b": "Customers are spread across WhatsApp, notebooks, spreadsheets and staff phones.",
+          "a": "Every customer in one base: history, deals, documents, who is responsible."
+        },
+        {
+          "b": "You don't know where a deal is stuck; customers get forgotten.",
+          "a": "The sales board shows every stage; a quiet customer gets a follow-up task by itself."
+        },
+        {
+          "b": "Quotes and invoices live in Word; you have to remember who hasn't paid.",
+          "a": "A quote becomes an invoice in one click; late payments flag themselves."
+        },
+        {
+          "b": "You only learn what staff did by asking.",
+          "a": "Every member's deals, tasks, reply times and targets are in front of you."
+        },
+        {
+          "b": "When someone leaves, their customers leave too.",
+          "a": "The data is the company's: hand customers over in one click."
+        },
+        {
+          "b": "Month-end revenue takes hours to add up.",
+          "a": "Revenue, receivables and forecast — live, in reports."
+        }
+      ]
+    },
+    "tour": {
+      "title": "What it looks like inside",
+      "subtitle": "Click, change, try — it's all live.",
+      "tabs": {
+        "customer": "Customer card",
+        "quote": "Quote and invoice",
+        "tasks": "Tasks",
+        "team": "Team",
+        "reports": "Reports"
+      },
+      "customer": {
+        "name": "John Brown",
+        "meta": "Window order · owner: Nina",
+        "events": [
+          "Wrote on WhatsApp: \"How much?\"",
+          "Called — measurement agreed",
+          "Quote sent — 4,800 ₼",
+          "Customer accepted the quote",
+          "Invoice paid"
+        ],
+        "play": "Show the history",
+        "ai": "AI: bought twice already — offer a service contract."
+      },
+      "quote": {
+        "product": "PVC window",
+        "qty": "Quantity",
+        "discount": "Discount",
+        "unit": "Unit price",
+        "total": "Total",
+        "vat": "VAT included",
+        "send": "Send to the customer",
+        "reset": "Again",
+        "statuses": {
+          "draft": "Draft",
+          "sent": "Sent",
+          "accepted": "Accepted",
+          "paid": "Paid"
+        }
+      },
+      "tasks": {
+        "items": [
+          "Call John about measuring",
+          "Send Green Market the quote",
+          "Sample Ltd — invoice reminder",
+          "Office furniture — delivery date"
+        ],
+        "done": "{done}/{total} done",
+        "today": "Today"
+      },
+      "team": {
+        "week": "Week",
+        "month": "Month",
+        "people": [
+          "Nina",
+          "Alex",
+          "Sara",
+          "Omar"
+        ],
+        "deals": "deals",
+        "target": "Target"
+      },
+      "reports": {
+        "revenue": "Revenue",
+        "funnel": "Sales funnel",
+        "months": [
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov"
+        ],
+        "stages": [
+          "Enquiry",
+          "Talking",
+          "Quote",
+          "Won"
+        ]
+      }
+    },
+    "featuresTitle": "One system for all customer work",
+    "featuresSubtitle": "Every module comes from daily work: no extra apps, no copying data around.",
+    "features": {
+      "customers": {
+        "title": "Customer base",
+        "text": "People and companies, history, custom fields, tags, duplicate warnings, Excel import. A score (hot/cold) and value for every customer."
+      },
+      "pipeline": {
+        "title": "Sales process",
+        "text": "Several pipelines, stages, forecast, loss reasons, sales targets."
+      },
+      "docs": {
+        "title": "Quote → invoice → payment",
+        "text": "Quotes from the catalog, a link for the customer, acceptance, invoices, part payments, reminders."
+      },
+      "tasks": {
+        "title": "Tasks and calendar",
+        "text": "Meetings, calls, reminders, overdue work and a Today page."
+      },
+      "team": {
+        "title": "Team control",
+        "text": "Roles and permissions, departments, member results, team chat."
+      },
+      "automation": {
+        "title": "Automation",
+        "text": "\"Invoice paid → deal won\", \"quiet for 30 days → call task\". No code."
+      },
+      "inbox": {
+        "title": "Wherever customers write",
+        "text": "WhatsApp, Instagram, Telegram, Messenger, email and your site — linked to the customer card."
+      },
+      "analytics": {
+        "title": "Reports and AI",
+        "text": "Revenue, funnel, receivables, product sales; AI points out customer risk and the next step."
+      }
+    },
+    "channels": "Wherever customers write — the conversation lands in the CRM",
+    "howTitle": "Up and running in three steps",
+    "how": [
+      {
+        "title": "Sign up",
+        "text": "One minute: company name, email, password. The trial opens with every feature."
+      },
+      {
+        "title": "Bring your customers",
+        "text": "Import from Excel, pick a template for your business, invite your team."
+      },
+      {
+        "title": "Start selling",
+        "text": "Every enquiry lands on the sales board — the system keeps track of the rest."
+      }
     ],
-    industriesTitle: "Ready-made set-ups for your business",
-    industries: ["Made to order", "Marketing agencies", "IT and hosting", "Field services", "Retail", "Training centres"],
-    securityTitle: "Your data stays yours",
-    security: ["Two-step sign-in", "Roles and permissions", "Full separation between companies", "Change log", "European servers (Frankfurt)"],
-    pricingTitle: "Simple pricing",
-    pricingSubtitle: "Pay monthly, change plans any time.",
-    perMonth: "/mo",
-    popular: "Most popular",
-    seats: "{n} members",
-    storage: "{n} GB storage",
-    aiCredits: "{n} AI requests a month",
-    choose: "Start the trial",
-    faqTitle: "Frequently asked questions",
-    faq: [
-      { q: "What do I get during the trial?", a: "Every feature is open. When it ends you pick a plan; your data stays." },
-      { q: "How do I connect WhatsApp?", a: "With your WhatsApp Business (Meta) account under Settings → Channels. For Telegram a bot token is enough." },
-      { q: "Can I bring my customers from Excel?", a: "Yes: the CSV/Excel import maps columns, shows duplicates and returns errors as a separate file." },
-      { q: "Does everyone in the team see everything?", a: "No. With roles and permissions, members see their own customers, managers their department, owners everything." },
-      { q: "Does it work on a phone?", a: "Yes, it adapts to phone and tablet screens." },
+    "industriesTitle": "Ready-made set-ups for your business",
+    "industries": [
+      "Made to order",
+      "Marketing agencies",
+      "IT and hosting",
+      "Field services",
+      "Retail",
+      "Training centres"
     ],
-    ctaTitle: "Bring your customers together today",
-    ctaText: "Signing up takes a minute.",
-    footer: "All rights reserved.",
+    "securityTitle": "Your data stays yours",
+    "security": [
+      "Two-step sign-in",
+      "Roles and permissions",
+      "Full separation between companies",
+      "Change log",
+      "European servers (Frankfurt)"
+    ],
+    "pricingTitle": "Simple pricing",
+    "pricingSubtitle": "Pay monthly, change plans any time.",
+    "perMonth": "/mo",
+    "popular": "Most popular",
+    "seats": "{n} members",
+    "storage": "{n} GB storage",
+    "aiCredits": "{n} AI requests a month",
+    "choose": "Start the trial",
+    "faqTitle": "Frequently asked questions",
+    "faq": [
+      {
+        "q": "What is a CRM and why do I need one?",
+        "a": "A CRM keeps your customers, deals and your team's work with them in one place. No customer is forgotten, no deal is lost, no debt slips — and you see where the business stands at any moment."
+      },
+      {
+        "q": "What do I get during the trial?",
+        "a": "Every feature is open. When it ends you pick a plan; your data stays."
+      },
+      {
+        "q": "Can I bring my customers from Excel?",
+        "a": "Yes: the CSV/Excel import maps columns, shows duplicates and returns errors as a separate file."
+      },
+      {
+        "q": "Does everyone in the team see everything?",
+        "a": "No. Members see their own customers, managers their department, owners everything."
+      },
+      {
+        "q": "How do I connect WhatsApp?",
+        "a": "With your WhatsApp Business (Meta) account under Settings → Channels. For Telegram a bot token is enough."
+      },
+      {
+        "q": "Does it work on a phone?",
+        "a": "Yes, it adapts to phone and tablet screens."
+      }
+    ],
+    "ctaTitle": "Run your business from one screen",
+    "ctaText": "Signing up takes a minute.",
+    "footer": "All rights reserved."
   },
   notificationPrefs: {
     title: "Notifications",
