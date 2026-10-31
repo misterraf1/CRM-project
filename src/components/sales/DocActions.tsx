@@ -133,6 +133,14 @@ export function DocActions({ doc, permissions, contactEmail }: { doc: DocDto; pe
             {k.remind}
           </button>
         )}
+        {quote && canWrite && doc.status !== "draft" && (
+          <button type="button" disabled={pending} onClick={() => run(() => api<DocDto>(`/docs/${doc.id}/version`, "POST"), (v) => router.push(`/sales/${v.id}`))} className={btn}>
+            {t.contract.newVersion}
+          </button>
+        )}
+        <Link href={`/sales/${doc.id}/contract`} className={btn}>
+          {t.contract.print}
+        </Link>
         {quote && canInvoice && (doc.status === "sent" || doc.status === "accepted") && (
           <button type="button" disabled={pending} onClick={() => run(() => api<DocDto>(`/docs/${doc.id}/invoice`, "POST"), (inv) => router.push(`/sales/${inv.id}`))} className={btn}>
             {k.toInvoice}

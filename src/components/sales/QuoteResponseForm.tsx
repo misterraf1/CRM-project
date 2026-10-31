@@ -7,7 +7,7 @@ import { errorMessage } from "@/lib/i18n/errors";
 import { useHydrated } from "@/lib/use-hydrated";
 
 /** The customer accepts or declines a quote with their name (and an optional comment). */
-export function QuoteResponseForm({ token }: { token: string }) {
+export function QuoteResponseForm({ token, endpoint }: { token: string; /** The portal answers through its own address */ endpoint?: string }) {
   const { t } = useI18n();
   const k = t.sales;
   const router = useRouter();
@@ -22,7 +22,7 @@ export function QuoteResponseForm({ token }: { token: string }) {
     if (decision === "reject" && !window.confirm(k.confirmReject)) return;
     startTransition(async () => {
       setError(undefined);
-      const res = await fetch(`/api/v1/public/docs/${encodeURIComponent(token)}/respond`, {
+      const res = await fetch(endpoint ?? `/api/v1/public/docs/${encodeURIComponent(token)}/respond`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ decision, name: String(f.get("name")), comment: String(f.get("comment") ?? "") }),

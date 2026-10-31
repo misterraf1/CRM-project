@@ -7,6 +7,11 @@ import { JobsMonitor } from "../common/jobs-monitor";
 import { InboxEvents } from "../inbox/events";
 import { NotificationsService } from "../notifications/notifications.service";
 import type { Database, Tx } from "../db/database";
+import { ActivityService } from "../crm/activity.service";
+import { MailService } from "../mail/mail.service";
+
+const DAY_MS = 86_400_000;
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 const SWEEP_MS = 30_000;
 const BATCH = 50;
@@ -18,19 +23,24 @@ export type AutomationPayload =
   | { dealId: string; fromStageId?: string; toStageId?: string }
   | { contactId: string }
   | { conversationId: string }
-  | { taskId: string };
+  | { taskId: string }
+  | { docId: string }
+  | { orderId: string }
+  | { caseId: string };
 
 /** The record an event is about, reduced to what conditions and actions need. */
 interface Subject {
-  kind: "deal" | "contact" | "conversation" | "task";
+  kind: "deal" | "contact" | "conversation" | "task" | "doc" | "order" | "case";
   id: string;
   ownerId: string | null;
   title: string;
-  links: { dealId?: string; contactId?: string; conversationId?: string; taskId?: string };
+  links: { dealId?: string; contactId?: string; conversationId?: string; taskId?: string; docId?: string; orderId?: string; caseId?: string };
   stageId?: string;
   amount?: number;
   source?: string | null;
   channelType?: string;
+  /** contact.inactive: whole days since the contact's last activity */
+  inactiveDays?: number;
 }
 
 /**
@@ -53,6 +63,8 @@ export class AutomationRunner {
     private readonly entitlements: EntitlementsService,
     private readonly inboxEvents: InboxEvents,
     private readonly monitor: JobsMonitor,
+    private readonly activity: ActivityService,
+    private readonly mail: MailService,
   ) {}
 
   start() {
@@ -146,11 +158,34 @@ export class AutomationRunner {
         amount: deal.baseAmount ?? deal.amount,
       };
     }
-    if (trigger === "contact.created") {
+    if (trigger === "contact.created" || trigger === "contact.inactive") {
       const c = await tx.contact.findOne({ id: (payload as { contactId: string }).contactId });
-      return c && !c.deletedAt ? { kind: "contact", id: c.id, ownerId: c.ownerId, title: c.name, links: { contactId: c.id }, source: c.source } : null;
+      if (!c || c.deletedAt) return null;
+      const since = c.lastActivityAt ?? c.createdAt;
+      const subject: Subject = { kind: "contact", id: c.id, ownerId: c.ownerId, title: c.name, links: { contactId: c.id }, source: c.source };
+      if (trigger === "contact.inactive") subject.inactiveDays = Math.floor((Date.now() - since.getTime()) / DAY_MS);
+      return subject;
     }
-    if (trigger === "conversation.created") {
+    if (trigger === "quote.accepted" || trigger === "invoice.paid") {
+      const d = await tx.salesDoc.findOne({ id: (payload as { docId: string }).docId });
+      return d && {
+        kind: "doc",
+        id: d.id,
+        ownerId: d.ownerId,
+        title: d.number ?? "",
+        links: { docId: d.id, contactId: d.contactId, ...(d.dealId ? { dealId: d.dealId } : {}) },
+        amount: d.baseTotal,
+      };
+    }
+    if (trigger === "order.done") {
+      const o = await tx.order.findOne({ id: (payload as { orderId: string }).orderId });
+      return o && { kind: "order", id: o.id, ownerId: o.ownerId, title: o.title, links: { orderId: o.id, contactId: o.contactId, ...(o.dealId ? { dealId: o.dealId } : {}) } };
+    }
+    if (trigger === "case.created") {
+      const c = await tx.serviceCase.findOne({ id: (payload as { caseId: string }).caseId });
+      return c && { kind: "case", id: c.id, ownerId: c.assigneeId, title: c.subject, links: { caseId: c.id, contactId: c.contactId, ...(c.dealId ? { dealId: c.dealId } : {}), ...(c.orderId ? { orderId: c.orderId } : {}) } };
+    }
+    if (trigger === "conversation.created" || trigger === "conversation.unanswered") {
       const c = await tx.conversation.findOne({ id: (payload as { conversationId: string }).conversationId });
       if (!c) return null;
       const [channel, contact] = await Promise.all([
@@ -185,6 +220,7 @@ export class AutomationRunner {
     if (c.minAmount !== undefined && (s.amount ?? 0) < c.minAmount) return false;
     if (c.source && s.source !== c.source) return false;
     if (c.channelType && s.channelType !== c.channelType) return false;
+    if (s.inactiveDays !== undefined && s.inactiveDays < (c.inactiveDays ?? 30)) return false;
     return true;
   }
 
@@ -253,6 +289,43 @@ export class AutomationRunner {
       return `notified ${recipients.length}`;
     }
 
+    if (action.type === "move_stage") {
+      if (!s.links.dealId) return "move skipped (no deal)";
+      const deal = await tx.deal.findOne({ id: s.links.dealId, tenantId });
+      const to = deal && (await tx.pipelineStage.findOne({ id: action.stageId, tenantId, pipelineId: deal.pipelineId }));
+      if (!deal || !to) return "move skipped (stage not in the deal's pipeline)";
+      const from = await tx.pipelineStage.findOne({ id: deal.stageId });
+      if (to.id === deal.stageId || from?.kind !== "open" || to.kind === "lost") return "move skipped";
+      const last = await tx.deal.findOne({ stageId: to.id }, { sort: { position: -1 }, projection: { position: 1 } });
+      await tx.deal.update({ id: deal.id }, { $set: { stageId: to.id, position: (last?.position ?? 0) + 1024, closedAt: to.kind === "won" ? new Date() : null } });
+      const base = { dealId: deal.id, contactId: deal.contactId, tenantId };
+      await this.activity.record(tx, { ...base, type: "deal_stage", payload: { dealTitle: deal.title, from: from.name, to: to.name, automation: rule.name } });
+      if (to.kind === "won") {
+        await this.activity.record(tx, { ...base, type: "deal_won", payload: { dealTitle: deal.title, amount: deal.amount } });
+        const contact = deal.contactId ? await tx.contact.findOne({ id: deal.contactId }) : null;
+        if (contact && !contact.deletedAt && contact.stage !== "CUSTOMER") {
+          await tx.contact.update({ id: contact.id }, { $set: { stage: "CUSTOMER" } });
+          await this.activity.record(tx, { tenantId, type: "contact_stage", contactId: contact.id, payload: { contactName: contact.name, from: contact.stage, to: "CUSTOMER", automatic: true } });
+        }
+      }
+      return `moved to ${to.name}`;
+    }
+
+    if (action.type === "send_email") {
+      const contact = s.links.contactId ? await tx.contact.findOne({ id: s.links.contactId, tenantId }) : null;
+      if (!contact?.email || contact.deletedAt) return "email skipped (no address)";
+      const tenant = await tx.tenant.get({ id: tenantId }, { projection: { name: 1, locale: 1 } });
+      const fill = (text: string) => text.replaceAll("{name}", contact.name).replaceAll("{title}", s.title);
+      const text = fill(action.body);
+      await this.mail.queue(tx, {
+        tenantId,
+        to: contact.email,
+        locale: tenant.locale,
+        raw: { subject: fill(action.subject), text: `${text}\n\n— ${tenant.name}`, html: `<p>${escapeHtml(text).replaceAll("\n", "<br>")}</p><p>— ${escapeHtml(tenant.name)}</p>` },
+      });
+      return `email to ${contact.email}`;
+    }
+
     // assign: one member, or the next one in turn — skipping operators who set themselves away
     // (if everyone is away the work is still handed out rather than left unassigned)
     const active = await this.activeMembers(tx, tenantId, action.memberIds);
@@ -264,6 +337,9 @@ export class AutomationRunner {
     if (s.kind === "deal") await tx.deal.update({ id: s.id }, { $set: { ownerId: memberId } });
     else if (s.kind === "contact") await tx.contact.update({ id: s.id }, { $set: { ownerId: memberId } });
     else if (s.kind === "conversation") await tx.conversation.update({ id: s.id }, { $set: { assigneeId: memberId } });
+    else if (s.kind === "doc") await tx.salesDoc.update({ id: s.id }, { $set: { ownerId: memberId } });
+    else if (s.kind === "order") await tx.order.update({ id: s.id }, { $set: { ownerId: memberId } });
+    else if (s.kind === "case") await tx.serviceCase.update({ id: s.id }, { $set: { assigneeId: memberId } });
     else await tx.task.update({ id: s.id }, { $set: { assigneeId: memberId } });
     s.ownerId = memberId; // later actions in the same rule ("notify owner") reach the new owner
     return `assigned ${memberId}`;

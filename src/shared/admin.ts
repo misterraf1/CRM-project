@@ -351,3 +351,15 @@ export interface TicketDto {
   messages?: TicketMessageDto[];
   lastMessageFromStaff?: boolean;
 }
+
+/** Per-company use of metered resources (this calendar month for AI) */
+export interface AdminUsageRow {
+  tenant: { id: string; name: string; status: string; plan: string };
+  members: number;
+  contacts: number;
+  storageMb: { used: number; limit: number };
+  ai: { used: number; limit: number };
+  /** Emails handed to the queue in the last 30 days */
+  emails30d: number;
+  lastLoginAt: string | null;
+}

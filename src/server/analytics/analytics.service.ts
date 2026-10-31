@@ -1,4 +1,4 @@
-import type { AnalyticsAdvancedDto, AnalyticsBasicDto, AnalyticsPeriod, ChannelType, MemberPerformance, MonthTrend } from "@/shared";
+import type { AnalyticsAdvancedDto, AnalyticsBasicDto, AnalyticsPeriod, AnalyticsQuery, ChannelType, MemberPerformance, MonthTrend } from "@/shared";
 import { authedContext, type AuthedContext } from "../common/context";
 import { addDays, startOfDay, startOfMonth } from "../common/time";
 import { memberRefs, ownerScope } from "../crm/scope";
@@ -35,18 +35,22 @@ const DEAL_FIELDS = { baseAmount: 1, createdAt: 1, closedAt: 1, ownerId: 1, cont
 export class AnalyticsService {
   constructor(private readonly db: Database) {}
 
-  private async frame(tx: Tx, ctx: AuthedContext, period: AnalyticsPeriod) {
+  /** The period: the last 30/90/365 days, or any from–to range (company days, both inclusive). */
+  private async frame(tx: Tx, ctx: AuthedContext, q: AnalyticsQuery) {
     const tenant = await tx.tenant.get({ id: ctx.tenantId }, { projection: { timezone: 1, currency: 1 } });
     const now = new Date();
-    const start = addDays(startOfDay(now, tenant.timezone), -(DAYS[period] - 1), tenant.timezone);
+    const custom = q.from && q.to;
+    const start = custom ? startOfDay(new Date(`${q.from}T12:00:00Z`), tenant.timezone) : addDays(startOfDay(now, tenant.timezone), -(DAYS[q.period] - 1), tenant.timezone);
+    const end = custom ? addDays(startOfDay(new Date(`${q.to}T12:00:00Z`), tenant.timezone), 1, tenant.timezone) : now;
     const owners = await ownerScope(tx, ctx, "dashboard.view_all");
-    return { tenant, now, start, owners };
+    return { tenant, now, start, end, owners };
   }
 
-  async basic(period: AnalyticsPeriod): Promise<AnalyticsBasicDto> {
+  async basic(q: AnalyticsQuery): Promise<AnalyticsBasicDto> {
+    const period = q.period;
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
-      const { tenant, now, start, owners } = await this.frame(tx, ctx, period);
+      const { tenant, now, start, end, owners } = await this.frame(tx, ctx, q);
       const base = { tenantId: ctx.tenantId };
       const dealWhere = (extra: Filter) => and(base, owners.where, extra);
       const deals = async (where: Filter) => withStages(tx, ctx.tenantId, await tx.deal.find(where, { projection: DEAL_FIELDS }));
@@ -60,16 +64,16 @@ export class AnalyticsService {
       const convScope = await inboxScope(tx, ctx);
 
       const [createdDeals, closedDeals, byStage, contacts, conversations, tasksCreated, tasksDone, overdueOpen] = await Promise.all([
-        deals(dealWhere({ createdAt: { $gte: start } })),
-        deals(dealWhere({ closedAt: { $gte: start, $ne: null } })),
+        deals(dealWhere({ createdAt: { $gte: start, $lt: end } })),
+        deals(dealWhere({ closedAt: { $gte: start, $lt: end } })),
         pipeline
           ? // Open stages: everything sitting there now; won/lost: closed in the period
-            countBy(tx.deal, "stageId", dealWhere({ pipelineId: pipeline.id, $or: [{ closedAt: null }, { closedAt: { $gte: start } }] }), "baseAmount")
+            countBy(tx.deal, "stageId", dealWhere({ pipelineId: pipeline.id, $or: [{ closedAt: null }, { closedAt: { $gte: start, $lt: end } }] }), "baseAmount")
           : new Map<string, { count: number; sum: number }>(),
-        tx.contact.find(and(base, owners.where, { deletedAt: null, createdAt: { $gte: start } }), { projection: { id: 1, source: 1, stage: 1 } }),
-        tx.conversation.find(and(base, convScope, { createdAt: { $gte: start } }), { projection: { firstResponseMs: 1, channelId: 1 } }),
-        tx.task.count(and(base, taskWhere, { parentId: null, createdAt: { $gte: start } })),
-        tx.task.find(and(base, taskWhere, { parentId: null, status: "DONE", completedAt: { $gte: start, $ne: null } }), { projection: { completedAt: 1, dueAt: 1 } }),
+        tx.contact.find(and(base, owners.where, { deletedAt: null, createdAt: { $gte: start, $lt: end } }), { projection: { id: 1, source: 1, stage: 1 } }),
+        tx.conversation.find(and(base, convScope, { createdAt: { $gte: start, $lt: end } }), { projection: { firstResponseMs: 1, channelId: 1 } }),
+        tx.task.count(and(base, taskWhere, { parentId: null, createdAt: { $gte: start, $lt: end } })),
+        tx.task.find(and(base, taskWhere, { parentId: null, status: "DONE", completedAt: { $gte: start, $lt: end } }), { projection: { completedAt: 1, dueAt: 1 } }),
         tx.task.count(and(base, taskWhere, { parentId: null, status: { $nin: ["DONE", "CANCELED"] }, dueAt: { $lt: now, $ne: null } })),
       ]);
       const channelType = new Map((await tx.channel.find({ tenantId: ctx.tenantId }, { projection: { id: 1, type: 1 } })).map((ch) => [ch.id, ch.type]));
@@ -155,10 +159,11 @@ export class AnalyticsService {
     });
   }
 
-  async advanced(period: AnalyticsPeriod): Promise<AnalyticsAdvancedDto> {
+  async advanced(q: AnalyticsQuery): Promise<AnalyticsAdvancedDto> {
+    const period = q.period;
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
-      const { tenant, start, owners, now } = await this.frame(tx, ctx, period);
+      const { tenant, start, end, owners, now } = await this.frame(tx, ctx, q);
       const base = { tenantId: ctx.tenantId };
       const members = await tx.membership.find(
         { tenantId: ctx.tenantId, status: "ACTIVE", ...(owners.memberIds ? { id: { $in: owners.memberIds } } : {}) },
@@ -174,15 +179,15 @@ export class AnalyticsService {
       const wonStages = (await tx.pipelineStage.find({ tenantId: ctx.tenantId, kind: "won" }, { projection: { id: 1 } })).map((st) => st.id);
       const [refs, created, closed, tasksDone, conversations, trendContacts, trendWon] = await Promise.all([
         memberRefs(tx, ctx.tenantId, ids),
-        countBy(tx.deal, "ownerId", { ...base, ownerId: { $in: ids }, createdAt: { $gte: start } }),
+        countBy(tx.deal, "ownerId", { ...base, ownerId: { $in: ids }, createdAt: { $gte: start, $lt: end } }),
         tx.deal
-          .find({ ...base, ownerId: { $in: ids }, closedAt: { $gte: start, $ne: null } }, { projection: DEAL_FIELDS })
+          .find({ ...base, ownerId: { $in: ids }, closedAt: { $gte: start, $lt: end } }, { projection: DEAL_FIELDS })
           .then((rows) => withStages(tx, ctx.tenantId, rows)),
         tx.task.find(
-          { ...base, parentId: null, assigneeId: { $in: ids }, status: "DONE", completedAt: { $gte: start, $ne: null } },
+          { ...base, parentId: null, assigneeId: { $in: ids }, status: "DONE", completedAt: { $gte: start, $lt: end } },
           { projection: { assigneeId: 1, completedAt: 1, dueAt: 1 } },
         ),
-        tx.conversation.find({ ...base, assigneeId: { $in: ids }, createdAt: { $gte: start } }, { projection: { assigneeId: 1, firstResponseMs: 1 } }),
+        tx.conversation.find({ ...base, assigneeId: { $in: ids }, createdAt: { $gte: start, $lt: end } }, { projection: { assigneeId: 1, firstResponseMs: 1 } }),
         tx.contact.find(and(base, owners.where, { deletedAt: null, createdAt: { $gte: trendStart } }), { projection: { createdAt: 1 } }),
         tx.deal.find(and(base, owners.where, { stageId: { $in: wonStages }, closedAt: { $gte: trendStart, $ne: null } }), { projection: { baseAmount: 1, closedAt: 1 } }),
       ]);
@@ -228,11 +233,11 @@ export class AnalyticsService {
   }
 
   /** Deals created in the period as CSV (UTF-8 with BOM so Excel shows Azerbaijani letters). */
-  async exportDeals(period: AnalyticsPeriod): Promise<string> {
+  async exportDeals(q: AnalyticsQuery): Promise<string> {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
-      const { start, owners } = await this.frame(tx, ctx, period);
-      const rows0 = await withStages(tx, ctx.tenantId, await tx.deal.find(and({ tenantId: ctx.tenantId }, owners.where, { createdAt: { $gte: start } }), { sort: { createdAt: 1 } }));
+      const { start, end, owners } = await this.frame(tx, ctx, q);
+      const rows0 = await withStages(tx, ctx.tenantId, await tx.deal.find(and({ tenantId: ctx.tenantId }, owners.where, { createdAt: { $gte: start, $lt: end } }), { sort: { createdAt: 1 } }));
       const contactIds = [...new Set(rows0.map((d) => d.contactId).filter((x): x is string => !!x))];
       const contacts = new Map((await tx.contact.find({ tenantId: ctx.tenantId, id: { $in: contactIds } }, { projection: { id: 1, name: 1, source: 1 } })).map((c) => [c.id, c]));
       const deals = rows0.map((d) => ({ ...d, contact: (d.contactId && contacts.get(d.contactId)) || null }));

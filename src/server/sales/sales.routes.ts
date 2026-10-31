@@ -59,6 +59,8 @@ export function salesRoutes(router: Router, s: Services) {
 
     r.post(":id/invoice", ({ params }) => s.docs.toInvoice(params.id!));
 
+    r.post(":id/version", ({ params }) => s.docs.newVersion(params.id!));
+
     r.post(":id/payments", { body: paymentSchema }, ({ params, body }) => s.docs.addPayment(params.id!, body));
 
     r.delete(":id/payments/:paymentId", { status: 200 }, ({ params }) => s.docs.removePayment(params.id!, params.paymentId!));

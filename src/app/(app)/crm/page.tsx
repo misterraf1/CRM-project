@@ -4,6 +4,7 @@ import { Building2, Plus, Search, Upload } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ExportMenu } from "@/components/crm/ExportMenu";
+import { ScoreBadge } from "@/components/crm/ScoreBadge";
 import { StageBadge } from "@/components/crm/StageBadge";
 import { Avatar } from "@/components/ui/Avatar";
 import { getContacts, getFields, getMembers, getSession } from "@/lib/api";
@@ -22,7 +23,9 @@ export default async function ContactsPage({ searchParams }: Props) {
   const source = (CONTACT_SOURCES as readonly string[]).includes(params.source ?? "") ? params.source : undefined;
   // A custom field filter needs both parts
   const [field, value] = params.field && params.value ? [params.field, params.value] : [undefined, undefined];
-  const filters = { q: params.q, stage, ownerId: params.ownerId, type, source, tag: params.tag || undefined, field, value };
+  const level = params.level === "hot" || params.level === "warm" || params.level === "cold" ? params.level : undefined;
+  const activity = params.activity === "active" || params.activity === "passive" ? params.activity : undefined;
+  const filters = { q: params.q, stage, ownerId: params.ownerId, type, source, tag: params.tag || undefined, field, value, level, activity };
   const [{ t, locale }, me, list, members, fields] = await Promise.all([
     getI18n(),
     getSession(),
@@ -96,6 +99,19 @@ export default async function ContactsPage({ searchParams }: Props) {
                   {c.sources[x]}
                 </option>
               ))}
+            </select>
+            <select name="level" defaultValue={level ?? ""} aria-label={t.score.filterLevel} className="h-8 rounded-lg border border-border bg-surface px-2 text-xs">
+              <option value="">{t.score.anyLevel}</option>
+              {(["hot", "warm", "cold"] as const).map((x) => (
+                <option key={x} value={x}>
+                  {t.score.levels[x]}
+                </option>
+              ))}
+            </select>
+            <select name="activity" defaultValue={activity ?? ""} aria-label={t.score.activity} className="h-8 rounded-lg border border-border bg-surface px-2 text-xs">
+              <option value="">{t.score.anyActivity}</option>
+              <option value="active">{t.score.activeOnly}</option>
+              <option value="passive">{t.score.passiveOnly}</option>
             </select>
             <input name="tag" defaultValue={params.tag} placeholder={c.tag} aria-label={c.tag} maxLength={40} className="h-8 w-24 rounded-lg border border-border bg-surface px-2 text-xs outline-none focus:border-accent" />
             {filterFields.length > 0 && (
@@ -181,7 +197,10 @@ export default async function ContactsPage({ searchParams }: Props) {
                       <div className="truncate">{x.email}</div>
                     </td>
                     <td className="px-3">
-                      <StageBadge stage={x.stage} label={c.stages[x.stage]} />
+                      <div className="flex flex-wrap items-center gap-1">
+                        <StageBadge stage={x.stage} label={c.stages[x.stage]} />
+                        {x.scoreLevel === "hot" && x.score !== null && <ScoreBadge level="hot" score={x.score} label={t.score.levels.hot} />}
+                      </div>
                     </td>
                     <td className="px-3 text-xs text-fg-muted">{x.owner?.name ?? <span className="text-fg-subtle">{c.unassigned}</span>}</td>
                     <td className="tabular px-3 text-right">{x.openDeals || <span className="text-fg-subtle">—</span>}</td>

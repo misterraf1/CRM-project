@@ -42,7 +42,7 @@ test("custom fields, company link, second pipeline and a USD deal", async ({ pag
   await page.getByRole("radio", { name: "Şirkət" }).click();
   await page.getByLabel("Ad", { exact: true }).fill("Araz MMC");
   await page.getByLabel("VÖEN").fill("1400123456");
-  await page.getByRole("button", { name: "Yarat" }).click();
+  await page.getByRole("button", { name: "Yarat", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Araz MMC" })).toBeVisible();
   await expect(page.getByText("Bu şirkətə hələ şəxs bağlanmayıb")).toBeVisible();
 
@@ -51,7 +51,7 @@ test("custom fields, company link, second pipeline and a USD deal", async ({ pag
   await page.getByLabel("Ad", { exact: true }).fill("Aysel Məmmədova");
   await page.getByLabel(/Filial/).selectOption("Gəncə");
   await page.getByLabel("Etiketlər").fill("vip, topdan");
-  await page.getByRole("button", { name: "Yarat" }).click();
+  await page.getByRole("button", { name: "Yarat", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Aysel Məmmədova" })).toBeVisible();
   await page.getByRole("link", { name: "Araz MMC" }).first().click();
   await expect(page.locator("section", { hasText: "Əlaqəli şəxslər" }).getByRole("link", { name: /Aysel Məmmədova/ })).toBeVisible();
@@ -73,7 +73,7 @@ test("custom fields, company link, second pipeline and a USD deal", async ({ pag
   await page.getByRole("button", { name: "Yeni satış" }).click();
   await page.getByPlaceholder("Satışın adı").fill("Topdan sifariş");
   await page.getByPlaceholder("Məbləğ").fill("1000");
-  await page.getByRole("button", { name: "Yarat" }).click();
+  await page.getByRole("button", { name: "Yarat", exact: true }).click();
   await page.getByRole("link", { name: "Topdan sifariş" }).click();
   await page.getByLabel("Valyuta").selectOption("USD");
   await page.getByRole("button", { name: "Yadda saxla" }).click();

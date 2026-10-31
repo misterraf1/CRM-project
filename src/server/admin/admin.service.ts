@@ -16,6 +16,7 @@ import type {
   SubscriptionStatus,
   SystemHealthDto,
   TenantLimitsInput,
+  AdminUsageRow,
 } from "@/shared";
 import { AiService } from "../ai/ai.service";
 import { AuditService } from "../audit/audit.service";
@@ -511,6 +512,40 @@ export class AdminService {
       if (!row) throw notFound("Expense");
       await tx.platformExpense.delete({ id });
       await this.audit.log(tx, { action: "platform.expense_deleted", entityType: "expense", entityId: id, tenantId: undefined, diff: { vendor: row.vendor, amount: row.amount } });
+    });
+  }
+
+  /** Who uses how much: members, contacts, storage, AI credits this month, email volume. */
+  async usage(now = new Date()): Promise<AdminUsageRow[]> {
+    const db = this.sys;
+    const tenants = await db.tenant.find({}, { sort: { createdAt: -1 }, limit: 500, projection: { id: 1, name: 1, status: 1 } });
+    const ids = tenants.map((t) => t.id);
+    const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const [subs, members, contacts, storage, ai, emails, logins] = await Promise.all([
+      this.subscriptions(ids),
+      db.membership.aggregate<{ _id: string; n: number }>([{ $match: { tenantId: { $in: ids }, status: "ACTIVE" } }, { $group: { _id: "$tenantId", n: { $sum: 1 } } }]),
+      db.contact.aggregate<{ _id: string; n: number }>([{ $match: { tenantId: { $in: ids }, deletedAt: null } }, { $group: { _id: "$tenantId", n: { $sum: 1 } } }]),
+      db.fileObject.aggregate<{ _id: string; n: number }>([{ $match: { tenantId: { $in: ids } } }, { $group: { _id: "$tenantId", n: { $sum: "$sizeBytes" } } }]),
+      db.usageCounter.find({ tenantId: { $in: ids }, metric: "ai_credits", period: month }, { projection: { tenantId: 1, value: 1 } }),
+      db.emailMessage.aggregate<{ _id: string; n: number }>([{ $match: { tenantId: { $in: ids }, createdAt: { $gte: new Date(now.getTime() - days(30)) } } }, { $group: { _id: "$tenantId", n: { $sum: 1 } } }]),
+      db.auditLog.aggregate<{ _id: string; at: Date }>([{ $match: { tenantId: { $in: ids }, action: "auth.login" } }, { $group: { _id: "$tenantId", at: { $max: "$createdAt" } } }]),
+    ]);
+    const map = (rows: { _id: string; n: number }[]) => new Map(rows.map((r) => [r._id, r.n]));
+    const [m, c, st, em] = [map(members), map(contacts), map(storage), map(emails)];
+    const aiBy = new Map(ai.map((r) => [r.tenantId, r.value]));
+    const lastBy = new Map(logins.map((r) => [r._id, r.at]));
+    return tenants.map((t) => {
+      const sub = subs.get(t.id);
+      const limits = sub ? limitsOf(sub) : null;
+      return {
+        tenant: { id: t.id, name: t.name, status: t.status, plan: sub?.plan.code ?? "—" },
+        members: m.get(t.id) ?? 0,
+        contacts: c.get(t.id) ?? 0,
+        storageMb: { used: Math.ceil((st.get(t.id) ?? 0) / 1048576), limit: limits?.storageMb ?? 0 },
+        ai: { used: aiBy.get(t.id) ?? 0, limit: limits?.aiCredits ?? 0 },
+        emails30d: em.get(t.id) ?? 0,
+        lastLoginAt: lastBy.get(t.id)?.toISOString() ?? null,
+      };
     });
   }
 

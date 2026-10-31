@@ -319,6 +319,37 @@ export class SalesDocsService {
   }
 
   /** Draft invoice with the quote's lines; the quote stays as it is. */
+  /** A new draft version of a quote (the customer asked for changes); the old one stays as it was. */
+  async newVersion(quoteId: string): Promise<DocDto> {
+    const ctx = authedContext();
+    this.assertWrite(ctx, "quote");
+    return this.db.scoped(async (tx) => {
+      const quote = await this.visible(tx, ctx, quoteId);
+      if (quote.kind !== "quote" || quote.status === "draft") throw new AppError("CONFLICT", "Only a sent quote gets a new version", { status: quote.status });
+      const copy = await tx.salesDoc.insertOne({
+        tenantId: ctx.tenantId,
+        kind: "quote",
+        number: null,
+        status: "draft",
+        contactId: quote.contactId,
+        dealId: quote.dealId,
+        ownerId: quote.ownerId,
+        sourceId: quote.id,
+        currency: quote.currency,
+        lines: quote.lines,
+        subtotal: quote.subtotal,
+        discountTotal: quote.discountTotal,
+        taxTotal: quote.taxTotal,
+        total: quote.total,
+        baseTotal: quote.baseTotal,
+        notes: quote.notes,
+        createdById: ctx.membershipId,
+      });
+      await this.audit.log(tx, { action: "quote.versioned", entityType: "quote", entityId: copy.id, diff: { from: quote.number } });
+      return this.detail(tx, ctx, copy);
+    });
+  }
+
   async toInvoice(quoteId: string): Promise<DocDto> {
     const ctx = authedContext();
     this.assertWrite(ctx, "invoice");

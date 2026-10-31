@@ -1,3 +1,8 @@
+import { aiRoutes } from "./ai/ai.routes";
+import { onboardingRoutes } from "./onboarding/onboarding.routes";
+import { growthRoutes } from "./growth/growth.routes";
+import { serviceRoutes } from "./service/service.routes";
+import { calendarRoutes } from "./calendar/calendar.routes";
 import { adminRoutes } from "./admin/admin.routes";
 import { analyticsRoutes } from "./analytics/analytics.routes";
 import { auditRoutes } from "./audit/audit.routes";
@@ -57,6 +62,11 @@ export function createApi(): ApiServer {
     dataRoutes,
     dashboardRoutes,
     tasksRoutes,
+    calendarRoutes,
+    serviceRoutes,
+    growthRoutes,
+    onboardingRoutes,
+    aiRoutes,
     notificationsRoutes,
     teamRoutes,
     inboxRoutes,

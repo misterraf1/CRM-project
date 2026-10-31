@@ -13,6 +13,7 @@ export interface TaskDto {
   completedAt: string | null;
   overdue: boolean;
   recurrence: string | null;
+  reminderMinutes: number | null;
   project: { id: string; name: string } | null;
   parentId: string | null;
   contact: { id: string; name: string } | null;
@@ -91,6 +92,20 @@ export type NotificationType =
   | "order_done"
   /** "@Name" in a contact note or task comment */
   | "mention"
+  /** Calendar: added to an event, and the reminder before it starts */
+  | "event_invited"
+  | "event_reminder"
+  /** Reminder before a task's deadline */
+  | "task_reminder"
+  /** Customer complaints / service requests */
+  | "case_assigned"
+  | "case_overdue"
+  /** A recurring service is due for renewal */
+  | "renewal_due"
+  /** A website form brought a lead */
+  | "form_submission"
+  /** The customer added a document in their portal */
+  | "portal_upload"
   | "support_reply"
   | "automation";
 
@@ -141,6 +156,14 @@ export const MUTABLE_NOTIFICATIONS = [
   "task_comment",
   "task_completed",
   "task_overdue",
+  "task_reminder",
+  "event_invited",
+  "event_reminder",
+  "case_assigned",
+  "case_overdue",
+  "renewal_due",
+  "form_submission",
+  "portal_upload",
   "order_step_assigned",
   "order_done",
   "quote_accepted",

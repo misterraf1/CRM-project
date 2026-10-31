@@ -1,5 +1,7 @@
+import type { AutomationTrigger } from "@/shared";
 import { afterResponse } from "./common/after-response";
 import { AdminAuthService } from "./admin/admin-auth.service";
+import { MfaService } from "./auth/mfa";
 import { AdminGuard } from "./admin/admin.guard";
 import { AdminService } from "./admin/admin.service";
 import { AiService } from "./ai/ai.service";
@@ -51,7 +53,19 @@ import { Database } from "./db/database";
 import { createFileStorage } from "./storage/storage.service";
 import { SupportService } from "./support/support.service";
 import { FilesService } from "./tasks/files.service";
+import { CampaignsService } from "./growth/campaigns.service";
+import { FormsService } from "./growth/forms.service";
+import { PortalService } from "./growth/portal.service";
+import { ReportsService } from "./analytics/reports.service";
+import { OnboardingService } from "./onboarding/onboarding.service";
+import { CrmAiService } from "./ai/crm-ai.service";
+import { Signals } from "./automations/signals";
+import { CasesService } from "./service/cases.service";
+import { RenewalsService } from "./service/renewals.service";
+import { TargetsService } from "./service/targets.service";
 import { OverdueJob } from "./tasks/overdue.job";
+import { CalendarService } from "./calendar/calendar.service";
+import { Reminders } from "./calendar/reminders";
 import { ProjectsService } from "./tasks/projects.service";
 import { TasksService } from "./tasks/tasks.service";
 import { TeamService } from "./team/team.service";
@@ -77,16 +91,31 @@ export function createServices() {
   const mail = new MailService(db, monitor);
   const ai = new AiService(db);
   const tokens = new TokensService(jwt, db);
-  const automationRunner = new AutomationRunner(db, notifications, entitlements, inboxEvents, monitor);
+  const automationRunner = new AutomationRunner(db, notifications, entitlements, inboxEvents, monitor, activity, mail);
   const ingest = new IngestService(inboxEvents, automationRunner, storage);
   const tasks = new TasksService(db, notifications, storage);
   const files = new FilesService(db, tasks, storage);
   const inbox = new InboxService(db, inboxEvents, meta, activity, mail, entitlements, telegram, files);
+  // Timeline events that start automation rules
+  const activityTriggers: Partial<Record<string, AutomationTrigger>> = { quote_accepted: "quote.accepted", invoice_paid: "invoice.paid", order_done: "order.done" };
+  const renewals = new RenewalsService(db, notifications);
+  activity.onRecorded = async (tx, tenantId, { type, payload }) => {
+    // A paid invoice opens the next period of the recurring services on it
+    if (type === "invoice_paid") await renewals.fromPaidInvoice(tx, tenantId, String(payload.docId));
+    const trigger = activityTriggers[type];
+    if (trigger === "order.done") await automationRunner.enqueue(tx, tenantId, trigger, { orderId: String(payload.orderId) });
+    else if (trigger) await automationRunner.enqueue(tx, tenantId, trigger, { docId: String(payload.docId) });
+  };
   ingest.onAutoReply = (tenantId, messageId) => afterResponse(() => inbox.deliverStored(tenantId, messageId));
   const billing = new BillingService(db, entitlements, notifications, audit, mail, provider);
-  const adminAuth = new AdminAuthService(db, jwt);
+  const mfa = new MfaService(db);
+  const adminAuth = new AdminAuthService(db, jwt, mfa);
+  const reminders = new Reminders(db, notifications);
+  const cases = new CasesService(db, audit, activity, notifications, automationRunner);
+  const signals = new Signals(db, automationRunner);
   const deals = new DealsService(db, activity, audit, automationRunner);
   const docs = new SalesDocsService(db, audit, activity, notifications, mail);
+  const publicDocs = new PublicDocsService(db, docs);
 
   const services = {
     db,
@@ -110,14 +139,14 @@ export function createServices() {
     billing,
     adminAuth,
     storage,
-    auth: new AuthService(db, tokens, audit, entitlements, ai),
+    auth: new AuthService(db, tokens, audit, entitlements, ai, jwt, mfa),
     passwordReset: new PasswordResetService(db, mail),
     members: new MembersService(db, audit, entitlements, tokens, mail),
     departments: new DepartmentsService(db, audit),
     roles: new RolesService(db, audit),
     products: new ProductsService(db, audit),
     docs,
-    publicDocs: new PublicDocsService(db, docs),
+    publicDocs,
     orders: new OrdersService(db, audit, activity, notifications),
     contacts: new ContactsService(db, activity, audit, automationRunner, entitlements, notifications),
     imports: new ImportService(db, audit, entitlements),
@@ -128,7 +157,20 @@ export function createServices() {
     attention: new AttentionService(db),
     search: new SearchService(db),
     projects: new ProjectsService(db),
-    overdueJob: new OverdueJob(db, monitor, notifications, automationRunner, docs),
+    reminders,
+    cases,
+    renewals,
+    signals,
+    targets: new TargetsService(db, audit),
+    reports: new ReportsService(db),
+    onboarding: new OnboardingService(db, audit),
+    crmAi: new CrmAiService(db, ai),
+    forms: new FormsService(db, audit, activity, notifications, automationRunner, entitlements),
+    campaigns: new CampaignsService(db, audit, mail),
+    portal: new PortalService(db, audit, activity, notifications, mail, publicDocs, files),
+    // The 5-minute tick: overdue notices, reminders, then the after-sale and signal checks
+    overdueJob: new OverdueJob(db, monitor, notifications, automationRunner, docs, reminders, [() => cases.notifyOverdue(), () => renewals.planTasks(), () => signals.run()]),
+    calendar: new CalendarService(db, notifications, activity),
     team: new TeamService(db, tasks, activity),
     channels: new ChannelsService(db, ingest, mail, meta, telegram),
     webhooks: new WebhooksService(db, ingest, meta, telegram),

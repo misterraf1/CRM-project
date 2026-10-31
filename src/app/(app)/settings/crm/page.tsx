@@ -3,7 +3,8 @@ import { CurrencyManager } from "@/components/settings/CurrencyManager";
 import { DocSettingsCard } from "@/components/settings/DocSettingsCard";
 import { FieldsManager } from "@/components/settings/FieldsManager";
 import { PipelinesManager } from "@/components/settings/PipelinesManager";
-import { getCurrencySettings, getDocSettings, getFields, getPipelines, getSession } from "@/lib/api";
+import { TemplatePicker } from "@/components/onboarding/TemplatePicker";
+import { getCurrencySettings, getDocSettings, getFields, getOnboarding, getPipelines, getSession } from "@/lib/api";
 import { hasFeature } from "@/lib/billing";
 import { getI18n } from "@/lib/i18n/server";
 
@@ -16,7 +17,7 @@ export default async function CrmSettingsPage() {
     return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;
   }
   const withPipelines = hasFeature(me, "deals.pipeline");
-  const [fields, currencies, pipelines, docSettings] = await Promise.all([getFields(undefined, true), getCurrencySettings(), withPipelines ? getPipelines() : [], getDocSettings()]);
+  const [fields, currencies, pipelines, docSettings, onboarding] = await Promise.all([getFields(undefined, true), getCurrencySettings(), withPipelines ? getPipelines() : [], getDocSettings(), getOnboarding()]);
 
   return (
     <div className="space-y-5">
@@ -30,7 +31,8 @@ export default async function CrmSettingsPage() {
           <CurrencyManager settings={currencies} />
           <DocSettingsCard settings={docSettings} />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 space-y-5">
+          <TemplatePicker applied={onboarding.appliedTemplates} />
           {withPipelines ? (
             <PipelinesManager pipelines={pipelines} />
           ) : (

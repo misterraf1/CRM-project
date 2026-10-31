@@ -101,7 +101,7 @@ test("group chat: create with members, add member, leave", async ({ page, browse
   await page.getByRole("button", { name: "Yeni qrup" }).click();
   await page.getByLabel("Qrupun adı").fill("Layihə X");
   await page.getByLabel("Tural Məmmədov").check();
-  await page.getByRole("button", { name: "Yarat" }).click();
+  await page.getByRole("button", { name: "Yarat", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Layihə X" })).toBeVisible();
   await page.getByLabel(/Mesaj yazın/).fill("Xoş gəldiniz!");
   await page.getByLabel(/Mesaj yazın/).press("Enter");

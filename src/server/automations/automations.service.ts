@@ -48,6 +48,12 @@ export class AutomationsService {
     if (stageId && !(await tx.pipelineStage.count({ tenantId, id: stageId }))) {
       throw new AppError("VALIDATION_FAILED", "Unknown stage", { conditions: ["Unknown stage"] });
     }
+    // Automatic moves go to open or won stages (a lost deal needs a person's reason)
+    for (const a of input.actions ?? []) {
+      if (a.type === "move_stage" && !(await tx.pipelineStage.count({ tenantId, id: a.stageId, kind: { $ne: "lost" } }))) {
+        throw new AppError("VALIDATION_FAILED", "Unknown stage", { actions: ["Unknown stage"] });
+      }
+    }
   }
 
   async list(): Promise<AutomationRuleDto[]> {

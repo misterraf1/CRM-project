@@ -23,6 +23,11 @@ export interface ContactDto {
   openDeals: number;
   /** Permission for messages we start: null = not recorded */
   messagingConsent: { status: "opted_in" | "opted_out"; at: string; source: "manual" | "keyword" } | null;
+  /** Rule-based lead score (null until first scored) and why */
+  score: number | null;
+  scoreLevel: "hot" | "warm" | "cold" | null;
+  scoreReasons: string[];
+  lastActivityAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -91,7 +96,14 @@ export type ActivityType =
   | "invoice_issued"
   | "invoice_paid"
   | "order_created"
-  | "order_done";
+  | "order_done"
+  /** Calendar: a call with its outcome, a meeting marked as held */
+  | "call_logged"
+  | "meeting_done"
+  | "case_opened"
+  | "case_resolved"
+  /** A website form was filled in */
+  | "form_submitted";
 
 export interface ActivityDto {
   id: string;

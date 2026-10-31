@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
 import { AttentionList } from "@/components/dashboard/AttentionList";
+import { TargetCard } from "@/components/dashboard/TargetCard";
 import { PaymentsCard } from "@/components/dashboard/PaymentsCard";
 import { AwaitingInbox } from "@/components/dashboard/AwaitingInbox";
 import { KpiGrid } from "@/components/dashboard/KpiGrid";
@@ -9,7 +10,9 @@ import { PeriodFilter } from "@/components/dashboard/PeriodFilter";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import { TeamPerformance } from "@/components/dashboard/TeamPerformance";
 import { CardHeader } from "@/components/ui/Card";
-import { getAttention, getDashboard, getSession, parsePeriod } from "@/lib/api";
+import { getAttention, getDashboard, getOnboarding, getSession, getTargets, parsePeriod } from "@/lib/api";
+import { AskAi } from "@/components/ai/AskAi";
+import { OnboardingCard } from "@/components/onboarding/OnboardingCard";
 import { getI18n } from "@/lib/i18n/server";
 import { interpolate } from "@/lib/i18n/locales";
 
@@ -19,7 +22,7 @@ type Props = { searchParams: Promise<{ period?: string | string[] }> };
 
 export default async function DashboardPage({ searchParams }: Props) {
   const period = parsePeriod((await searchParams).period);
-  const [{ t, locale }, session, data, attention] = await Promise.all([getI18n(), getSession(), getDashboard(period), getAttention()]);
+  const [{ t, locale }, session, data, attention, targets, onboarding] = await Promise.all([getI18n(), getSession(), getDashboard(period), getAttention(), getTargets("month"), getOnboarding()]);
   const now = new Date(data.generatedAt);
   const firstName = session.user.fullName.split(" ")[0] ?? session.user.fullName;
   const r = t.dashboard.revenue;
@@ -34,6 +37,8 @@ export default async function DashboardPage({ searchParams }: Props) {
         <PeriodFilter value={period} t={t} />
       </div>
 
+      <OnboardingCard initial={onboarding} canManage={session.permissions.includes("crm.configure")} />
+
       <KpiGrid crm={data} t={t} locale={locale} />
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -45,6 +50,8 @@ export default async function DashboardPage({ searchParams }: Props) {
           <TeamPerformance rows={data.team} currency={data.currency} canViewTeam={session.permissions.includes("members.view")} />
         </div>
         <div className="min-w-0 space-y-5">
+          {session.ai.available && <AskAi />}
+          <TargetCard data={targets} meId={session.membership.id} t={t} locale={locale} />
           <AttentionList items={attention} t={t} locale={locale} />
           {data.payments && <PaymentsCard payments={data.payments} currency={data.currency} t={t} locale={locale} />}
           <AwaitingInbox inbox={data.inbox} now={now} t={t} locale={locale} />

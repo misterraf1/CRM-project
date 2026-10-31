@@ -68,6 +68,23 @@ export interface MeResponse {
   /** AI assistant: whether the server has it connected, and this month's usage against the plan */
   ai: { available: boolean; used: number; limit: number };
   memberships: { tenantId: string; tenantName: string; slug: string; role: MemberRole }[];
+  /** mfaSetupRequired: the company demands 2FA and this account hasn't set it up yet */
+  security: { mfaEnabled: boolean; mfaSetupRequired: boolean };
+}
+
+/** Password was right and the account has 2FA: the code step follows */
+export interface MfaChallenge {
+  mfaRequired: true;
+  /** Short-lived token proving the password step (5 minutes) */
+  challenge: string;
+}
+
+/** The caller's own 2FA state */
+export interface MySecurityDto {
+  mfaEnabled: boolean;
+  recoveryCodesLeft: number;
+  /** The company requires 2FA: it can't be turned off */
+  requiredByCompany: boolean;
 }
 
 export type MemberStatus = "INVITED" | "ACTIVE" | "DISABLED";
@@ -82,6 +99,8 @@ export interface MemberDto {
   customRole: { id: string; name: string } | null;
   /** Operator status (away = skipped by automatic assignment) */
   presence: "available" | "away";
+  /** Two-factor sign-in turned on */
+  mfaEnabled: boolean;
   status: MemberStatus;
   title: string | null;
   departmentId: string | null;

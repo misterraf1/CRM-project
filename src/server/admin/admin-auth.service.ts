@@ -1,15 +1,10 @@
 import { JwtService } from "../common/jwt";
 import type { AdminMe, AdminMfaChallenge, AdminTokens, MfaEnabledDto, MfaSetupDto, PlatformRole } from "@/shared";
-import type { User } from "../db/models";
-import { randomBytes } from "node:crypto";
-import QRCode from "qrcode";
+import { MfaService } from "../auth/mfa";
 import { verifyPassword } from "../auth/password";
 import { config } from "../config";
 import { currentContext } from "../common/context";
 import { AppError } from "../common/errors";
-import { sha256 } from "../common/ids";
-import { openCredentials, sealCredentials } from "../common/secrets";
-import { base32Encode, newTotpSecret, otpauthUri, verifyTotp } from "../common/totp";
 import type { Database } from "../db/database";
 
 /** Admin tokens use their own issuer, so a tenant token can never pass as one (and vice versa). */
@@ -17,19 +12,17 @@ export const ADMIN_ISSUER = "axis-admin";
 /** Proof that the password step passed; only good for the 2FA step, for 5 minutes. */
 const MFA_ISSUER = "axis-admin-mfa";
 const SESSION_HOURS = 8;
-const RECOVERY_CODES = 10;
 
 export interface AdminPayload {
   sub: string;
   sid: string;
 }
 
-const normaliseRecovery = (code: string) => code.replace(/[\s-]/g, "").toUpperCase();
-
 export class AdminAuthService {
   constructor(
     private readonly db: Database,
     private readonly jwt: JwtService,
+    private readonly mfa: MfaService,
   ) {}
 
   private user(id: string) {
@@ -62,10 +55,12 @@ export class AdminAuthService {
     });
     const user = await this.user(sub);
     if (user.platformRole === "NONE" || !user.mfaEnabledAt) throw new AppError("UNAUTHENTICATED", "Sign-in step expired, enter the password again");
-    if (!(await this.consumeCode(user, code, true))) {
+    const used = await this.mfa.consume(user, code, true);
+    if (!used) {
       await this.audit(user.id, "platform.mfa_failed");
       throw new AppError("MFA_INVALID", "The code is not valid");
     }
+    if (used === "recovery") await this.audit(user.id, "platform.mfa_recovery_used");
     return this.issue(user.id);
   }
 
@@ -82,32 +77,6 @@ export class AdminAuthService {
       expiresIn: SESSION_HOURS * 3600,
     });
     return { accessToken, expiresAt: expiresAt.toISOString() };
-  }
-
-  private secretOf(user: User) {
-    return user.mfaSecret ? openCredentials(Buffer.from(user.mfaSecret, "base64")).totp! : null;
-  }
-
-  /**
-   * Accepts an authenticator code (each 30-second code only once) or, when allowed,
-   * a recovery code (each only once). Both are consumed with a conditional update, so
-   * two parallel requests can't use the same code.
-   */
-  private async consumeCode(user: User, code: string, allowRecovery: boolean): Promise<boolean> {
-    const secret = this.secretOf(user);
-    const users = this.db.system.user;
-    if (secret && /^\d{6}$/.test(code.replace(/\s/g, ""))) {
-      const step = verifyTotp(secret, code);
-      if (step === null) return false;
-      const claimed = await users.updateMany({ id: user.id, $or: [{ mfaLastStep: null }, { mfaLastStep: { $lt: step } }] }, { $set: { mfaLastStep: step } });
-      return claimed.count === 1;
-    }
-    if (!allowRecovery) return false;
-    const hash = sha256(normaliseRecovery(code));
-    if (!user.mfaRecoveryCodes.includes(hash)) return false;
-    const claimed = await users.updateMany({ id: user.id, mfaRecoveryCodes: hash }, { $pull: { mfaRecoveryCodes: hash } });
-    if (claimed.count === 1) await this.audit(user.id, "platform.mfa_recovery_used");
-    return claimed.count === 1;
   }
 
   verify(token: string): Promise<AdminPayload> {
@@ -143,49 +112,26 @@ export class AdminAuthService {
     };
   }
 
-  /** Step 1: a new key (replaces an unconfirmed one). Nothing changes for sign-in yet. */
   async setupMfa(userId: string): Promise<MfaSetupDto> {
-    const user = await this.user(userId);
-    if (user.mfaEnabledAt) throw new AppError("CONFLICT", "2FA is already on");
-    const secret = newTotpSecret();
-    await this.db.system.user.update({ id: userId }, { $set: { mfaSecret: sealCredentials({ totp: secret }).toString("base64"), mfaLastStep: null } });
-    const uri = otpauthUri(secret, user.email, "Axis Platform");
-    return { secret, otpauthUri: uri, qrSvg: await QRCode.toString(uri, { type: "svg", margin: 1, errorCorrectionLevel: "M" }) };
+    return this.mfa.setup(await this.user(userId), "Axis Platform");
   }
 
-  /** Step 2: a code from the app proves it was set up; recovery codes are shown once. */
   async enableMfa(userId: string, code: string): Promise<MfaEnabledDto> {
-    const user = await this.user(userId);
-    if (user.mfaEnabledAt) throw new AppError("CONFLICT", "2FA is already on");
-    if (!user.mfaSecret || !(await this.consumeCode(user, code, false))) throw new AppError("MFA_INVALID", "The code is not valid");
-    const recoveryCodes = this.newRecoveryCodes();
-    await this.db.system.user.update({ id: userId }, { $set: { mfaEnabledAt: new Date(), mfaRecoveryCodes: recoveryCodes.map((c) => sha256(normaliseRecovery(c))) } });
+    const out = await this.mfa.enable(await this.user(userId), code);
     await this.audit(userId, "platform.mfa_enabled");
-    return { recoveryCodes };
+    return out;
   }
 
   async regenerateRecoveryCodes(userId: string, code: string): Promise<MfaEnabledDto> {
-    const user = await this.user(userId);
-    if (!user.mfaEnabledAt || !(await this.consumeCode(user, code, false))) throw new AppError("MFA_INVALID", "The code is not valid");
-    const recoveryCodes = this.newRecoveryCodes();
-    await this.db.system.user.update({ id: userId }, { $set: { mfaRecoveryCodes: recoveryCodes.map((c) => sha256(normaliseRecovery(c))) } });
+    const out = await this.mfa.regenerate(await this.user(userId), code);
     await this.audit(userId, "platform.mfa_recovery_regenerated");
-    return { recoveryCodes };
+    return out;
   }
 
   /** Not allowed where 2FA is mandatory; otherwise needs a current code. */
   async disableMfa(userId: string, code: string) {
     if (config().PLATFORM_REQUIRE_MFA) throw new AppError("CONFLICT", "2FA is mandatory for platform staff");
-    const user = await this.user(userId);
-    if (!user.mfaEnabledAt || !(await this.consumeCode(user, code, false))) throw new AppError("MFA_INVALID", "The code is not valid");
-    await this.db.system.user.update({ id: userId }, { $set: { mfaSecret: null, mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [] } });
+    await this.mfa.disable(await this.user(userId), code);
     await this.audit(userId, "platform.mfa_disabled");
-  }
-
-  private newRecoveryCodes() {
-    return Array.from({ length: RECOVERY_CODES }, () => {
-      const raw = base32Encode(randomBytes(5)); // 8 characters
-      return `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
-    });
   }
 }

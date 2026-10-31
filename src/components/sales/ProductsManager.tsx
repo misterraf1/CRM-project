@@ -46,6 +46,11 @@ export function ProductsManager({ products: initial, canManage, baseCurrency }: 
       taxBp: Math.round(tax * 100),
       active: f.get("active") === "on",
       components,
+      renewalMonths: f.get("renewal") ? Number(f.get("renewal")) : null,
+      // Volume prices: rows with both a quantity and a price
+      priceTiers: [0, 1, 2]
+        .map((i) => ({ minQty: Number(String(f.get(`tierQty${i}`) || "").replace(",", ".")), price: parseMoneyInput(String(f.get(`tierPrice${i}`) || "")) }))
+        .filter((x): x is { minQty: number; price: number } => x.minQty > 0 && x.price !== null),
     };
     const current = editing;
     startTransition(async () => {
@@ -104,7 +109,31 @@ export function ProductsManager({ products: initial, canManage, baseCurrency }: 
         {k.taxPct}
         <input name="tax" inputMode="decimal" defaultValue={p ? String(p.taxBp / 100) : "0"} className="input" />
       </label>
-      <label className="field-label sm:col-span-6">
+      <label className="field-label sm:col-span-2">
+        {t.renewals.renewalMonths}
+        <select name="renewal" defaultValue={p?.renewalMonths ? String(p.renewalMonths) : ""} className="input">
+          <option value="">{t.renewals.renewalNone}</option>
+          {[1, 3, 6, 12, 24, 36].map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </label>
+      <fieldset className="sm:col-span-6">
+        <legend className="text-xs font-medium">{t.priceTiers.title}</legend>
+        <p className="text-[11px] text-fg-subtle">{t.priceTiers.hint}</p>
+        <div className="mt-1 grid gap-2 sm:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-1">
+              <input name={`tierQty${i}`} inputMode="decimal" defaultValue={p?.priceTiers[i]?.minQty ?? ""} placeholder={t.priceTiers.from} aria-label={`${t.priceTiers.from} ${i + 1}`} className="input mt-0 w-20" />
+              <span className="text-xs text-fg-subtle">→</span>
+              <input name={`tierPrice${i}`} inputMode="decimal" defaultValue={p?.priceTiers[i] ? moneyInputValue(p.priceTiers[i]!.price) : ""} placeholder={t.priceTiers.price} aria-label={`${t.priceTiers.price} ${i + 1}`} className="input mt-0 min-w-0 flex-1" />
+            </div>
+          ))}
+        </div>
+      </fieldset>
+      <label className="field-label sm:col-span-4">
         {k.lineDescription}
         <input name="description" maxLength={1000} defaultValue={p?.description ?? ""} className="input" />
       </label>

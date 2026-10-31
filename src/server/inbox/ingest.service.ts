@@ -98,6 +98,8 @@ export class IngestService {
         lastInboundAt: at,
         // Waiting since the first unanswered message, not the latest one
         awaitingSince: conversation.awaitingSince ?? at,
+        // A new wait: conversation.unanswered may fire again
+        ...(conversation.awaitingSince ? {} : { unansweredAlertedAt: null }),
         // A resolved conversation reopens when the customer writes again
         status: "OPEN",
         displayName: conversation.displayName ?? msg.displayName ?? null,
@@ -107,6 +109,8 @@ export class IngestService {
         },
       },
     );
+    // A customer writing counts as activity (passive lists, scoring)
+    if (conversation.contactId) await tx.contact.updateMany({ id: conversation.contactId }, { $set: { lastActivityAt: at, inactiveAlertedAt: null, scoredAt: null } });
     this.events.publish(channel.tenantId, { type: "message", conversationId: conversation.id, direction: "INBOUND" });
     return { conversationId: conversation.id, messageId: message.id };
   }

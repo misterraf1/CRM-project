@@ -33,6 +33,8 @@ export const orderCreateSchema = z.object({
   deliveryDate: day.nullish(),
   notes: text(2000),
   steps: z.array(orderStepInputSchema).max(ORDER_LIMITS.steps).default([]),
+  /** Warranty from completion, in months */
+  warrantyMonths: z.number().int().min(1).max(240).nullish(),
 });
 export type OrderCreateInput = z.infer<typeof orderCreateSchema>;
 
@@ -42,6 +44,7 @@ export const orderUpdateSchema = z
     dueDate: day.nullable(),
     deliveryDate: day.nullable(),
     notes: text(2000),
+    warrantyMonths: z.number().int().min(1).max(240).nullable(),
     ownerId: z.string().min(1).max(64),
     /** Cancel or reopen; the other statuses follow the steps */
     canceled: z.boolean(),
@@ -89,6 +92,9 @@ export interface OrderDto extends OrderSummaryDto {
   notes: string | null;
   steps: OrderStepDto[];
   completedAt: string | null;
+  warrantyMonths: number | null;
+  /** End of the warranty once the order is done */
+  warrantyUntil: string | null;
 }
 
 /** What the customer sees under their quote: progress only, no names. */

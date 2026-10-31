@@ -23,6 +23,8 @@ export const taskCreateSchema = z.object({
   contactId: id.nullish(),
   dealId: id.nullish(),
   recurrence: z.string().regex(RECURRENCE, "Unsupported recurrence").nullish(),
+  /** Reminder this many minutes before dueAt */
+  reminderMinutes: z.number().int().min(0).max(10_080).nullish(),
 });
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 

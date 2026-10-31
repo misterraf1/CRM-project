@@ -617,5 +617,42 @@ Testlər real provayderə getmir: `test/fake-providers.ts` Telegram və Graph AP
 | @mention | ✅ | Qeyd və tapşırıq şərhlərində "@" yoldaş təklif edir; bildiriş yalnız qeydi görə bilən yoldaşa gedir (kontakt/tapşırıq görünmə qaydaları) |
 | Bildiriş seçimləri (`/settings/notifications`) | ✅ | Hər işçi növləri özü söndürür; abunəlik/ödəniş bildirişləri söndürülmür |
 
+### v2 Mərhələ G2 — Təqvim, "Bu gün", şirkət 2FA ✅ (2026-10-31)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Şirkət işçiləri üçün 2FA | ✅ | Authenticator + ehtiyat kodlar; açar istifadəçiyə aiddir (platforma ilə ortaq `auth/mfa.ts`). Şirkət qaydası "hamı üçün məcburi": token-də `mp` iddiası, quraşdırılana qədər yalnız `/security-setup` açıqdır |
+| Təqvim (`CalendarEvent`) | ✅ | Görüş/zəng/digər, ay/həftə/gün (telefonda gündəlik siyahı), təkrarlanma (tapşırıqlarla eyni RRULE), iştirakçılar, tapşırıq son tarixləri, nəticə qeydi |
+| Xatırlatmalar | ✅ | Hadisə və tapşırıq üçün `remindAt` (indeksli); 5 dəqiqəlik tick/cron; təkrarlanan hadisədə növbəti dəfəyə keçir |
+| Zəng qeydləri | ✅ | Müştəri kartında: istiqamət, nəticə, müddət, qeyd → tarixçədə; "Geri zəng" "Bu gün"-də |
+| "Bu gün" | ✅ | Bu günün görüşləri, gecikən və bugünkü tapşırıqlar, cavab gözləyən söhbətlər, geri zənglər, müraciətlər, bağlanması yaxın satışlar |
+
+### v2 Mərhələ H — Satışdan sonra və avtomatlaşdırma v2 ✅ (2026-10-31)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Müraciətlər (`ServiceCase`) | ✅ | Şikayət/zəmanət/sual/qaytarma, M- İİİİ-NNNN nömrə, prioritetə görə SLA (4s/1g/3g/7g), vaxtı keçəndə bildiriş, qeydlər, həll; sifarişdən zəmanət (`Order.warrantyMonths`) |
+| Yenilənmələr (`Renewal`) | ✅ | `Product.renewalMonths`; ödənilmiş faktura növbəti tarixi yaradır, 14 gün qalmış məsula tapşırıq; müştəri kartında "Müştəri dəyəri" |
+| Satış hədəfləri (`SalesTarget`) | ✅ | Aylıq/rüblük, şirkət və işçi; qazanılan satışlarla irəliləyiş; dashboard kartı |
+| Avtomatlaşdırma v2 | ✅ | Yeni trigger-lər: təklif qəbul, faktura ödənib, sifariş bitdi, müştəri passivdir, söhbət cavabsız (SLA), müraciət açıldı. Yeni action-lar: mərhələyə keçir, müştəriyə e-poçt |
+| Lead scoring | ✅ | Qayda əsaslı bal 0–100 + səbəblər (`leadScore`, shared); isti/ılıq/soyuq; siyahıda filtr və "passiv (30+ gün)" filtri |
+
+### v2 Mərhələ I — Lead toplama, marketinq, müştəri kabineti ✅ (2026-10-31)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Sayt formaları (`WebForm`) | ✅ | Konstruktor, link + iframe kodu, honeypot + rate limit, e-poçt/telefonla dublikat birləşmə, növbə ilə məsul, istəyə görə satış |
+| E-poçt kampaniyaları (`Campaign`) | ✅ | Seqment (mərhələ, mənbə, etiket, bal, fəallıq, məsul), canlı alıcı sayı, bir dəfə göndəriş, HMAC abunədən çıxma linki, 30 günlük satış nəticəsi. SMTP yoxdursa açıq xəbərdarlıq, "göndərildi" sayılmır |
+| Müştəri kabineti (`PortalAccess`) | ✅ | `/c/<tenant>.<secret>` (yalnız hash saxlanır), təklif/faktura/sifariş/müraciət, təklifə cavab, müraciət açmaq, sənəd göndərmək |
+| İnteqrasiyalar səhifəsi | ✅ / yer saxlanıb | Public API, webhook, Google Calendar, IP telefoniya, SMS, səsdən mətnə, onlayn ödəniş, 1C — "Tezliklə" (təsdiqdən sonra) |
+
+### v2 Mərhələ J — Hesabatlar, onboarding, AI v2 ✅ (2026-10-31)
+| Hissə | Vəziyyət | Qeyd |
+|---|---|---|
+| Hesabatlar | ✅ | İxtiyari tarix aralığı (≤2 il), debitor borcları (yaşlanma), məhsul üzrə satış, saxlanmış hesabatlar, PDF/çap |
+| Onboarding | ✅ | Addımlar faktiki məlumatdan hesablanır; silinə bilən nümunə məlumat (yalnız öz id-ləri silinir) |
+| Biznes şablonları | ✅ | İstehsal, agentlik, IT/hosting, servis: proses, sahələr, icra addımları, məhsullar, söndürülmüş qaydalar — yalnız əlavə edir |
+| AI v2 | ✅ | Müştəri və satış xülasəsi (risk + növbəti addım), "AI-dan soruş" — hamısı istifadəçinin görə bildiyi məlumatla |
+| Satış sənədləri | ✅ | Həcm qiymətləri, təklifin yeni versiyası, müqavilə şablonu və çapı |
+| Super Admin | ✅ | Şirkətlər üzrə istifadə: işçi, müştəri, yaddaş, AI kreditləri, e-poçt, son giriş |
+| Dizayn | ✅ | Menyu 4 qrupa (İş, Satış, Servis və marketinq, İdarəetmə); "Bu gün"-də boş bölmələr yığılır; mobil təqvim başlığı |
+
 ### Növbəti
-v2 Mərhələ G2: təqvim (görüş/zəng, gün/həftə/ay), "Bu gün" görünüşü, şirkət işçiləri üçün iki mərhələli giriş.
+Xarici inteqrasiyalar (sahibin təsdiqi ilə): Public API + webhook, Google Calendar, IP telefoniya, SMS, səsdən mətnə, onlayn ödəniş.

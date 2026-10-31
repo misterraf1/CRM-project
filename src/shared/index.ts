@@ -17,3 +17,7 @@ export * from "./automations";
 export * from "./imports";
 export * from "./sales";
 export * from "./orders";
+export * from "./calendar";
+export * from "./service";
+export * from "./growth";
+export * from "./onboarding";

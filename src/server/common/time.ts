@@ -48,3 +48,14 @@ export function addDays(date: Date, days: number, timeZone: string) {
   const p = parts(date, timeZone);
   return zonedMidnight(p.y, p.m, p.d + days, timeZone);
 }
+
+/** Local midnight on the 1st of month `m` (1–12; overflow rolls into the next years). */
+export function monthStart(y: number, m: number, timeZone: string) {
+  return zonedMidnight(y, m, 1, timeZone);
+}
+
+/** Year and month (1–12) of an instant in `timeZone`. */
+export function localYearMonth(date: Date, timeZone: string) {
+  const p = parts(date, timeZone);
+  return { y: p.y, m: p.m };
+}

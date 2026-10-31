@@ -2,7 +2,22 @@ import { z } from "zod";
 import { CONTACT_SOURCES } from "./crm-schemas";
 import { CHANNEL_TYPES } from "./inbox-schemas";
 
-export const AUTOMATION_TRIGGERS = ["deal.created", "deal.stage_changed", "contact.created", "conversation.created", "task.overdue"] as const;
+export const AUTOMATION_TRIGGERS = [
+  "deal.created",
+  "deal.stage_changed",
+  "contact.created",
+  "conversation.created",
+  "task.overdue",
+  "quote.accepted",
+  "invoice.paid",
+  "order.done",
+  /** No activity on the contact for `inactiveDays` (checked every few minutes) */
+  "contact.inactive",
+  /** A customer has waited past the company's reply target (SLA) */
+  "conversation.unanswered",
+  /** A customer complaint / service request was opened */
+  "case.created",
+] as const;
 export type AutomationTrigger = (typeof AUTOMATION_TRIGGERS)[number];
 
 const id = z.string().trim().min(1).max(40);
@@ -17,6 +32,8 @@ export const automationConditionsSchema = z
     source: z.enum(CONTACT_SOURCES).optional(),
     /** conversation.created */
     channelType: z.enum(CHANNEL_TYPES).optional(),
+    /** contact.inactive: days without activity (default 30) */
+    inactiveDays: z.number().int().min(1).max(365).optional(),
   })
   .strict();
 export type AutomationConditions = z.infer<typeof automationConditionsSchema>;
@@ -41,6 +58,17 @@ export const automationActionSchema = z.discriminatedUnion("type", [
     type: z.literal("assign"),
     /** One member, or rotate through several */
     memberIds: z.array(id).min(1).max(50),
+  }),
+  z.object({
+    /** The related deal moves to this stage (same pipeline; open or won) */
+    type: z.literal("move_stage"),
+    stageId: id,
+  }),
+  z.object({
+    /** Email to the related customer ({name} and {title} are filled in) */
+    type: z.literal("send_email"),
+    subject: z.string().trim().min(2).max(200),
+    body: z.string().trim().min(2).max(5000),
   }),
 ]);
 export type AutomationAction = z.infer<typeof automationActionSchema>;

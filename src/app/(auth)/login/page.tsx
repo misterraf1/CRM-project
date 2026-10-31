@@ -13,6 +13,23 @@ export default async function LoginPage({ searchParams }: Props) {
   const params = await searchParams;
   const { t } = await getI18n();
   const a = t.auth;
+  if (params.step === "code") {
+    return (
+      <>
+        <h1 className="text-xl font-semibold tracking-tight">{t.admin.loginCodeTitle}</h1>
+        <p className="mt-1 text-sm text-fg-muted">{t.admin.loginCodeHint}</p>
+        <form action="/auth/mfa" method="post" className="mt-6 space-y-4">
+          <FormError message={errorMessage(t, params.error)} />
+          <input type="hidden" name="next" value={safeNext(params.next)} />
+          <Field label={t.admin.security.code} name="code" autoComplete="one-time-code" inputMode="text" required autoFocus />
+          <SubmitButton>{t.admin.loginCodeSubmit}</SubmitButton>
+        </form>
+        <Link href="/login" className="mt-6 block text-center text-sm text-fg-muted hover:text-fg">
+          {t.admin.loginRestart}
+        </Link>
+      </>
+    );
+  }
   return (
     <>
       <h1 className="text-xl font-semibold tracking-tight">{a.loginTitle}</h1>

@@ -1,3 +1,4 @@
+import { warrantyUntil } from "../service/cases.service";
 import { ORDER_LIMITS, type OrderCreateInput, type OrderDto, type OrderStatus, type OrderSummaryDto } from "@/shared";
 import { z } from "zod";
 import { AuditService } from "../audit/audit.service";
@@ -98,6 +99,7 @@ export class OrdersService {
         deliveryDate: input.deliveryDate ? endOfDayIn(input.deliveryDate, tenant.timezone) : null,
         notes: input.notes ?? null,
         steps,
+        warrantyMonths: input.warrantyMonths ?? null,
       });
       await this.activity.record(tx, { type: "order_created", contactId: order.contactId, dealId: order.dealId, payload: { number: order.number, orderId: order.id, title: order.title } });
       await this.audit.log(tx, { action: "order.created", entityType: "order", entityId: order.id, diff: { number: order.number, quote: quote?.number ?? null } });
@@ -114,6 +116,7 @@ export class OrdersService {
       const set: Partial<Order> = {};
       if (input.title !== undefined) set.title = input.title;
       if (input.notes !== undefined) set.notes = input.notes ?? null;
+      if (input.warrantyMonths !== undefined) set.warrantyMonths = input.warrantyMonths;
       if (input.dueDate !== undefined) set.dueDate = input.dueDate ? endOfDayIn(input.dueDate, tenant.timezone) : null;
       if (input.deliveryDate !== undefined) set.deliveryDate = input.deliveryDate ? endOfDayIn(input.deliveryDate, tenant.timezone) : null;
       if (input.ownerId !== undefined) set.ownerId = await resolveOwner(tx, ctx, input.ownerId, order.ownerId);
@@ -283,6 +286,8 @@ export class OrdersService {
       deliveryDate: o.deliveryDate?.toISOString() ?? null,
       notes: o.notes,
       completedAt: o.completedAt?.toISOString() ?? null,
+      warrantyMonths: o.warrantyMonths ?? null,
+      warrantyUntil: warrantyUntil(o)?.toISOString() ?? null,
       steps: o.steps.map((s) => {
         const a = s.assigneeId ? refs.get(s.assigneeId) : undefined;
         return {

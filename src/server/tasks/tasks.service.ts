@@ -1,3 +1,4 @@
+import { taskRemindAt } from "../calendar/calendar.service";
 import { mentionedMembers } from "../notifications/mentions";
 import { Logger } from "../common/logger";
 import type { Task } from "../db/models";
@@ -151,6 +152,8 @@ export class TasksService {
           contactId: input.contactId ?? null,
           dealId: input.dealId ?? null,
           recurrence: input.recurrence ?? null,
+          reminderMinutes: input.reminderMinutes ?? null,
+          remindAt: taskRemindAt({ dueAt: input.dueAt ?? null, reminderMinutes: input.reminderMinutes ?? null, status: input.status }),
           completedAt: input.status === "DONE" ? new Date() : null,
           position: (last?.position ?? 0) + POSITION_STEP,
       });
@@ -180,7 +183,7 @@ export class TasksService {
       const reopening = input.status !== undefined && input.status !== "DONE" && current.status === "DONE";
       const dueChanged = input.dueAt !== undefined && input.dueAt?.getTime() !== current.dueAt?.getTime();
 
-      const task = await tx.task.update(
+      let task = await tx.task.update(
         { id },
         {
           $set: {
@@ -194,12 +197,18 @@ export class TasksService {
           contactId: input.contactId,
           dealId: input.dealId,
           recurrence: input.recurrence,
+          reminderMinutes: input.reminderMinutes,
           position: input.position,
           ...(finishing ? { completedAt: new Date() } : reopening ? { completedAt: null } : {}),
           ...(dueChanged ? { overdueNotifiedAt: null } : {}),
           },
         },
       );
+
+      // A moved deadline, a new reminder or a finished task re-plans the reminder
+      if (dueChanged || input.reminderMinutes !== undefined || input.status !== undefined) {
+        task = await tx.task.update({ id }, { $set: { remindAt: taskRemindAt(task) } });
+      }
 
       const actorName = await this.actorName(tx, ctx);
       if (input.assigneeId && input.assigneeId !== current.assigneeId) {
@@ -284,6 +293,8 @@ export class TasksService {
         contactId: task.contactId,
         dealId: task.dealId,
         recurrence: task.recurrence,
+        reminderMinutes: task.reminderMinutes,
+        remindAt: taskRemindAt({ dueAt: nextOccurrence(task.recurrence!, base), reminderMinutes: task.reminderMinutes, status: "TODO" }),
         dueAt: nextOccurrence(task.recurrence!, base),
         position: task.position,
     });
@@ -354,6 +365,7 @@ export class TasksService {
       completedAt: t.completedAt?.toISOString() ?? null,
       overdue: !!t.dueAt && t.dueAt.getTime() < now && t.status !== "DONE" && t.status !== "CANCELED",
       recurrence: t.recurrence,
+      reminderMinutes: t.reminderMinutes ?? null,
       project: (t.projectId && projectById.get(t.projectId)) || null,
       parentId: t.parentId,
       contact: (t.contactId && contactById.get(t.contactId)) || null,

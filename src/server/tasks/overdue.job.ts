@@ -5,6 +5,7 @@ import { JobsMonitor } from "../common/jobs-monitor";
 import { NotificationsService } from "../notifications/notifications.service";
 import type { Database } from "../db/database";
 import type { SalesDocsService } from "../sales/docs.service";
+import type { Reminders } from "../calendar/reminders";
 
 const EVERY_MS = 5 * 60_000;
 const BATCH = 200;
@@ -24,6 +25,9 @@ export class OverdueJob {
     private readonly notifications: NotificationsService,
     private readonly automations: AutomationRunner,
     private readonly docs?: SalesDocsService,
+    private readonly reminders?: Reminders,
+    /** Other periodic checks sharing the tick (each returns how many notices it sent) */
+    private readonly extra: (() => Promise<number>)[] = [],
   ) {}
 
   start() {
@@ -65,6 +69,9 @@ export class OverdueJob {
       );
     }
     if (this.docs) sent += await this.docs.notifyOverdue();
+    // Calendar and task reminders ride on the same 5-minute tick (and the cron)
+    if (this.reminders) sent += await this.reminders.run();
+    for (const check of this.extra) sent += await check();
     if (sent) this.logger.log(`Sent ${sent} overdue notice(s)`);
     return sent;
   }

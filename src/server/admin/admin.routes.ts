@@ -106,5 +106,7 @@ export function adminRoutes(router: Router, s: Services) {
     r.patch("tickets/:id", { body: ticketUpdateSchema }, ({ params, body }) => s.support.adminUpdate(params.id!, body));
 
     r.get("system", () => s.admin.system());
+
+    r.get("usage", () => s.admin.usage());
   });
 }

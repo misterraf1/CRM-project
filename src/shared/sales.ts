@@ -42,6 +42,14 @@ export const productSchema = z.object({
     .array(z.object({ productId: z.string().min(1).max(64), quantity: z.number().positive().max(100_000) }))
     .max(30)
     .default([]),
+  /** A service renewed every N months (hosting, licence); paid invoices schedule the next renewal */
+  renewalMonths: z.number().int().min(1).max(60).nullish(),
+  /** Volume prices: from this quantity on, this unit price */
+  priceTiers: z
+    .array(z.object({ minQty: z.number().positive().max(1_000_000), price: money }))
+    .max(10)
+    .refine((t) => new Set(t.map((x) => x.minQty)).size === t.length, "Each quantity once")
+    .default([]),
 });
 export type ProductInput = z.infer<typeof productSchema>;
 
@@ -114,6 +122,8 @@ export const docSettingsSchema = z.object({
   maxDiscountBp: rate.nullish(),
   /** Default execution steps for new orders */
   orderSteps: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
+  /** Contract text printed from a quote; {company} {customer} {number} {date} {total} are filled in */
+  contractTemplate: text(20_000),
 });
 export type DocSettingsInput = z.infer<typeof docSettingsSchema>;
 export type DocSettings = DocSettingsInput & {
@@ -175,6 +185,14 @@ export interface ProductDto {
   taxBp: number;
   active: boolean;
   components: { productId: string; name: string; quantity: number }[];
+  renewalMonths: number | null;
+  priceTiers: { minQty: number; price: number }[];
+}
+
+/** Unit price for a quantity: the highest volume tier reached, else the list price. */
+export function unitPriceFor(p: Pick<ProductDto, "price" | "priceTiers">, quantity: number) {
+  const tier = [...(p.priceTiers ?? [])].sort((a, b) => b.minQty - a.minQty).find((t) => quantity >= t.minQty);
+  return tier ? tier.price : p.price;
 }
 
 export interface DocLineDto extends LineTotals {

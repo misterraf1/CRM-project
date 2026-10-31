@@ -9,6 +9,8 @@ export const REFRESH_COOKIE = "axis_rt";
 export const ADMIN_COOKIE = "axis_adm";
 /** Between the password and the 2FA code step (5 minutes, platform sign-in only). */
 export const ADMIN_MFA_COOKIE = "axis_adm_mfa";
+/** Same for company sign-in (accounts with 2FA on) */
+export const MFA_COOKIE = "axis_mfa";
 
 const base = { httpOnly: true, sameSite: "lax" as const, path: "/", secure: process.env.NODE_ENV === "production" };
 
@@ -30,6 +32,10 @@ export function writeAdminToken(jar: CookieJar, tokens: AdminTokens) {
 
 export function writeAdminChallenge(jar: CookieJar, challenge: string) {
   jar.set(ADMIN_MFA_COOKIE, challenge, { ...base, sameSite: "strict", path: "/admin", maxAge: 300 });
+}
+
+export function writeChallenge(jar: CookieJar, challenge: string) {
+  jar.set(MFA_COOKIE, challenge, { ...base, sameSite: "strict", path: "/auth", maxAge: 300 });
 }
 
 export function clearTokens(jar: CookieJar) {

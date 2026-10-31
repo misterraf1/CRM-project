@@ -6,6 +6,7 @@ import type {
   AdminPlanDto,
   AdminTenantDetail,
   AdminTenantListResponse,
+  AdminUsageRow,
   ExpenseDto,
   SystemHealthDto,
   TicketDto,
@@ -26,3 +27,4 @@ export const getAdminExpenses = () => adminFetch<ExpenseDto[]>("/expenses");
 export const getAdminTickets = (status?: string) => adminFetch<TicketDto[]>(`/tickets${qs({ status })}`);
 export const getAdminTicket = (id: string) => adminFetch<TicketDto>(`/tickets/${encodeURIComponent(id)}`);
 export const getSystemHealth = () => adminFetch<SystemHealthDto>("/system");
+export const getAdminUsage = () => adminFetch<AdminUsageRow[]>("/usage");

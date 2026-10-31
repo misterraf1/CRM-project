@@ -1,6 +1,6 @@
 "use client";
 
-import { docTotals, type DocDto, type DocKind, type ProductDto } from "@/shared";
+import { unitPriceFor, docTotals, type DocDto, type DocKind, type ProductDto } from "@/shared";
 import { Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
@@ -79,7 +79,18 @@ export function DocEditor({ kind, doc, contacts, defaults, products, currencies 
   const contactOptions = doc?.contact && !contacts.some((c) => c.id === doc.contact!.id) ? [doc.contact, ...contacts] : contacts;
   const available = products.filter((p) => p.active);
 
-  const update = (rowKey: string, patch: Partial<Row>) => setRows((all) => all.map((r) => (r.key === rowKey ? { ...r, ...patch } : r)));
+  const update = (rowKey: string, patch: Partial<Row>) =>
+    setRows((all) =>
+      all.map((r) => {
+        if (r.key !== rowKey) return r;
+        const next = { ...r, ...patch };
+        // Volume pricing: a catalog line follows the tier its quantity reaches
+        const p = patch.quantity !== undefined && r.productId ? products.find((x) => x.id === r.productId) : undefined;
+        const qty = toQty(next.quantity);
+        if (p?.priceTiers.length && qty !== null) next.price = moneyInputValue(unitPriceFor(p, qty));
+        return next;
+      }),
+    );
 
   function addProduct(id: string) {
     const p = products.find((x) => x.id === id);

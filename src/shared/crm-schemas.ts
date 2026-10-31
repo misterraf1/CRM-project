@@ -64,6 +64,10 @@ export const contactListQuerySchema = z.object({
   tag: z.string().trim().min(1).max(40).optional(),
   /** People of one company */
   companyId: z.string().min(1).max(64).optional(),
+  /** Lead score level */
+  level: z.enum(["hot", "warm", "cold"]).optional(),
+  /** "passive": no activity for 30+ days; "active": activity within 30 days */
+  activity: z.enum(["active", "passive"]).optional(),
   /** Custom field filter: field id + value (text: contains; select/multiselect: has option; checkbox: "true"/"false") */
   field: z.string().min(1).max(64).optional(),
   value: z.string().trim().min(1).max(200).optional(),

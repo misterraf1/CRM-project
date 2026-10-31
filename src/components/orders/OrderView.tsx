@@ -70,6 +70,7 @@ export function OrderView({ order: initial, members }: { order: OrderDto; member
           dueDate: String(f.get("dueDate") || "") || null,
           deliveryDate: String(f.get("deliveryDate") || "") || null,
           notes: String(f.get("notes") ?? ""),
+          warrantyMonths: f.get("warrantyMonths") ? Number(f.get("warrantyMonths")) : null,
         }),
       () => setSaved(true),
     );
@@ -174,6 +175,11 @@ export function OrderView({ order: initial, members }: { order: OrderDto; member
               <input name="deliveryDate" type="date" defaultValue={dateInput(order.deliveryDate)} className="input" />
             </label>
           </div>
+          <label className="field-label">
+            {t.cases.warrantyMonths}
+            <input name="warrantyMonths" type="number" min={1} max={240} defaultValue={order.warrantyMonths ?? ""} className="input" />
+            {order.warrantyUntil && <span className="mt-1 block text-[11px] font-normal text-fg-subtle">{interpolate(t.cases.warrantyUntil, { date: formatDate(order.warrantyUntil, locale, "long") })}</span>}
+          </label>
           <label className="field-label">
             {k.notes}
             <textarea name="notes" rows={3} maxLength={2000} defaultValue={order.notes ?? ""} className="input min-h-[72px] py-2" />

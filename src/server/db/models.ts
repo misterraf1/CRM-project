@@ -74,6 +74,9 @@ export interface Tenant {
   fxRates: Record<string, number>;
   /** Business hours, away reply and response target of the inbox (null = defaults) */
   inboxSettings: import("@/shared").InboxSettings | null;
+  securitySettings: import("@/shared").CompanySecurity | null;
+  /** Getting started: checklist hidden, templates applied, sample records to remove */
+  onboarding: { dismissedAt: Date | null; templates: string[]; demo: { contactIds: string[]; dealIds: string[]; taskIds: string[] } | null };
   /** Seller details printed on quotes and invoices */
   docSettings: {
     legalName?: string | null;
@@ -87,6 +90,7 @@ export interface Tenant {
     maxDiscountBp?: number | null;
     /** Default execution steps of a new order */
     orderSteps?: string[];
+    contractTemplate?: string | null;
   };
   locale: Locale;
   status: TenantStatus;
@@ -228,6 +232,8 @@ export interface Membership {
   invitedAt: Date | null;
   joinedAt: Date | null;
   createdAt: Date;
+  /** Analytics views the member saved (name + page query) */
+  savedReports: { id: string; name: string; query: string }[];
 }
 
 /** A company's own role: a named set of permissions. */
@@ -265,6 +271,17 @@ export interface Contact {
   customFields: JsonValue;
   /** Permission for messages we start (WhatsApp templates, campaigns): who recorded it and how */
   messagingConsent: { status: "opted_in" | "opted_out"; at: Date; source: "manual" | "keyword" } | null;
+  /** Last timeline event or inbound message (passive customers, scoring, contact.inactive) */
+  lastActivityAt: Date | null;
+  /** contact.inactive fired for the current quiet spell */
+  inactiveAlertedAt: Date | null;
+  /** Unsubscribed from campaign emails (link in every campaign email) */
+  emailOptOutAt: Date | null;
+  /** Lead score 0–100 with its reasons (rule based, recomputed by the jobs) */
+  score: number | null;
+  scoreLevel: "hot" | "warm" | "cold" | null;
+  scoreReasons: string[];
+  scoredAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -342,6 +359,10 @@ export interface Task {
   dueAt: Date | null;
   completedAt: Date | null;
   overdueNotifiedAt: Date | null;
+  /** Minutes before dueAt; null = no reminder */
+  reminderMinutes: number | null;
+  /** When the reminder fires next (cleared once sent) */
+  remindAt: Date | null;
   recurrence: string | null;
   contactId: string | null;
   dealId: string | null;
@@ -394,6 +415,8 @@ export interface Conversation {
   optedOutAt: Date | null;
   /** Last automatic out-of-hours reply (at most one per 12 h) */
   lastAutoReplyAt: Date | null;
+  /** conversation.unanswered fired for the current wait */
+  unansweredAlertedAt: Date | null;
   createdAt: Date;
 }
 
@@ -575,6 +598,9 @@ export interface EmailMessage {
   html: string;
   template: string;
   inboxMessageId: string | null;
+  /** Campaign emails: which campaign and customer (results, unsubscribes) */
+  campaignId: string | null;
+  contactId: string | null;
   from: string | null;
   headers: JsonValue;
   status: string;
@@ -661,6 +687,9 @@ export interface Product {
   active: boolean;
   /** A bundle lists what it contains (sold at its own price, as one line) */
   components: { productId: string; quantity: number }[];
+  /** A service renewed every N months (hosting, licence, maintenance); null = one-off */
+  renewalMonths: number | null;
+  priceTiers: { minQty: number; price: number }[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -731,8 +760,140 @@ export interface Order {
   notes: string | null;
   steps: OrderStep[];
   completedAt: Date | null;
+  /** Warranty from completion; null = none */
+  warrantyMonths: number | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface CalendarEvent {
+  id: string;
+  tenantId: string;
+  title: string;
+  kind: string;
+  startAt: Date;
+  endAt: Date;
+  allDay: boolean;
+  location: string | null;
+  description: string | null;
+  contactId: string | null;
+  dealId: string | null;
+  ownerId: string;
+  attendeeIds: string[];
+  /** RRULE subset shared with tasks (FREQ + INTERVAL) */
+  recurrence: string | null;
+  reminderMinutes: number | null;
+  /** When the next reminder fires; the job advances it through the occurrences */
+  remindAt: Date | null;
+  outcome: string | null;
+  outcomeNote: string | null;
+  direction: string | null;
+  createdById: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ServiceCase {
+  id: string;
+  tenantId: string;
+  number: string;
+  contactId: string;
+  dealId: string | null;
+  orderId: string | null;
+  type: string;
+  subject: string;
+  description: string | null;
+  priority: string;
+  status: string;
+  assigneeId: string | null;
+  /** Reply/resolution target from the priority */
+  dueAt: Date;
+  /** Warranty state at opening (from the linked order) */
+  warranty: { until: Date; valid: boolean } | null;
+  resolution: string | null;
+  resolvedAt: Date | null;
+  notes: { id: string; authorId: string | null; body: string; at: Date }[];
+  overdueNotifiedAt: Date | null;
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Renewal {
+  id: string;
+  tenantId: string;
+  contactId: string;
+  productId: string;
+  productName: string;
+  /** The invoice whose payment started this period */
+  docId: string;
+  amount: number;
+  currency: string;
+  dueAt: Date;
+  status: string;
+  ownerId: string | null;
+  taskId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SalesTarget {
+  id: string;
+  tenantId: string;
+  /** null = the whole company */
+  memberId: string | null;
+  period: string;
+  /** First day of the month / quarter, "YYYY-MM" */
+  start: string;
+  /** Company currency, minor units */
+  amount: number;
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface WebForm {
+  id: string;
+  tenantId: string;
+  name: string;
+  title: string;
+  fields: { key: string; label: string; required: boolean }[];
+  successMessage: string;
+  assigneeIds: string[];
+  rrCursor: number;
+  createDeal: boolean;
+  active: boolean;
+  submissions: number;
+  lastSubmissionAt: Date | null;
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Campaign {
+  id: string;
+  tenantId: string;
+  name: string;
+  subject: string;
+  body: string;
+  segment: JsonValue;
+  status: string;
+  recipients: number;
+  sentAt: Date | null;
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PortalAccess {
+  id: string;
+  tenantId: string;
+  contactId: string;
+  tokenHash: string;
+  createdById: string | null;
+  lastUsedAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
 }
 
 export interface DocPayment {
@@ -796,6 +957,13 @@ export interface Models {
   SalesDoc: SalesDoc;
   DocPayment: DocPayment;
   Order: Order;
+  CalendarEvent: CalendarEvent;
+  ServiceCase: ServiceCase;
+  Renewal: Renewal;
+  SalesTarget: SalesTarget;
+  WebForm: WebForm;
+  Campaign: Campaign;
+  PortalAccess: PortalAccess;
 }
 export type ModelName = keyof Models;
 
@@ -804,7 +972,7 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   User: { passwordHash: null, avatarUrl: null, locale: "AZ", platformRole: "NONE", emailVerified: null, mfaSecret: null, mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [], lastLoginAt: null, createdAt: "now", updatedAt: "now" },
   AdminSession: { revokedAt: null, ip: null, userAgent: null, createdAt: "now" },
   Session: { userAgent: null, ip: null, rotatedAt: null, revokedAt: null, createdAt: "now" },
-  Tenant: { logoUrl: null, timezone: "Asia/Baku", currency: "AZN", fxRates: {}, docSettings: {}, inboxSettings: null, locale: "AZ", status: "TRIALING", lockVersion: 0, createdAt: "now", updatedAt: "now" },
+  Tenant: { logoUrl: null, timezone: "Asia/Baku", currency: "AZN", fxRates: {}, docSettings: {}, inboxSettings: null, securitySettings: null, onboarding: { dismissedAt: null, templates: [], demo: null }, locale: "AZ", status: "TRIALING", lockVersion: 0, createdAt: "now", updatedAt: "now" },
   Plan: { currency: "AZN", aiCredits: 0, extraSeatPrice: 900, extraStorageGbPrice: 500, features: [], contactLimit: null, automationLimit: null, isPublic: true, sortOrder: 0, createdAt: "now", updatedAt: "now" },
   Subscription: { status: "TRIALING", interval: "MONTH", extraSeats: 0, extraStorageMb: 0, trialEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false, scheduledPlanId: null, providerRef: null, paymentMethod: null, retryCount: 0, nextRetryAt: null, trialReminderSentAt: null, demoNextChargeFails: false, limitOverrides: {}, featureGrants: [], complimentary: false, createdAt: "now", updatedAt: "now" },
   Invoice: { kind: "subscription", status: "OPEN", currency: "AZN", apply: null, paidAt: null, createdAt: "now" },
@@ -812,19 +980,19 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   UsageCounter: { value: 0 },
   Counter: { value: 0 },
   PlatformExpense: { currency: "AZN", note: null, createdAt: "now" },
-  Membership: { role: "EMPLOYEE", roleId: null, presence: "available", mutedNotifications: [], status: "INVITED", departmentId: null, title: null, permissions: [], inviteToken: null, invitedAt: null, joinedAt: null, createdAt: "now" },
+  Membership: { role: "EMPLOYEE", roleId: null, presence: "available", mutedNotifications: [], status: "INVITED", departmentId: null, title: null, permissions: [], inviteToken: null, invitedAt: null, joinedAt: null, savedReports: [], createdAt: "now" },
   Role: { description: null, permissions: [], createdAt: "now", updatedAt: "now" },
   Department: { headId: null, parentId: null },
-  Contact: { ownerId: null, type: "person", email: null, phone: null, companyName: null, companyId: null, stage: "LEAD", source: null, tags: [], customFields: {}, messagingConsent: null, createdAt: "now", updatedAt: "now", deletedAt: null },
+  Contact: { ownerId: null, type: "person", email: null, phone: null, companyName: null, companyId: null, stage: "LEAD", source: null, tags: [], customFields: {}, messagingConsent: null, lastActivityAt: null, inactiveAlertedAt: null, emailOptOutAt: null, score: null, scoreLevel: null, scoreReasons: [], scoredAt: null, createdAt: "now", updatedAt: "now", deletedAt: null },
   Pipeline: { isDefault: false },
   PipelineStage: { probability: 0, kind: "open" },
   Deal: { contactId: null, ownerId: null, amount: 0, currency: "AZN", baseAmount: 0, customFields: {}, expectedClose: null, closedAt: null, lostReason: null, position: 0, createdAt: "now", updatedAt: "now" },
   Activity: { contactId: null, dealId: null, actorId: null, createdAt: "now" },
   Project: { ownerId: null, archived: false, createdAt: "now" },
-  Task: { projectId: null, parentId: null, description: null, status: "TODO", priority: "MEDIUM", assigneeId: null, dueAt: null, completedAt: null, overdueNotifiedAt: null, recurrence: null, contactId: null, dealId: null, position: 0, createdAt: "now", updatedAt: "now" },
+  Task: { projectId: null, parentId: null, description: null, status: "TODO", priority: "MEDIUM", assigneeId: null, dueAt: null, completedAt: null, overdueNotifiedAt: null, reminderMinutes: null, remindAt: null, recurrence: null, contactId: null, dealId: null, position: 0, createdAt: "now", updatedAt: "now" },
   TaskComment: { createdAt: "now" },
   Channel: { credentials: null, demo: false, settings: {}, status: "connected", createdAt: "now" },
-  Conversation: { contactId: null, displayName: null, handle: null, lastInboundAt: null, status: "OPEN", assigneeId: null, departmentId: null, unreadCount: 0, lastMessageAt: null, awaitingSince: null, firstResponseMs: null, subject: null, emailReplyTo: null, optedOutAt: null, lastAutoReplyAt: null, createdAt: "now" },
+  Conversation: { contactId: null, displayName: null, handle: null, lastInboundAt: null, status: "OPEN", assigneeId: null, departmentId: null, unreadCount: 0, lastMessageAt: null, awaitingSince: null, firstResponseMs: null, subject: null, emailReplyTo: null, optedOutAt: null, lastAutoReplyAt: null, unansweredAlertedAt: null, createdAt: "now" },
   Message: { authorId: null, body: null, attachments: [], externalId: null, deliveryStatus: null, createdAt: "now" },
   CannedResponse: { isShared: true, ownerId: null },
   WebhookEvent: { receivedAt: "now", processedAt: null, error: null },
@@ -840,18 +1008,25 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   AutomationEvent: { status: "pending", attempts: 0, error: null, createdAt: "now", processedAt: null },
   AutomationRun: { detail: null, createdAt: "now" },
   PasswordReset: { usedAt: null, ip: null, createdAt: "now" },
-  EmailMessage: { tenantId: null, inboxMessageId: null, from: null, headers: {}, status: "queued", attempts: 0, error: null, createdAt: "now", sentAt: null },
+  EmailMessage: { tenantId: null, inboxMessageId: null, campaignId: null, contactId: null, from: null, headers: {}, status: "queued", attempts: 0, error: null, createdAt: "now", sentAt: null },
   FieldDefinition: { options: [], required: false, order: 0, archived: false, createdAt: "now" },
   ImportJob: { issues: [], issueRows: [], createdIds: [], byId: null, createdAt: "now" },
-  Product: { sku: null, description: null, unit: "ədəd", taxBp: 0, active: true, components: [], createdAt: "now", updatedAt: "now" },
-  Order: { status: "new", dealId: null, quoteId: null, ownerId: null, currency: "AZN", total: 0, dueDate: null, deliveryDate: null, notes: null, steps: [], completedAt: null, createdAt: "now", updatedAt: "now" },
+  Product: { sku: null, description: null, unit: "ədəd", taxBp: 0, active: true, components: [], renewalMonths: null, priceTiers: [], createdAt: "now", updatedAt: "now" },
+  Order: { status: "new", dealId: null, quoteId: null, ownerId: null, currency: "AZN", total: 0, dueDate: null, deliveryDate: null, notes: null, steps: [], completedAt: null, warrantyMonths: null, createdAt: "now", updatedAt: "now" },
+  ServiceCase: { dealId: null, orderId: null, type: "complaint", description: null, priority: "MEDIUM", status: "open", assigneeId: null, warranty: null, resolution: null, resolvedAt: null, notes: [], overdueNotifiedAt: null, createdById: null, createdAt: "now", updatedAt: "now" },
+  Renewal: { status: "upcoming", ownerId: null, taskId: null, createdAt: "now", updatedAt: "now" },
+  SalesTarget: { memberId: null, period: "month", createdById: null, createdAt: "now", updatedAt: "now" },
+  WebForm: { assigneeIds: [], rrCursor: 0, createDeal: false, active: true, submissions: 0, lastSubmissionAt: null, createdById: null, createdAt: "now", updatedAt: "now" },
+  Campaign: { segment: {}, status: "draft", recipients: 0, sentAt: null, createdById: null, createdAt: "now", updatedAt: "now" },
+  PortalAccess: { createdById: null, lastUsedAt: null, revokedAt: null, createdAt: "now" },
+  CalendarEvent: { allDay: false, location: null, description: null, contactId: null, dealId: null, attendeeIds: [], recurrence: null, reminderMinutes: null, remindAt: null, outcome: null, outcomeNote: null, direction: null, createdAt: "now", updatedAt: "now" },
   SalesDoc: { number: null, dealId: null, ownerId: null, sourceId: null, paidAmount: 0, issueDate: null, dueDate: null, notes: null, publicToken: null, sentAt: null, overdueNotifiedAt: null, approval: null, response: null, createdById: null, createdAt: "now", updatedAt: "now" },
   DocPayment: { reference: null, note: null, recordedById: null, createdAt: "now" },
   ErrorEvent: { stack: null, where: null, tenantRef: null, count: 1, firstSeenAt: "now", lastSeenAt: "now" },
 };
 
 /** Models whose `updatedAt` is bumped on every update. */
-export const HAS_UPDATED_AT: ReadonlySet<ModelName> = new Set<ModelName>(["User", "Tenant", "Plan", "Subscription", "Role", "Contact", "Deal", "Task", "SupportTicket", "AutomationRule", "Product", "SalesDoc", "Order"]);
+export const HAS_UPDATED_AT: ReadonlySet<ModelName> = new Set<ModelName>(["User", "Tenant", "Plan", "Subscription", "Role", "Contact", "Deal", "Task", "SupportTicket", "AutomationRule", "Product", "SalesDoc", "Order", "CalendarEvent", "ServiceCase", "Renewal", "SalesTarget", "WebForm", "Campaign"]);
 
 /** Models that carry `tenantId` (tenant-isolated by the repository layer). Session is not: refresh tokens are looked up by hash before any identity exists. */
-export const TENANT_MODELS: ReadonlySet<ModelName> = new Set<ModelName>(["Subscription", "Invoice", "Payment", "UsageCounter", "Membership", "Role", "Department", "Contact", "Pipeline", "PipelineStage", "Deal", "Activity", "Project", "Task", "TaskComment", "Channel", "Conversation", "Message", "CannedResponse", "ChatRoom", "ChatMember", "ChatMessage", "FileObject", "Notification", "AuditLog", "SupportTicket", "SupportTicketMessage", "AutomationRule", "AutomationEvent", "AutomationRun", "EmailMessage", "FieldDefinition", "ImportJob", "Product", "SalesDoc", "DocPayment", "Order"]);
+export const TENANT_MODELS: ReadonlySet<ModelName> = new Set<ModelName>(["Subscription", "Invoice", "Payment", "UsageCounter", "Membership", "Role", "Department", "Contact", "Pipeline", "PipelineStage", "Deal", "Activity", "Project", "Task", "TaskComment", "Channel", "Conversation", "Message", "CannedResponse", "ChatRoom", "ChatMember", "ChatMessage", "FileObject", "Notification", "AuditLog", "SupportTicket", "SupportTicketMessage", "AutomationRule", "AutomationEvent", "AutomationRun", "EmailMessage", "FieldDefinition", "ImportJob", "Product", "SalesDoc", "DocPayment", "Order", "CalendarEvent", "ServiceCase", "Renewal", "SalesTarget", "WebForm", "Campaign", "PortalAccess"]);

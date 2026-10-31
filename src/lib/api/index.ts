@@ -38,7 +38,7 @@ import type {
   AutomationRunDto,
   FileListResponse,
 } from "@/shared";
-import type { CurrencySettingsDto, OrderDto, OrderSummaryDto, DocDto, DocKind, DocSettings, DocSummaryDto, FieldDefinitionDto, FieldEntity, ProductDto, RoleDto } from "@/shared";
+import type { OnboardingDto, ProductSalesDto, ReceivablesDto, SavedReportDto, CampaignDto, WebFormDto, CaseDto, CaseSummaryDto, CustomerValueDto, RenewalDto, TargetsDto, CalendarEventDto, TodayDto, CompanySecurity, MySecurityDto, CurrencySettingsDto, OrderDto, OrderSummaryDto, DocDto, DocKind, DocSettings, DocSummaryDto, FieldDefinitionDto, FieldEntity, ProductDto, RoleDto } from "@/shared";
 import { cache } from "react";
 import { apiFetch } from "./server";
 import { PERIODS, type Period, type ShellSummary } from "./types";
@@ -54,6 +54,10 @@ export const getDepartments = () => apiFetch<DepartmentDto[]>("/v1/departments")
 export const getRoles = () => apiFetch<RoleDto[]>("/v1/roles");
 
 export const getRecordFiles = (kind: "contacts" | "deals", id: string) => apiFetch<FileDto[]>(`/v1/${kind}/${encodeURIComponent(id)}/files`);
+
+export const getMySecurity = () => apiFetch<MySecurityDto>("/v1/me/security");
+
+export const getCompanySecurity = () => apiFetch<CompanySecurity>("/v1/settings/security");
 
 export const getNotificationPrefs = () => apiFetch<{ muted: string[] }>("/v1/members/me/notifications");
 
@@ -155,9 +159,17 @@ export const getBilling = () => apiFetch<BillingOverviewDto>("/v1/billing");
 
 export const getTickets = () => apiFetch<TicketDto[]>("/v1/support/tickets");
 
-export const getAnalyticsBasic = (period: AnalyticsPeriod) => apiFetch<AnalyticsBasicDto>(`/v1/analytics/basic${query({ period })}`);
+type Range = { period: AnalyticsPeriod; from?: string; to?: string };
 
-export const getAnalyticsAdvanced = (period: AnalyticsPeriod) => apiFetch<AnalyticsAdvancedDto>(`/v1/analytics/advanced${query({ period })}`);
+export const getAnalyticsBasic = (r: Range) => apiFetch<AnalyticsBasicDto>(`/v1/analytics/basic${query(r)}`);
+
+export const getAnalyticsAdvanced = (r: Range) => apiFetch<AnalyticsAdvancedDto>(`/v1/analytics/advanced${query(r)}`);
+
+export const getReceivables = () => apiFetch<ReceivablesDto>("/v1/analytics/receivables");
+
+export const getProductSales = (r: Range) => apiFetch<ProductSalesDto>(`/v1/analytics/products${query(r)}`);
+
+export const getSavedReports = () => apiFetch<SavedReportDto[]>("/v1/analytics/saved");
 
 export const getFiles = (params: { q?: string; source?: string }) => apiFetch<FileListResponse>(`/v1/files${query(params)}`);
 
@@ -172,3 +184,26 @@ export const getInvoice = (id: string) => apiFetch<InvoiceDto & { company: strin
 export function parsePeriod(value: string | string[] | undefined): Period {
   return typeof value === "string" && (PERIODS as readonly string[]).includes(value) ? (value as Period) : "30d";
 }
+
+export const getToday = () => apiFetch<TodayDto>("/v1/today");
+
+export const getContactEvents = (id: string) => apiFetch<CalendarEventDto[]>(`/v1/contacts/${encodeURIComponent(id)}/events`);
+
+export function getCases(params: Record<string, string | undefined>) {
+  const qs = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1]));
+  return apiFetch<CaseSummaryDto[]>(`/v1/cases?${qs}`);
+}
+
+export const getCase = (id: string) => apiFetch<CaseDto>(`/v1/cases/${encodeURIComponent(id)}`);
+
+export const getRenewals = (status?: string) => apiFetch<RenewalDto[]>(`/v1/renewals${status ? `?status=${status}` : ""}`);
+
+export const getCustomerValue = (id: string) => apiFetch<CustomerValueDto>(`/v1/contacts/${encodeURIComponent(id)}/value`);
+
+export const getTargets = (period: string, start?: string) => apiFetch<TargetsDto>(`/v1/targets?period=${period}${start ? `&start=${start}` : ""}`);
+
+export const getForms = () => apiFetch<WebFormDto[]>("/v1/forms");
+
+export const getCampaigns = () => apiFetch<CampaignDto[]>("/v1/campaigns");
+
+export const getOnboarding = () => apiFetch<OnboardingDto>("/v1/onboarding");

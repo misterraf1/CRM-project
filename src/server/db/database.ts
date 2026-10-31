@@ -51,6 +51,13 @@ const MODELS = [
   "SalesDoc",
   "DocPayment",
   "Order",
+  "CalendarEvent",
+  "ServiceCase",
+  "Renewal",
+  "SalesTarget",
+  "WebForm",
+  "Campaign",
+  "PortalAccess",
 ] as const satisfies readonly ModelName[];
 
 type Key<M extends string> = Uncapitalize<M>;

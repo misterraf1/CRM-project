@@ -30,13 +30,20 @@ type Draft = AutomationRuleInput & { id?: string };
 const CHANNELS = ["WHATSAPP", "INSTAGRAM", "MESSENGER", "WEBCHAT"] as const;
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const;
 const DEAL_TRIGGERS = new Set<AutomationTrigger>(["deal.created", "deal.stage_changed"]);
+/** Triggers with conditions to pick */
+const WITH_CONDITIONS = new Set<AutomationTrigger>(["deal.created", "deal.stage_changed", "contact.created", "conversation.created", "contact.inactive"]);
+const ACTION_TYPES = ["create_task", "notify", "assign", "move_stage", "send_email"] as const;
 
-const blankAction = (type: AutomationAction["type"], members: Member[]): AutomationAction =>
+const blankAction = (type: AutomationAction["type"], members: Member[], stages: StageDto[]): AutomationAction =>
   type === "create_task"
     ? { type, title: "", dueInDays: 1, assignee: "owner", priority: "MEDIUM" }
     : type === "notify"
       ? { type, recipient: "owner", message: "" }
-      : { type, memberIds: members.slice(0, 1).map((m) => m.id) };
+      : type === "move_stage"
+        ? { type, stageId: stages.find((s) => s.kind === "won")?.id ?? stages[0]?.id ?? "" }
+        : type === "send_email"
+          ? { type, subject: "", body: "" }
+          : { type, memberIds: members.slice(0, 1).map((m) => m.id) };
 
 /** List of rules with on/off, run history, and a form to build or edit a rule. */
 export function AutomationsManager({ rules, members, stages }: { rules: AutomationRuleDto[]; members: Member[]; stages: StageDto[] }) {
@@ -77,6 +84,20 @@ export function AutomationsManager({ rules, members, stages }: { rules: Automati
       draft: { name: k.examples.overdueAlert, trigger: "task.overdue", conditions: {}, enabled: true, actions: [{ type: "notify", recipient: "managers", message: k.exampleTexts.overdue }] },
     },
     {
+      key: "paidWon",
+      draft: { name: k.examples.paidWon, trigger: "invoice.paid", conditions: {}, enabled: true, actions: won ? [{ type: "move_stage", stageId: won.id }] : [{ type: "notify", recipient: "owner", message: k.exampleTexts.paid }] },
+    },
+    {
+      key: "inactiveCall",
+      draft: {
+        name: k.examples.inactiveCall,
+        trigger: "contact.inactive",
+        conditions: { inactiveDays: 30 },
+        enabled: true,
+        actions: [{ type: "create_task", title: k.exampleTexts.reconnect, dueInDays: 1, assignee: "owner", priority: "MEDIUM" }],
+      },
+    },
+    {
       key: "newChat",
       draft: { name: k.examples.newChat, trigger: "conversation.created", conditions: { channelType: "WHATSAPP" }, enabled: true, actions: [{ type: "assign", memberIds: members.slice(0, 1).map((m) => m.id) }] },
     },
@@ -113,7 +134,11 @@ export function AutomationsManager({ rules, members, stages }: { rules: Automati
       ? `${k.actionTypes.create_task}: «${a.title}»`
       : a.type === "notify"
         ? `${k.actionTypes.notify}: «${a.message}»`
-        : `${k.actionTypes.assign}: ${a.memberIds.map(memberName).join(", ")}`;
+        : a.type === "move_stage"
+          ? `${k.actionTypes.move_stage}: ${stages.find((s) => s.id === a.stageId)?.name ?? "—"}`
+          : a.type === "send_email"
+            ? `${k.actionTypes.send_email}: «${a.subject}»`
+            : `${k.actionTypes.assign}: ${a.memberIds.map(memberName).join(", ")}`;
 
   const describeConditions = (r: AutomationRuleDto) =>
     [
@@ -121,6 +146,7 @@ export function AutomationsManager({ rules, members, stages }: { rules: Automati
       r.conditions.minAmount !== undefined && `≥ ${moneyInputValue(r.conditions.minAmount)} ₼`,
       r.conditions.source && `${k.source}: ${t.crm.sources[r.conditions.source]}`,
       r.conditions.channelType && `${k.channel}: ${t.channels.types[r.conditions.channelType]}`,
+      r.trigger === "contact.inactive" && interpolate(k.inactiveFor, { n: r.conditions.inactiveDays ?? 30 }),
     ]
       .filter(Boolean)
       .join(" · ");
@@ -133,7 +159,7 @@ export function AutomationsManager({ rules, members, stages }: { rules: Automati
           <p className="mt-0.5 text-sm text-fg-muted">{k.subtitle}</p>
         </div>
         {!draft && (
-          <button type="button" onClick={() => setDraft({ name: "", trigger: "contact.created", conditions: {}, actions: [blankAction("notify", members)], enabled: true })} className="btn-primary">
+          <button type="button" onClick={() => setDraft({ name: "", trigger: "contact.created", conditions: {}, actions: [blankAction("notify", members, stages)], enabled: true })} className="btn-primary">
             <Plus className="h-4 w-4" aria-hidden />
             {k.new}
           </button>
@@ -305,7 +331,7 @@ function RuleEditor({
         </select>
       </label>
 
-      {draft.trigger !== "task.overdue" && (
+      {WITH_CONDITIONS.has(draft.trigger) && (
         <fieldset className="grid gap-3 sm:grid-cols-2">
           <legend className="mb-2 text-xs font-medium text-fg-muted">{k.conditions}</legend>
           {DEAL_TRIGGERS.has(draft.trigger) && (
@@ -345,6 +371,12 @@ function RuleEditor({
               </select>
             </label>
           )}
+          {draft.trigger === "contact.inactive" && (
+            <label className="field-label">
+              {k.inactiveDays}
+              <input type="number" min={1} max={365} value={draft.conditions.inactiveDays ?? 30} onChange={(e) => setCond({ inactiveDays: Number(e.target.value) || undefined })} className="input" />
+            </label>
+          )}
           {draft.trigger === "conversation.created" && (
             <label className="field-label">
               {k.channel}
@@ -368,11 +400,11 @@ function RuleEditor({
             <div className="flex items-center gap-2">
               <select
                 value={a.type}
-                onChange={(e) => setAction(i, blankAction(e.target.value as AutomationAction["type"], members))}
+                onChange={(e) => setAction(i, blankAction(e.target.value as AutomationAction["type"], members, stages))}
                 className="input mt-0 w-auto"
                 aria-label={k.then}
               >
-                {(["create_task", "notify", "assign"] as const).map((type) => (
+                {ACTION_TYPES.map((type) => (
                   <option key={type} value={type}>
                     {k.actionTypes[type]}
                   </option>
@@ -436,6 +468,34 @@ function RuleEditor({
                 </label>
               </div>
             )}
+            {a.type === "move_stage" && (
+              <label className="field-label mt-3">
+                {k.targetStage}
+                <select value={a.stageId} onChange={(e) => setAction(i, { ...a, stageId: e.target.value })} className="input">
+                  {stages
+                    .filter((s) => s.kind !== "lost")
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                </select>
+                <span className="mt-1 block text-[11px] font-normal text-fg-subtle">{k.moveHint}</span>
+              </label>
+            )}
+            {a.type === "send_email" && (
+              <div className="mt-3 grid gap-3">
+                <label className="field-label">
+                  {k.emailSubject}
+                  <input value={a.subject} onChange={(e) => setAction(i, { ...a, subject: e.target.value })} required minLength={2} maxLength={200} className="input" />
+                </label>
+                <label className="field-label">
+                  {k.emailBody}
+                  <textarea value={a.body} onChange={(e) => setAction(i, { ...a, body: e.target.value })} required minLength={2} maxLength={5000} rows={4} className="input" />
+                  <span className="mt-1 block text-[11px] font-normal text-fg-subtle">{k.emailHint}</span>
+                </label>
+              </div>
+            )}
             {a.type === "assign" && (
               <fieldset className="mt-3">
                 <legend className="text-xs text-fg-muted">{k.assignTo}</legend>
@@ -456,7 +516,7 @@ function RuleEditor({
           </div>
         ))}
         {draft.actions.length < 5 && (
-          <button type="button" onClick={() => set({ actions: [...draft.actions, blankAction("create_task", members)] })} className="btn-ghost h-8 border border-dashed border-border text-xs">
+          <button type="button" onClick={() => set({ actions: [...draft.actions, blankAction("create_task", members, stages)] })} className="btn-ghost h-8 border border-dashed border-border text-xs">
             <Plus className="h-3.5 w-3.5" aria-hidden />
             {k.addAction}
           </button>

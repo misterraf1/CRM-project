@@ -32,6 +32,26 @@ export class PublicDocsService {
     }, { tenantId });
   }
 
+  /** A document of the customer's own, opened from their portal (drafts stay internal). */
+  async viewOwn(tenantId: string, contactId: string, docId: string): Promise<PublicDocDto> {
+    return this.db.scoped(async (tx) => this.dto(tx, await this.own(tx, tenantId, contactId, docId)), { tenantId });
+  }
+
+  async respondOwn(tenantId: string, contactId: string, docId: string, input: { decision: "accept" | "reject"; name: string; comment?: string | null }): Promise<PublicDocDto> {
+    Object.assign(currentContext(), { tenantId });
+    return this.db.scoped(async (tx) => {
+      const doc = await this.own(tx, tenantId, contactId, docId);
+      if (doc.kind !== "quote") throw notFound("Quote");
+      return this.dto(tx, await this.docs.applyResponse(tx, doc, { decision: input.decision, name: input.name, comment: input.comment ?? null }, true));
+    }, { tenantId });
+  }
+
+  private async own(tx: Tx, tenantId: string, contactId: string, docId: string) {
+    const doc = await tx.salesDoc.findOne({ id: docId, tenantId, contactId, status: { $nin: ["draft", "void"] } });
+    if (!doc) throw notFound("Document");
+    return doc;
+  }
+
   private async find(tx: Tx, tenantId: string, hash: string) {
     const doc = await tx.salesDoc.findOne({ tenantId, publicToken: hash });
     if (!doc || doc.status === "void") throw notFound("Document");

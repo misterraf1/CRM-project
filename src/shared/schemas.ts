@@ -23,6 +23,16 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** Second sign-in step: the challenge from the password step plus an app or recovery code */
+export const loginMfaSchema = z.object({
+  challenge: z.string().min(10).max(2000),
+  code: z.string().trim().min(6).max(20),
+});
+
+/** Company-wide sign-in rules (owner/admin) */
+export const companySecuritySchema = z.object({ requireMfa: z.boolean() });
+export type CompanySecurity = z.infer<typeof companySecuritySchema>;
+
 export const refreshSchema = z.object({ refreshToken: z.string().min(20).max(200) });
 
 export const forgotPasswordSchema = z.object({ email });

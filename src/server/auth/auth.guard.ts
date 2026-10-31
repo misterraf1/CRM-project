@@ -18,7 +18,7 @@ export class AuthGuard {
     private readonly entitlements: EntitlementsService,
   ) {}
 
-  async check(req: Request, route: Pick<RouteOptions, "permission" | "feature" | "allowInactive">): Promise<void> {
+  async check(req: Request, route: Pick<RouteOptions, "permission" | "feature" | "allowInactive" | "withoutMfa">): Promise<void> {
     const header = req.headers.get("authorization") ?? "";
     const [scheme, token] = header.split(" ");
     if (scheme !== "Bearer" || !token) throw new AppError("UNAUTHENTICATED", "Missing bearer token");
@@ -56,6 +56,8 @@ export class AuthGuard {
       features,
       subscriptionStatus: subscription.status,
     });
+
+    if (payload.mp && !route.withoutMfa) throw new AppError("MFA_SETUP_REQUIRED", "The company requires two-factor sign-in; set it up to continue");
 
     // Suspended / canceled workspaces are read-only until paid
     if (INACTIVE_STATUSES.has(subscription.status) && req.method !== "GET" && !route.allowInactive) {

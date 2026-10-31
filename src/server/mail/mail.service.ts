@@ -21,6 +21,9 @@ export interface QueuedMail {
   raw?: { subject: string; text: string; html: string };
   /** Email channel: the inbox message whose delivery status follows this email */
   inboxMessageId?: string;
+  /** Campaign emails: for results and unsubscribes */
+  campaignId?: string;
+  contactId?: string;
 }
 
 /**
@@ -66,6 +69,8 @@ export class MailService {
       from: mail.from ?? null,
       headers: mail.headers ?? {},
       inboxMessageId: mail.inboxMessageId ?? null,
+      campaignId: mail.campaignId ?? null,
+      contactId: mail.contactId ?? null,
     });
     this.soon();
   }

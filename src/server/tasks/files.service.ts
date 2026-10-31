@@ -1,6 +1,6 @@
 import { inboxScope } from "../inbox/inbox.service";
 import type { FileDto, FileListItemDto, FileListQuery, FileListResponse, FileSource } from "@/shared";
-import { authedContext, type AuthedContext } from "../common/context";
+import { authedContext, currentContext, type AuthedContext } from "../common/context";
 import { AppError, forbidden, notFound } from "../common/errors";
 import { newId } from "../common/ids";
 import { memberRefs, ownerScope } from "../crm/scope";
@@ -40,8 +40,15 @@ export class FilesService {
    * Stores an upload for any entity after the caller has checked access to it:
    * enforces the plan's storage quota, writes the record, then the blob.
    */
-  async store(target: { entityType: "task" | "chat" | "library" | "conversation" | "contact" | "deal"; entityId: string | null }, file: UploadedFile | undefined): Promise<FileDto> {
-    const ctx = authedContext();
+  /** `actor` for uploads without a staff session (the customer portal: uploader "customer") */
+  async store(
+    target: { entityType: "task" | "chat" | "library" | "conversation" | "contact" | "deal"; entityId: string | null },
+    file: UploadedFile | undefined,
+    actor?: { tenantId: string; membershipId: string },
+  ): Promise<FileDto> {
+    const ctx = actor ?? authedContext();
+    // Staff keep their full request scope; the portal works inside the company only
+    const scope = actor ? { tenantId: actor.tenantId } : currentContext();
     if (!file) throw new AppError("VALIDATION_FAILED", "No file", { file: ["Required"] });
     const id = newId("fil");
     const key = `tenants/${ctx.tenantId}/${id}`;
@@ -65,15 +72,15 @@ export class FilesService {
           entityType: target.entityType,
           entityId: target.entityId,
       });
-    });
+    }, scope);
 
     try {
       await this.storage.put(key, file.buffer);
     } catch (e) {
-      await this.db.scoped((tx) => tx.fileObject.delete({ id }));
+      await this.db.scoped((tx) => tx.fileObject.delete({ id }), scope);
       throw e;
     }
-    const refs = await this.db.scoped((tx) => memberRefs(tx, ctx.tenantId, [ctx.membershipId]));
+    const refs = await this.db.scoped((tx) => memberRefs(tx, ctx.tenantId, [ctx.membershipId]), scope);
     const me = refs.get(ctx.membershipId);
     return {
       id,

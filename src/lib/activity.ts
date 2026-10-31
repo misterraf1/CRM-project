@@ -1,5 +1,5 @@
 import type { ActivityDto, ActivityType, LifecycleStage } from "@/shared";
-import { CheckCircle2, FileCheck2, PackageCheck, PackagePlus, FileText, FileX2, Handshake, MoveRight, Receipt, StickyNote, UserCog, UserPlus, Wallet, XCircle, type LucideIcon } from "lucide-react";
+import { CalendarCheck, CheckCircle2, Globe, LifeBuoy, ShieldCheck, FileCheck2, Phone, PackageCheck, PackagePlus, FileText, FileX2, Handshake, MoveRight, Receipt, StickyNote, UserCog, UserPlus, Wallet, XCircle, type LucideIcon } from "lucide-react";
 import { formatMoney, formatMoneyExact } from "./format";
 import type { Dictionary } from "./i18n/dictionaries/az";
 import { interpolate, type Locale } from "./i18n/locales";
@@ -20,6 +20,11 @@ export const ACTIVITY_ICONS: Record<ActivityType, { icon: LucideIcon; className:
   invoice_paid: { icon: Wallet, className: "text-success" },
   order_created: { icon: PackagePlus, className: "text-accent" },
   order_done: { icon: PackageCheck, className: "text-success" },
+  call_logged: { icon: Phone, className: "text-accent" },
+  meeting_done: { icon: CalendarCheck, className: "text-success" },
+  case_opened: { icon: LifeBuoy, className: "text-warning" },
+  case_resolved: { icon: ShieldCheck, className: "text-success" },
+  form_submitted: { icon: Globe, className: "text-accent" },
 };
 
 /** One-line, localized description. Names come from the payload captured at write time. */
@@ -39,6 +44,8 @@ export function describeActivity(a: ActivityDto, t: Dictionary, locale: Locale):
     from: a.type === "contact_stage" ? stage(p.from) : String(p.from ?? ""),
     to: a.type === "contact_stage" ? stage(p.to) : String(p.to ?? ""),
     reason: reason(p.reason),
+    title: String(p.title ?? ""),
+    outcome: t.calendar.outcomes[p.outcome as keyof Dictionary["calendar"]["outcomes"]] ?? String(p.outcome ?? ""),
   };
   return interpolate(t.dashboard.activity[a.type], vars);
 }

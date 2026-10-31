@@ -103,7 +103,7 @@ test("contact card: add a reminder task linked to the customer", async ({ page }
   await signupCompany(page, "Xatırlatma MMC");
   await page.goto("/crm/new");
   await page.getByLabel("Ad", { exact: true }).fill("Fərid Nəsirov");
-  await page.getByRole("button", { name: "Yarat" }).click();
+  await page.getByRole("button", { name: "Yarat", exact: true }).click();
   await expect(page.getByText("Açıq tapşırıq yoxdur")).toBeVisible();
   await page.getByLabel("Yeni tapşırıq").fill("Fəridə geri zəng");
   await page.getByLabel("Son tarix").fill("2031-05-02T15:30");

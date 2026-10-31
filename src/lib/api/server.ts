@@ -38,6 +38,8 @@ async function authedFetch<T>(cookie: string, expired: string, path: string, ini
   if (res.status === 401) redirect(expired);
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as ApiError | null;
+    // The company requires 2FA and this account hasn't set it up
+    if (body?.error.code === "MFA_SETUP_REQUIRED" && cookie === ACCESS_COOKIE) redirect("/security-setup");
     throw new ApiRequestError(res.status, body?.error.code ?? "INTERNAL", body?.error.details);
   }
   return (res.status === 204 ? undefined : await res.json()) as T;

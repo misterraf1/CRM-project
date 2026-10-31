@@ -1,6 +1,6 @@
 "use client";
 
-import { PRIORITIES, TASK_STATUSES, type MemberDto, type ProjectDto, type TaskDetailDto, type TaskDto } from "@/shared";
+import { PRIORITIES, REMINDER_MINUTES, TASK_STATUSES, type MemberDto, type ProjectDto, type TaskDetailDto, type TaskDto } from "@/shared";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
@@ -34,6 +34,7 @@ export function TaskEditor({ task, members, projects }: { task: TaskDetailDto; m
         dueAt: due ? fromDateTimeInput(due) : null,
         projectId: String(f.get("projectId")) || null,
         recurrence: String(f.get("recurrence")) || null,
+        reminderMinutes: f.get("reminder") ? Number(f.get("reminder")) : null,
       });
     }
     setError(undefined);
@@ -117,6 +118,17 @@ export function TaskEditor({ task, members, projects }: { task: TaskDetailDto; m
           <label className="field-label">
             {k.due}
             <input name="dueAt" type="datetime-local" defaultValue={toDateTimeInput(task.dueAt)} disabled={!canEdit} className="input" />
+          </label>
+          <label className="field-label">
+            {k.reminder}
+            <select name="reminder" defaultValue={task.reminderMinutes != null ? String(task.reminderMinutes) : ""} disabled={!canEdit} className="input">
+              <option value="">{t.calendar.reminders.none}</option>
+              {REMINDER_MINUTES.map((m) => (
+                <option key={m} value={m}>
+                  {t.calendar.reminders[String(m) as keyof typeof t.calendar.reminders]}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="field-label">
             {k.project}

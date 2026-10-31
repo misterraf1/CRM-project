@@ -45,7 +45,7 @@ export function DocSettingsCard({ settings }: { settings: DocSettings }) {
     const f = new FormData(e.currentTarget);
     const discount = String(f.get("maxDiscount") ?? "").replace(",", ".").trim();
     const body = {
-      ...Object.fromEntries(["legalName", "taxId", "address", "bankDetails", "terms"].map((key) => [key, String(f.get(key) ?? "")])),
+      ...Object.fromEntries(["legalName", "taxId", "address", "bankDetails", "terms", "contractTemplate"].map((key) => [key, String(f.get(key) ?? "")])),
       maxDiscountBp: discount === "" ? null : Math.round(Number(discount) * 100),
       orderSteps: String(f.get("orderSteps") ?? "")
         .split("\n")
@@ -119,6 +119,11 @@ export function DocSettingsCard({ settings }: { settings: DocSettings }) {
         <label className="field-label sm:col-span-2">
           {k.terms}
           <textarea name="terms" rows={3} maxLength={2000} defaultValue={settings.terms ?? ""} className="input min-h-[72px] py-2" />
+        </label>
+        <label className="field-label sm:col-span-2">
+          {t.contract.template}
+          <textarea name="contractTemplate" rows={6} maxLength={20_000} defaultValue={settings.contractTemplate ?? ""} placeholder={t.contract.placeholder} className="input min-h-[120px] py-2" />
+          <span className="mt-1 block text-[11px] font-normal text-fg-subtle">{t.contract.hint}</span>
         </label>
         {error && <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger sm:col-span-2">{error}</p>}
         <div className="flex items-center gap-3 sm:col-span-2">

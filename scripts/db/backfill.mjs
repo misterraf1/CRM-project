@@ -28,7 +28,20 @@ export const BACKFILLS = [
   ["Contact", { messagingConsent: null }],
   ["Conversation", { lastAutoReplyAt: null }],
   ["Membership", { presence: "available", mutedNotifications: [] }],
-  ["Tenant", { inboxSettings: null }],
+  ["Tenant", { inboxSettings: null, securitySettings: null }],
+  // v2 Stage G2 — reminders
+  ["Task", { reminderMinutes: null, remindAt: null }],
+  // v2 Stage H — automation signals, scoring, warranty, renewals
+  ["Contact", { inactiveAlertedAt: null, score: null, scoreLevel: null, scoreReasons: [], scoredAt: null }],
+  ["Conversation", { unansweredAlertedAt: null }],
+  ["Product", { renewalMonths: null, priceTiers: [] }],
+  ["Order", { warrantyMonths: null }],
+  // v2 Stage I — forms, campaigns, portal
+  ["Contact", { emailOptOutAt: null }],
+  ["EmailMessage", { campaignId: null, contactId: null }],
+  // v2 Stage J
+  ["Membership", { savedReports: [] }],
+  ["Tenant", { onboarding: { dismissedAt: null, templates: [], demo: null } }],
 ];
 
 /**
@@ -37,6 +50,17 @@ export const BACKFILLS = [
  * the company's (new deals used to be saved as "AZN" whatever the company currency was).
  */
 const COMPUTED = [
+  // Stage H: last activity of each contact, from its timeline (and creation when it has none)
+  async (db) => {
+    let touched = 0;
+    const latest = db.collection("Activity").aggregate([{ $match: { contactId: { $ne: null } } }, { $group: { _id: "$contactId", at: { $max: "$createdAt" } } }]);
+    for await (const row of latest) {
+      const res = await db.collection("Contact").updateOne({ _id: row._id, lastActivityAt: { $exists: false } }, { $set: { lastActivityAt: row.at } });
+      touched += res.modifiedCount;
+    }
+    const rest = await db.collection("Contact").updateMany({ lastActivityAt: { $exists: false } }, [{ $set: { lastActivityAt: "$createdAt" } }]);
+    return touched + rest.modifiedCount;
+  },
   // Stage F: disconnected channels free their provider id so it can be connected again
   async (db) => {
     let touched = 0;

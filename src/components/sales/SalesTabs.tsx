@@ -15,6 +15,7 @@ export function SalesTabs({ invoices }: { invoices: boolean }) {
     { href: "/sales?kind=quote", label: k.quotes, active: pathname === "/sales" && kind === "quote" },
     ...(invoices ? [{ href: "/sales?kind=invoice", label: k.invoices, active: pathname === "/sales" && kind === "invoice" }] : []),
     { href: "/sales/products", label: k.products, active: pathname.startsWith("/sales/products") },
+    { href: "/sales/renewals", label: t.renewals.tab, active: pathname.startsWith("/sales/renewals") },
   ];
   return (
     <nav aria-label={t.nav.sales} className="mb-5 flex gap-1 overflow-x-auto border-b border-border">

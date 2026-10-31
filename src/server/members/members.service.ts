@@ -35,6 +35,7 @@ function toDto(m: Membership & { user: User }, roles: RoleNames): MemberDto {
     role: m.role,
     customRole: m.roleId && roleName ? { id: m.roleId, name: roleName } : null,
     presence: m.presence ?? "available",
+    mfaEnabled: !!m.user.mfaEnabledAt,
     status: m.status,
     title: m.title,
     departmentId: m.departmentId,

@@ -53,7 +53,9 @@ export function NotificationBell({ unread: initialUnread }: { unread: number }) 
     setOpen(false);
     if (x.type.startsWith("billing_")) router.push("/settings/billing");
     else if (x.type === "support_reply" && x.payload.ticketId) router.push(`/support/${x.payload.ticketId}`);
+    else if (x.payload.caseId) router.push(`/cases/${x.payload.caseId}`);
     else if (x.payload.taskId) router.push(`/tasks/${x.payload.taskId}`);
+    else if (x.payload.eventId) router.push(`/calendar?event=${x.payload.eventId}&date=${String(x.payload.startAt ?? "").slice(0, 10)}`);
     else if (x.payload.docId) router.push(`/sales/${x.payload.docId}`);
     else if (x.payload.orderId) router.push(`/orders/${x.payload.orderId}`);
     else if (x.payload.dealId) router.push(`/deals/${x.payload.dealId}`);

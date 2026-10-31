@@ -72,7 +72,10 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2 py-3">
-          {NAV_GROUPS.map((group) => (
+          {NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => !item.permission || session.permissions.includes(item.permission)) }))
+            // A group the member has nothing in is left out entirely
+            .filter((group) => group.items.length > 0)
+            .map((group) => (
             <div key={group.label} className="mb-4">
               {!narrow && (
                 <p className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-subtle">
@@ -80,7 +83,7 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
                 </p>
               )}
               <ul className="space-y-0.5">
-                {group.items.filter((item) => !item.permission || session.permissions.includes(item.permission)).map((item) => {
+                {group.items.map((item) => {
                   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
                   const count = item.badge ? summary[item.badge] : 0;
                   const label = t.nav[item.key];

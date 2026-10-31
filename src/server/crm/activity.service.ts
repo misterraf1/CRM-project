@@ -14,6 +14,9 @@ export class ActivityService {
   // their order on the timeline, so timestamps are strictly increasing per process.
   private lastAt = 0;
 
+  /** Wired by the container: timeline events that are automation triggers (quote accepted, invoice paid…) */
+  onRecorded?: (tx: Tx, tenantId: string, entry: { type: ActivityType; payload: Record<string, unknown> }) => Promise<void>;
+
   private nextTimestamp() {
     this.lastAt = Math.max(Date.now(), this.lastAt + 1);
     return new Date(this.lastAt);
@@ -21,11 +24,12 @@ export class ActivityService {
 
   async record(
     tx: Tx,
-    entry: { type: ActivityType; contactId?: string | null; dealId?: string | null; payload: Record<string, unknown> },
+    /** `tenantId` for background work (automations), which has no request context */
+    entry: { type: ActivityType; contactId?: string | null; dealId?: string | null; payload: Record<string, unknown>; tenantId?: string },
   ) {
     const ctx = currentContext();
-    return tx.activity.insertOne({
-      tenantId: ctx.tenantId!,
+    const row = await tx.activity.insertOne({
+      tenantId: entry.tenantId ?? ctx.tenantId!,
       actorId: ctx.membershipId ?? null,
       type: entry.type,
       contactId: entry.contactId ?? null,
@@ -33,6 +37,10 @@ export class ActivityService {
       payload: entry.payload as Activity["payload"],
       createdAt: this.nextTimestamp(),
     });
+    // The contact is active again: passive lists, scoring and contact.inactive start over
+    if (entry.contactId) await tx.contact.updateMany({ id: entry.contactId, tenantId: row.tenantId }, { $set: { lastActivityAt: row.createdAt, inactiveAlertedAt: null, scoredAt: null } });
+    await this.onRecorded?.(tx, row.tenantId, entry);
+    return row;
   }
 
   async toDtos(tx: Tx, tenantId: string, rows: Activity[]): Promise<ActivityDto[]> {

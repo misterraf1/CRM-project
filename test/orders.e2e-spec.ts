@@ -3,7 +3,8 @@ import request from "supertest";
 import { addMember, createApp, signup, withRawDb, type TestApp } from "./helpers";
 
 const DAY = 86_400_000;
-const isoDate = (offsetDays: number) => new Date(Date.now() + offsetDays * DAY).toISOString().slice(0, 10);
+// Company calendar days (Baku), as the API counts them
+const isoDate = (offsetDays: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Baku" }).format(new Date(Date.now() + offsetDays * DAY));
 // 1×1 transparent PNG
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 

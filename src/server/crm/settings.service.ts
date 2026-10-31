@@ -386,6 +386,7 @@ export function docSettingsDto(tenant: Pick<Tenant, "docSettings">): DocSettings
     terms: s.terms ?? null,
     maxDiscountBp: s.maxDiscountBp ?? null,
     orderSteps: s.orderSteps ?? [],
+    contractTemplate: s.contractTemplate ?? null,
     logo: s.logo ?? null,
   };
 }

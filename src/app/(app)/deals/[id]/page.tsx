@@ -7,6 +7,7 @@ import { Timeline } from "@/components/crm/Timeline";
 import { DealEditor } from "@/components/deals/DealEditor";
 import { DealDocs } from "@/components/sales/DealDocs";
 import { RecordFiles } from "@/components/crm/RecordFiles";
+import { AiInsight } from "@/components/ai/AiInsight";
 import { getContacts, getCurrencySettings, getDeal, getDealDocs, getFields, getMembers, getPipelines, getRecordFiles, getSession } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -83,6 +84,7 @@ export default async function DealPage({ params }: Props) {
           />
         </section>
         <div className="min-w-0 space-y-5">
+        {me.ai.available && <AiInsight path={`/ai/deals/${deal.id}/insight`} />}
         <RecordFiles path={`/deals/${deal.id}`} files={files} canUpload={me.permissions.includes("deals.edit")} canDeleteAny={me.permissions.includes("contacts.manage")} meId={me.membership.id} />
         <DealDocs docs={docs} dealId={deal.id} canQuote={me.permissions.includes("quotes.manage")} t={t} locale={locale} />
         <section className="card min-w-0">

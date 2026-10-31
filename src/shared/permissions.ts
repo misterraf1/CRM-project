@@ -35,6 +35,12 @@ export const PERMISSIONS = [
   "orders.manage",
   /** Approve quotes whose discount is over the company limit */
   "discounts.approve",
+  /** Customer complaints and service requests (own records, like contacts) */
+  "cases.manage",
+  /** Set sales targets for the company and members */
+  "targets.manage",
+  /** Email campaigns to segments of the base */
+  "campaigns.manage",
   "inbox.view_all",
   "inbox.reply",
   "inbox.assign",
@@ -63,14 +69,14 @@ export const PERMISSION_GROUPS = {
   crm: ["contacts.create", "contacts.edit", "contacts.manage", "contacts.delete", "deals.create", "deals.edit", "deals.delete"],
   data: ["contacts.export", "deals.export", "data.import"],
   sales: ["quotes.manage", "discounts.approve", "orders.manage", "products.manage", "invoices.manage", "finance.view"],
-  work: ["inbox.reply", "inbox.assign", "tasks.create", "tasks.assign_any", "analytics.view", "automations.manage"],
+  work: ["inbox.reply", "inbox.assign", "tasks.create", "tasks.assign_any", "cases.manage", "analytics.view", "targets.manage", "campaigns.manage", "automations.manage"],
   admin: ["members.view", "members.invite", "members.manage", "roles.manage", "departments.manage", "channels.manage", "crm.configure", "audit.view", "billing.manage"],
 } as const satisfies Record<string, readonly Permission[]>;
 
 const ALL: readonly Permission[] = PERMISSIONS;
 
 /** Everyday work every built-in role has: creating and editing the records they can see. */
-const EVERYDAY: readonly Permission[] = ["contacts.create", "contacts.edit", "deals.create", "deals.edit", "quotes.manage", "orders.manage", "tasks.create"];
+const EVERYDAY: readonly Permission[] = ["contacts.create", "contacts.edit", "deals.create", "deals.edit", "quotes.manage", "orders.manage", "tasks.create", "cases.manage"];
 
 export const ROLE_PERMISSIONS: Record<MemberRole, readonly Permission[]> = {
   OWNER: ALL,

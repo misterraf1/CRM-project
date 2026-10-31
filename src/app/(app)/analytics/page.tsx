@@ -6,7 +6,9 @@ import { ANALYTICS_PERIODS, type AnalyticsPeriod } from "@/shared";
 import { BarList } from "@/components/analytics/BarList";
 import { planGate } from "@/components/billing/UpgradeGate";
 import { StatTile } from "@/components/ui/StatTile";
-import { getAnalyticsAdvanced, getAnalyticsBasic, getSession } from "@/lib/api";
+import { MoneyReports } from "@/components/analytics/MoneyReports";
+import { ReportToolbar } from "@/components/analytics/ReportToolbar";
+import { getAnalyticsAdvanced, getAnalyticsBasic, getProductSales, getReceivables, getSavedReports, getSession } from "@/lib/api";
 import { hasFeature } from "@/lib/billing";
 import { formatLocalMonth, formatMoney, formatNumber } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
@@ -14,7 +16,9 @@ import { getI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Analytics" };
 
-type Props = { searchParams: Promise<{ period?: string }> };
+type Props = { searchParams: Promise<{ period?: string; from?: string; to?: string }> };
+
+const isDay = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
 const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)}%`);
 
@@ -27,7 +31,17 @@ export default async function AnalyticsPage({ searchParams }: Props) {
 
   const period = (ANALYTICS_PERIODS as readonly string[]).includes(sp.period ?? "") ? (sp.period as AnalyticsPeriod) : "90d";
   const advancedOn = hasFeature(me, "analytics.advanced");
-  const [a, adv] = await Promise.all([getAnalyticsBasic(period), advancedOn ? getAnalyticsAdvanced(period) : null]);
+  // A custom range wins over the preset (both dates needed, from before to)
+  const custom = isDay(sp.from) && isDay(sp.to) && sp.from! <= sp.to! ? { from: sp.from!, to: sp.to! } : null;
+  const range = { period, ...(custom ?? {}) };
+  const rangeQuery = custom ? `from=${custom.from}&to=${custom.to}` : `period=${period}`;
+  const [a, adv, receivables, products, saved] = await Promise.all([
+    getAnalyticsBasic(range),
+    advancedOn ? getAnalyticsAdvanced(range) : null,
+    getReceivables(),
+    getProductSales(range),
+    getSavedReports(),
+  ]);
   const money = (v: number) => formatMoney(v, locale, a.currency);
   const s = a.sales;
   const days = (v: number | null) => (v === null ? "—" : interpolate(k.days, { n: formatNumber(v, locale, 1) }));
@@ -47,14 +61,16 @@ export default async function AnalyticsPage({ searchParams }: Props) {
             <Link
               key={p}
               href={`/analytics?period=${p}`}
-              aria-current={p === period ? "page" : undefined}
-              className={clsx("rounded-md px-3 py-1.5", p === period ? "bg-surface text-fg shadow-sm" : "text-fg-muted hover:text-fg")}
+              aria-current={p === period && !custom ? "page" : undefined}
+              className={clsx("rounded-md px-3 py-1.5", p === period && !custom ? "bg-surface text-fg shadow-sm" : "text-fg-muted hover:text-fg")}
             >
               {k.periods[p]}
             </Link>
           ))}
         </nav>
       </div>
+
+      <ReportToolbar from={custom?.from} to={custom?.to} query={rangeQuery} saved={saved} />
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <StatTile label={k.dealsCreated} value={formatNumber(s.created, locale)} hint={interpolate(k.outcome, { won: s.won, lost: s.lost, open: s.stillOpen })} />
@@ -180,7 +196,7 @@ export default async function AnalyticsPage({ searchParams }: Props) {
             <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
               <h3 className="text-sm font-semibold">{k.members}</h3>
               {me.permissions.includes("deals.export") && (
-                <a href={`/api/v1/analytics/export/deals.csv?period=${period}`} download className="btn-ghost h-8 border border-border text-xs">
+                <a href={`/api/v1/analytics/export/deals.csv?${rangeQuery}`} download className="btn-ghost h-8 border border-border text-xs">
                   <Download className="h-3.5 w-3.5" aria-hidden />
                   {k.export}
                 </a>
@@ -241,6 +257,7 @@ export default async function AnalyticsPage({ searchParams }: Props) {
           </section>
         </>
       )}
+      <MoneyReports receivables={receivables} products={products} t={t} locale={locale} />
     </div>
   );
 }

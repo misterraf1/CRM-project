@@ -10,6 +10,8 @@ export interface AccessPayload {
   sub: string; // user id
   tid: string; // tenant id
   sid: string; // session id
+  /** The company requires 2FA and the account hasn't set it up: only the setup is reachable */
+  mp?: 1;
 }
 
 /** Concurrent refreshes from the same client (parallel requests) within this window are not treated as theft. */
@@ -35,7 +37,11 @@ export class TokensService {
       ip: ctx.ip ?? null,
       userAgent: ctx.userAgent ?? null,
     });
-    const accessToken = await this.jwt.signAsync({ sub: userId, tid: tenantId, sid: session.id } satisfies AccessPayload, {
+    // Re-evaluated on every issue (login, refresh): turning the rule on, or setting
+    // up 2FA, takes effect within one access-token lifetime
+    const [tenant, user] = await Promise.all([tx.tenant.get({ id: tenantId }), tx.user.get({ id: userId })]);
+    const pending = tenant.securitySettings?.requireMfa && !user.mfaEnabledAt;
+    const accessToken = await this.jwt.signAsync({ sub: userId, tid: tenantId, sid: session.id, ...(pending ? { mp: 1 as const } : {}) } satisfies AccessPayload, {
       expiresIn: ACCESS_TOKEN_TTL_SEC,
     });
     return { accessToken, expiresIn: ACCESS_TOKEN_TTL_SEC, refreshToken, refreshExpiresAt: expiresAt.toISOString() };

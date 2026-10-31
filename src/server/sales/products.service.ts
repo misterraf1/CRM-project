@@ -18,6 +18,8 @@ export const productDto = (p: Product, names: Map<string, string> = new Map()): 
   taxBp: p.taxBp,
   active: p.active,
   components: (p.components ?? []).map((c) => ({ productId: c.productId, name: names.get(c.productId) ?? "", quantity: c.quantity })),
+  renewalMonths: p.renewalMonths ?? null,
+  priceTiers: p.priceTiers ?? [],
 });
 
 /** Names of the products bundles refer to. */
@@ -43,7 +45,7 @@ export class ProductsService {
     return this.db.scoped(async (tx) => {
       if ((await tx.product.count({ tenantId })) >= MAX_PRODUCTS) throw new AppError("CONFLICT", `At most ${MAX_PRODUCTS} products`);
       const names = await this.checkComponents(tx, tenantId, input.components, null);
-      const p = await tx.product.insertOne({ ...input, sku: input.sku ?? null, description: input.description ?? null, tenantId });
+      const p = await tx.product.insertOne({ ...input, sku: input.sku ?? null, description: input.description ?? null, renewalMonths: input.renewalMonths ?? null, tenantId });
       await this.audit.log(tx, { action: "product.created", entityType: "product", entityId: p.id, diff: { name: p.name, price: p.price } });
       return productDto(p, names);
     });
@@ -56,7 +58,7 @@ export class ProductsService {
       if (!before) throw notFound("Product");
       const names = await this.checkComponents(tx, tenantId, input.components, id);
       // Documents keep their own copy of each line: a new price only affects new documents
-      const p = await tx.product.update({ id }, { $set: { ...input, sku: input.sku ?? null, description: input.description ?? null } });
+      const p = await tx.product.update({ id }, { $set: { ...input, sku: input.sku ?? null, description: input.description ?? null, renewalMonths: input.renewalMonths ?? null } });
       const diff: Record<string, { from: unknown; to: unknown }> = {};
       for (const key of ["name", "price", "currency", "taxBp", "active"] as const) if (before[key] !== p[key]) diff[key] = { from: before[key], to: p[key] };
       if (Object.keys(diff).length) await this.audit.log(tx, { action: "product.updated", entityType: "product", entityId: id, diff: diff as never });

@@ -16,7 +16,7 @@ test("signup → contact → note → deal → kanban → won makes a customer",
   await page.getByLabel("Ad", { exact: true }).fill("Orxan Səfərov");
   await page.getByLabel("Telefon").fill("+994 50 123 45 67");
   await page.getByLabel("Email").fill("orxan@example.az");
-  await page.getByRole("button", { name: "Yarat" }).click();
+  await page.getByRole("button", { name: "Yarat", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Orxan Səfərov" })).toBeVisible();
   await expect(page.getByText("+994501234567").first()).toBeVisible();
   await expect(page.getByText("yeni müştəri əlavə etdi: Orxan Səfərov")).toBeVisible();
@@ -34,7 +34,7 @@ test("signup → contact → note → deal → kanban → won makes a customer",
   await page.getByRole("button", { name: "Satış əlavə et" }).click();
   await page.getByLabel("Satışın adı").fill("CRM lisenziyası");
   await page.getByLabel("Məbləğ", { exact: true }).fill("4 800");
-  await page.getByRole("button", { name: "Yarat" }).click();
+  await page.getByRole("button", { name: "Yarat", exact: true }).click();
   await expect(page.getByRole("link", { name: /CRM lisenziyası/ })).toBeVisible();
 
   // Kanban: move with the stage select (keyboard/touch path)
@@ -67,7 +67,7 @@ test("dragging to lost asks for a reason; cancelling keeps the deal open", async
   await page.getByRole("button", { name: "Yeni satış" }).click();
   await page.getByLabel("Satışın adı").fill("Bahalı layihə");
   await page.getByLabel("Məbləğ", { exact: true }).fill("1000");
-  await page.getByRole("button", { name: "Yarat" }).click();
+  await page.getByRole("button", { name: "Yarat", exact: true }).click();
   const card = dealCard(page, "Yeni", "Bahalı layihə");
   await expect(card).toBeVisible();
 
@@ -88,7 +88,7 @@ test("invited employee joins, sees only own customers, cannot manage members", a
   await signupCompany(page, "Rollar MMC");
   await page.goto("/crm/new");
   await page.getByLabel("Ad", { exact: true }).fill("Sahibin müştərisi");
-  await page.getByRole("button", { name: "Yarat" }).click();
+  await page.getByRole("button", { name: "Yarat", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sahibin müştərisi" })).toBeVisible();
 
   await page.goto("/settings/members");

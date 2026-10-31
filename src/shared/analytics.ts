@@ -3,7 +3,14 @@ import type { ChannelType } from "./inbox-schemas";
 
 export const ANALYTICS_PERIODS = ["30d", "90d", "365d"] as const;
 export type AnalyticsPeriod = (typeof ANALYTICS_PERIODS)[number];
-export const analyticsQuerySchema = z.object({ period: z.enum(ANALYTICS_PERIODS).default("90d") });
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** A preset period, or any from–to range (both given, at most two years) */
+export const analyticsQuerySchema = z
+  .object({ period: z.enum(ANALYTICS_PERIODS).default("90d"), from: day.optional(), to: day.optional() })
+  .refine((v) => (!v.from && !v.to) || (v.from && v.to && v.from <= v.to && Date.parse(v.to) - Date.parse(v.from) <= 731 * 86_400_000), {
+    message: "Give both dates, from before to, at most two years",
+  });
+export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>;
 
 /** Visibility of the figures: everything, the caller's department, or their own records. */
 export type AnalyticsScope = "all" | "department" | "own";
@@ -74,4 +81,31 @@ export interface AnalyticsAdvancedDto {
   members: MemberPerformance[];
   /** Last 12 months, regardless of the period filter */
   months: MonthTrend[];
+}
+
+/** Unpaid invoices by customer and how late they are */
+export interface ReceivablesDto {
+  currency: string;
+  total: number;
+  /** Company currency, minor units: not yet due, then days past due */
+  buckets: { current: number; d1_30: number; d31_60: number; d61_90: number; d90: number };
+  customers: { contact: { id: string; name: string }; invoices: number; due: number; oldestDueDate: string | null; daysLate: number }[];
+}
+
+/** What was sold, from issued invoices in the period */
+export interface ProductSalesDto {
+  currency: string;
+  rows: { productId: string | null; name: string; quantity: number; revenue: number; invoices: number }[];
+}
+
+export const savedReportSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  /** The analytics page address it reopens (query part only) */
+  query: z.string().max(300).regex(/^[a-z0-9=&_-]*$/i),
+});
+
+export interface SavedReportDto {
+  id: string;
+  name: string;
+  query: string;
 }

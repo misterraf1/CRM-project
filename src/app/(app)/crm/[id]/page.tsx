@@ -7,13 +7,18 @@ import { ContactDeals } from "@/components/crm/ContactDeals";
 import { ConsentControl } from "@/components/crm/ConsentControl";
 import { ContactForm } from "@/components/crm/ContactForm";
 import { RecordFiles } from "@/components/crm/RecordFiles";
+import { ContactCalls } from "@/components/calendar/ContactCalls";
+import { CustomerValue } from "@/components/crm/CustomerValue";
+import { AiInsight } from "@/components/ai/AiInsight";
+import { PortalLinkCard } from "@/components/growth/PortalLinkCard";
+import { ScoreBadge } from "@/components/crm/ScoreBadge";
 import { DeleteButton } from "@/components/crm/DeleteButton";
 import { NoteComposer } from "@/components/crm/NoteComposer";
 import { StageBadge } from "@/components/crm/StageBadge";
 import { Timeline } from "@/components/crm/Timeline";
 import { TaskList } from "@/components/tasks/TaskList";
 import { TaskQuickAdd } from "@/components/tasks/TaskQuickAdd";
-import { getContact, getContactActivities, getConversations, getFields, getMembers, getPipelines, getRecordFiles, getSession, getTasks } from "@/lib/api";
+import { getContact, getContactActivities, getConversations, getFields, getMembers, getPipelines, getCases, getContactEvents, getCustomerValue, getRecordFiles, getSession, getTasks } from "@/lib/api";
 import { ChannelIcon } from "@/components/ui/ChannelIcon";
 import { formatRelative } from "@/lib/format";
 import { ApiRequestError } from "@/lib/api/server";
@@ -31,12 +36,15 @@ export default async function ContactPage({ params }: Props) {
   const [{ t, locale }, me, members, personFields, companyFields, dealFields] = await Promise.all([getI18n(), getSession(), getMembers(), getFields("contact"), getFields("company"), getFields("deal")]);
   // Deals are a PRO feature; without it the contact page simply has no deals block
   const pipelines = hasFeature(me, "deals.pipeline") ? await getPipelines() : [];
-  const [contact, activities, tasks, conversations, files] = await Promise.all([
+  const [contact, activities, tasks, conversations, files, events, value, cases] = await Promise.all([
     getContact(id),
     getContactActivities(id),
     getTasks({ contactId: id, view: "all" }),
     getConversations({ contactId: id, status: "ALL" }),
     getRecordFiles("contacts", id),
+    getContactEvents(id),
+    getCustomerValue(id),
+    me.permissions.includes("cases.manage") ? getCases({ contactId: id }) : [],
   ]).catch((e) => {
     if (e instanceof ApiRequestError && e.status === 404) notFound();
     throw e;
@@ -59,6 +67,7 @@ export default async function ContactPage({ params }: Props) {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-xl font-semibold tracking-tight">{contact.name}</h1>
             <StageBadge stage={contact.stage} label={c.stages[contact.stage]} />
+            {contact.scoreLevel && contact.score !== null && <ScoreBadge level={contact.scoreLevel} score={contact.score} label={t.score.levels[contact.scoreLevel]} />}
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-muted">
             {contact.companyId ? (
@@ -161,6 +170,10 @@ export default async function ContactPage({ params }: Props) {
               </div>
             )}
           </section>
+          {me.ai.available && <AiInsight path={`/ai/contacts/${contact.id}/insight`} />}
+          <CustomerValue contact={contact} value={value} cases={cases} canCases={can("cases.manage")} t={t} locale={locale} />
+          {can("contacts.edit") && <PortalLinkCard contactId={contact.id} hasEmail={!!contact.email} />}
+          <ContactCalls contact={{ id: contact.id, name: contact.name, phone: contact.phone }} events={events} canLog={can("tasks.create")} />
           <RecordFiles path={`/contacts/${contact.id}`} files={files} canUpload={can("contacts.edit")} canDeleteAny={can("contacts.manage")} meId={me.membership.id} />
           {pipelines[0] && <ContactDeals contactId={contact.id} deals={contact.deals} pipelines={pipelines} requiredFields={dealFields.filter((f) => f.required)} canCreate={can("deals.create")} />}
         </div>

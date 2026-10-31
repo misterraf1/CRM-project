@@ -55,6 +55,8 @@ export async function contactListWhere(tx: Tx, ctx: AuthedContext, query: Omit<C
     query.source ? { source: query.source } : {},
     query.tag ? { tags: query.tag } : {},
     query.companyId ? { companyId: query.companyId } : {},
+    query.level ? { scoreLevel: query.level } : {},
+    query.activity ? { lastActivityAt: { [query.activity === "passive" ? "$lt" : "$gte"]: new Date(Date.now() - 30 * 86_400_000) } } : {},
     fieldFilter,
     q ? { $or: [{ name: contains(q) }, { email: contains(q) }, { companyName: contains(q) }, { phone: contains(q.replace(/[\s()-]/g, ""), false) }] } : {},
   );
@@ -229,6 +231,8 @@ export class ContactsService {
             tags: input.tags,
             customFields: customFields as Contact["customFields"] | undefined,
             ownerId,
+            // Rescored on the next tick (reachability, stage)
+            scoredAt: null,
           },
         },
       );
@@ -315,6 +319,10 @@ export class ContactsService {
         owner: owner ? { id: owner.id, name: owner.name } : null,
         openDeals: openDeals.get(c.id) ?? 0,
         messagingConsent: c.messagingConsent ? { ...c.messagingConsent, at: c.messagingConsent.at.toISOString() } : null,
+        score: c.score ?? null,
+        scoreLevel: c.scoreLevel ?? null,
+        scoreReasons: c.scoreReasons ?? [],
+        lastActivityAt: c.lastActivityAt?.toISOString() ?? null,
         createdAt: c.createdAt.toISOString(),
         updatedAt: c.updatedAt.toISOString(),
       };

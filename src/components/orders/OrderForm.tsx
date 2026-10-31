@@ -49,6 +49,7 @@ export function OrderForm({
       dueDate: String(f.get("dueDate") || "") || null,
       deliveryDate: String(f.get("deliveryDate") || "") || null,
       notes: String(f.get("notes") ?? ""),
+      warrantyMonths: f.get("warrantyMonths") ? Number(f.get("warrantyMonths")) : null,
       steps: steps.filter((s) => s.title.trim()).map((s) => ({ title: s.title.trim(), assigneeId: s.assigneeId || null, dueDate: s.dueDate || null })),
     };
     startTransition(async () => {
@@ -93,6 +94,10 @@ export function OrderForm({
         <label className="field-label">
           {k.deliveryDate}
           <input name="deliveryDate" type="date" className="input" />
+        </label>
+        <label className="field-label">
+          {t.cases.warrantyMonths}
+          <input name="warrantyMonths" type="number" min={1} max={240} className="input" />
         </label>
         <label className="field-label sm:col-span-2">
           {k.notes}
