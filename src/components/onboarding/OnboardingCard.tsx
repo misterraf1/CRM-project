@@ -27,7 +27,8 @@ export function OnboardingCard({ initial, canManage }: { initial: OnboardingDto;
   const [templates, setTemplates] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
-  // A brand-new company starts with it open; afterwards the member's choice is remembered
+  // A brand-new company starts with it open; afterwards the member's choice is remembered.
+  // Decided once on mount: a refresh (a step just done) must not fold the card mid-task.
   useEffect(() => {
     try {
       const saved = localStorage.getItem(OPEN_KEY);
@@ -35,7 +36,8 @@ export function OnboardingCard({ initial, canManage }: { initial: OnboardingDto;
     } catch {
       setOpen(false);
     }
-  }, [initial.steps]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const toggle = () =>
     setOpen((v) => {
       try {

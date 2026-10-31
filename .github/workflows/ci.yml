@@ -25,7 +25,8 @@ jobs:
         run: |
           nohup npm run db:start > db.log 2>&1 &
           timeout 180 bash -c 'until grep -q "MongoDB ready" db.log; do sleep 1; done'
-          nohup npx next start -p 3000 > web.log 2>&1 &
+          # The UI tests use the demo checkout and staff accounts without 2FA (both production defaults differ)
+          BILLING_PROVIDER=demo PLATFORM_REQUIRE_MFA=false nohup npx next start -p 3000 > web.log 2>&1 &
           timeout 60 bash -c 'until curl -sf localhost:3000/health && curl -sf -o /dev/null localhost:3000/login; do sleep 1; done'
       - run: npx playwright install --with-deps chromium
       - run: npm run test:ui
