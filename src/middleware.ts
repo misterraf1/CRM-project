@@ -4,6 +4,8 @@ import { ACCESS_COOKIE, ADMIN_COOKIE, REFRESH_COOKIE } from "./lib/auth/cookies"
 // The website chat widget and its API calls are used by anonymous site visitors;
 // provider webhooks, the health check and the cron trigger authenticate themselves
 const PUBLIC = [
+  // The public front page (landing)
+  /^\/$/,
   /^\/login$/,
   /^\/signup$/,
   /^\/forgot-password$/,

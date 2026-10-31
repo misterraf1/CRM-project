@@ -48,6 +48,12 @@ export class BillingService {
     private readonly provider: PaymentProvider,
   ) {}
 
+  /** Plans on sale, cheapest first (the landing page shows them as they are in the database). */
+  async publicPlans(): Promise<{ plans: PlanDto[]; trialDays: number }> {
+    const plans = await this.db.system.plan.find({ isPublic: true }, { sort: { sortOrder: 1 } });
+    return { plans: plans.map(toPlanDto), trialDays: config().TRIAL_DAYS };
+  }
+
   async overview(): Promise<BillingOverviewDto> {
     const { tenantId } = authedContext();
     return this.db.scoped(async (tx) => {

@@ -34,4 +34,9 @@ export function billingRoutes(router: Router, s: Services) {
       return s.billing.overview();
     });
   });
+
+  // The website's pricing: public plans only, no session
+  router.group("/v1/public", { public: true }, (r) => {
+    r.get("plans", { throttle: { limit: 60, ttl: 60_000 } }, () => s.billing.publicPlans());
+  });
 }

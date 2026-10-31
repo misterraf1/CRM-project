@@ -21,6 +21,9 @@
   /* Chart series (categorical slots 1–2, validated for CVD and contrast) */
   --series-1: 42 120 214;
   --series-2: 235 104 52;
+  /* Landing page brand glow (with the accent) */
+  --brand-violet: 124 58 237;
+  --brand-teal: 13 148 136;
   color-scheme: light;
 }
 
@@ -40,6 +43,8 @@
   --danger: 248 96 96;
   --series-1: 57 135 229;
   --series-2: 217 89 38;
+  --brand-violet: 167 139 250;
+  --brand-teal: 45 212 191;
   color-scheme: dark;
 }
 
@@ -101,4 +106,37 @@
   .input {
     min-height: 44px;
   }
+}
+
+/* Landing page motion — all of it stops under prefers-reduced-motion (rule above) */
+@keyframes landing-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(6%, -8%, 0) scale(1.12); }
+}
+@keyframes landing-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes landing-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes landing-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes landing-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.landing-drift { animation: landing-drift 18s ease-in-out infinite; }
+.landing-float { animation: landing-float 6s ease-in-out infinite; }
+.landing-marquee { animation: landing-marquee 32s linear infinite; }
+.landing-rise { animation: landing-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.landing-pulse { animation: landing-pulse 2.4s ease-in-out infinite; }
+.landing-gradient-text {
+  background-image: linear-gradient(100deg, rgb(var(--accent)), rgb(var(--brand-violet)) 55%, rgb(var(--brand-teal)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }

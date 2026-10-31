@@ -21,6 +21,8 @@ for (const scheme of ["light", "dark"] as const) {
     const page = await (await browser.newContext({ colorScheme: scheme, locale: "az-AZ", viewport: { width: 1440, height: 900 } })).newPage();
     await page.goto("/login");
     expect(await violations(page), "/login").toEqual([]);
+    await page.goto("/");
+    expect(await violations(page), "/ (landing)").toEqual([]);
     await signupCompany(page, `A11y ${scheme}`);
     for (const path of ["/dashboard", "/inbox", "/crm", "/deals", "/tasks", "/chat", "/files", "/analytics", "/settings/billing", "/settings/crm", "/settings/roles", "/crm/import", "/sales", "/sales/products", "/sales/new", "/orders", "/orders/new", "/settings/channels", "/settings/notifications", "/settings/security", "/calendar", "/calendar?view=week", "/today", "/cases", "/cases/new", "/targets", "/sales/renewals", "/settings/forms", "/settings/integrations", "/campaigns", "/analytics"]) {
       await page.goto(path);

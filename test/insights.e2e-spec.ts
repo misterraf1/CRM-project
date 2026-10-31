@@ -136,6 +136,12 @@ describe("Reports, onboarding and templates, AI over the CRM, platform usage", (
     expect(settings.contractTemplate).toBe("{company} və {customer} arasında");
   });
 
+  it("website pricing: the plans on sale without a session", async () => {
+    const res = (await http().get("/v1/public/plans").expect(200)).body as { plans: { code: string; priceMonthly: number }[]; trialDays: number };
+    expect(res.plans.map((p) => p.code)).toEqual(["START", "PRO", "BUSINESS"]);
+    expect(res.trialDays).toBeGreaterThan(0);
+  });
+
   it("platform: usage per company", async () => {
     const owner = await signup(app, "İstifadə MMC");
     await contact(owner, { name: "Bir" });

@@ -24,6 +24,8 @@ export default {
         success: token("success"),
         warning: token("warning"),
         danger: token("danger"),
+        "brand-violet": token("brand-violet"),
+        "brand-teal": token("brand-teal"),
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
