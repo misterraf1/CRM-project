@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { RolesManager } from "@/components/settings/RolesManager";
 import { getRoles, getSession } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Roles" };
 
 export default async function RolesPage() {
-  const [{ t }, me] = await Promise.all([getI18n(), getSession()]);
+  const [{ t }, me] = await Promise.all([getAppI18n(), getSession()]);
   const k = t.roles;
   if (!me.permissions.includes("members.view")) {
     return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;

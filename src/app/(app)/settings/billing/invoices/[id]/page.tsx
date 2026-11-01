@@ -8,7 +8,7 @@ import { ApiRequestError } from "@/lib/api/server";
 import { invoiceLineText } from "@/lib/billing";
 import { APP_NAME } from "@/lib/config";
 import { formatDate, formatMoney } from "@/lib/format";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Invoice" };
 
@@ -20,7 +20,7 @@ export default async function InvoicePage({ params }: Props) {
     if (e instanceof ApiRequestError && (e.status === 404 || e.status === 403)) notFound();
     throw e;
   });
-  const { t, locale } = await getI18n();
+  const { t, locale } = await getAppI18n();
   const k = t.invoice;
   const money = (n: number) => formatMoney(n, locale, inv.currency);
   return (

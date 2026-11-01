@@ -39,7 +39,7 @@ import type {
   AutomationRunDto,
   FileListResponse,
 } from "@/shared";
-import type { OnboardingDto, ProductSalesDto, ReceivablesDto, SavedReportDto, CampaignDto, WebFormDto, CaseDto, CaseSummaryDto, CustomerValueDto, RenewalDto, TargetsDto, CalendarEventDto, TodayDto, CompanySecurity, MySecurityDto, CurrencySettingsDto, OrderDto, OrderSummaryDto, DocDto, DocKind, DocSettings, DocSummaryDto, FieldDefinitionDto, FieldEntity, ProductDto, RoleDto } from "@/shared";
+import type { CustomObjectDto, CustomRecordDto, SavedViewDto, ViewEntity, InboundHookDto, ApiKeyDto, WebhookEndpointDto, TemplatePreviewDto, WorkspaceDto, OnboardingDto, ProductSalesDto, ReceivablesDto, SavedReportDto, CampaignDto, WebFormDto, CaseDto, CaseSummaryDto, CustomerValueDto, RenewalDto, TargetsDto, CalendarEventDto, TodayDto, CompanySecurity, MySecurityDto, CurrencySettingsDto, OrderDto, OrderSummaryDto, DocDto, DocKind, DocSettings, DocSummaryDto, FieldDefinitionDto, FieldEntity, ProductDto, RoleDto } from "@/shared";
 import { cache } from "react";
 import { apiFetch } from "./server";
 import { PERIODS, type Period, type ShellSummary } from "./types";
@@ -211,3 +211,13 @@ export const getForms = () => apiFetch<WebFormDto[]>("/v1/forms");
 export const getCampaigns = () => apiFetch<CampaignDto[]>("/v1/campaigns");
 
 export const getOnboarding = () => apiFetch<OnboardingDto>("/v1/onboarding");
+export const getTemplatePreviews = cache(() => apiFetch<TemplatePreviewDto[]>("/v1/onboarding/templates"));
+export const getWorkspace = () => apiFetch<WorkspaceDto>("/v1/settings/workspace");
+export const getApiKeys = () => apiFetch<ApiKeyDto[]>("/v1/integrations/api-keys");
+export const getWebhooks = () => apiFetch<WebhookEndpointDto[]>("/v1/integrations/webhooks");
+export const getInbound = () => apiFetch<InboundHookDto[]>("/v1/integrations/inbound");
+export const getObjects = cache(() => apiFetch<CustomObjectDto[]>("/v1/objects"));
+export const getRecords = (objectId: string, query: Record<string, string | undefined>) =>
+  apiFetch<{ items: CustomRecordDto[]; total: number }>(`/v1/objects/${objectId}/records?${new URLSearchParams(Object.entries(query).filter((e): e is [string, string] => !!e[1]))}`);
+export const getRecord = (id: string) => apiFetch<CustomRecordDto>(`/v1/records/${id}`);
+export const getViews = (entity: ViewEntity) => apiFetch<SavedViewDto[]>(`/v1/views?entity=${entity}`);

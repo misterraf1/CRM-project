@@ -3,7 +3,7 @@
 import { PresenceToggle } from "./PresenceToggle";
 import clsx from "clsx";
 import type { MeResponse } from "@/shared";
-import { ChevronsLeft, ChevronsRight, Lock, LogOut, X } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Lock, LogOut, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";
@@ -12,7 +12,8 @@ import { hasFeature } from "@/lib/billing";
 import { APP_NAME } from "@/lib/config";
 import { useI18n } from "@/lib/i18n/client";
 import { interpolate } from "@/lib/i18n/locales";
-import { NAV_GROUPS } from "@/lib/navigation";
+import { SIMPLE_HIDDEN, visibleGroups } from "@/lib/navigation";
+import { objectIcon } from "@/lib/object-icons";
 
 interface Props {
   session: MeResponse;
@@ -21,11 +22,13 @@ interface Props {
   onToggleCollapsed: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  simple: boolean;
+  onToggleSimple: () => void;
 }
 
 const DAY_MS = 86_400_000;
 
-export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobileOpen, onCloseMobile }: Props) {
+export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobileOpen, onCloseMobile, simple, onToggleSimple }: Props) {
   const { t } = useI18n();
   const pathname = usePathname();
   const { subscription } = session;
@@ -72,10 +75,7 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2 py-3 [scrollbar-color:rgb(var(--nav-hover))_transparent]">
-          {NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => !item.permission || session.permissions.includes(item.permission)) }))
-            // A group the member has nothing in is left out entirely
-            .filter((group) => group.items.length > 0)
-            .map((group) => (
+          {visibleGroups(session.permissions, simple ? [...session.tenant.workspace.hiddenModules, ...SIMPLE_HIDDEN] : session.tenant.workspace.hiddenModules).map((group) => (
             <div key={group.label} className="mb-4">
               {!narrow && (
                 <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-nav-muted">
@@ -129,6 +129,37 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
               </ul>
             </div>
           ))}
+          {session.tenant.objects.length > 0 && (
+            <div className="mb-4">
+              {!narrow && <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-nav-muted">{t.objects.group}</p>}
+              <ul className="space-y-0.5">
+                {session.tenant.objects.map((o) => {
+                  const href = `/records/${o.id}`;
+                  const active = pathname === href || pathname.startsWith(`${href}/`);
+                  const Icon = objectIcon(o.icon);
+                  return (
+                    <li key={o.id}>
+                      <Link
+                        href={href}
+                        onClick={onCloseMobile}
+                        title={narrow ? o.name : undefined}
+                        aria-current={active ? "page" : undefined}
+                        className={clsx(
+                          "group relative flex h-9 items-center gap-3 rounded-lg text-sm transition-colors duration-150",
+                          narrow ? "justify-center" : "px-3",
+                          active ? "bg-gradient-to-r from-[#3b82f6]/30 to-[#8b5cf6]/10 font-medium text-white" : "text-nav-fg hover:bg-nav-hover hover:text-white",
+                        )}
+                      >
+                        {active && <span className="absolute inset-y-1.5 left-0 w-1 rounded-r bg-gradient-to-b from-[#60a5fa] to-[#a78bfa]" aria-hidden />}
+                        <Icon className={clsx("h-[18px] w-[18px] shrink-0", active ? "text-[#93c5fd]" : "text-nav-muted group-hover:text-white")} aria-hidden />
+                        {!narrow && <span className="flex-1 truncate">{o.name}</span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </nav>
 
         <div className="border-t border-nav-border p-2">
@@ -180,6 +211,17 @@ export function Sidebar({ session, summary, collapsed, onToggleCollapsed, mobile
               </select>
             </form>
           )}
+          <button
+            type="button"
+            onClick={onToggleSimple}
+            aria-pressed={simple}
+            title={t.help.simpleHint}
+            className={clsx("mt-1 flex h-8 w-full items-center gap-2 rounded-lg text-xs hover:bg-nav-hover hover:text-white", narrow ? "justify-center" : "px-3", simple ? "text-white" : "text-nav-muted")}
+          >
+            <Sparkles className="h-4 w-4 shrink-0" aria-hidden />
+            {narrow ? <span className="sr-only">{t.help.simple}</span> : <span className="flex-1 text-left">{t.help.simple}</span>}
+            {!narrow && <span className={clsx("h-4 w-7 rounded-full p-0.5 transition-colors", simple ? "bg-[#3b82f6]" : "bg-nav-hover")} aria-hidden><span className={clsx("block h-3 w-3 rounded-full bg-white transition-transform", simple && "translate-x-3")} /></span>}
+          </button>
           <button
             type="button"
             onClick={onToggleCollapsed}

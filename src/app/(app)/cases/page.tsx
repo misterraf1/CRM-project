@@ -9,7 +9,7 @@ import { StatChips } from "@/components/ui/StatChips";
 import { PriorityDot } from "@/components/tasks/meta";
 import { getCases, getSession } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Cases" };
 
@@ -19,7 +19,7 @@ type Filter = (typeof FILTERS)[number];
 type Props = { searchParams: Promise<{ f?: string }> };
 
 export default async function CasesPage({ searchParams }: Props) {
-  const [{ t, locale }, me, sp] = await Promise.all([getI18n(), getSession(), searchParams]);
+  const [{ t, locale }, me, sp] = await Promise.all([getAppI18n(), getSession(), searchParams]);
   const k = t.cases;
   if (!me.permissions.includes("cases.manage")) return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;
   const f: Filter = (FILTERS as readonly string[]).includes(sp.f ?? "") ? (sp.f as Filter) : "active";

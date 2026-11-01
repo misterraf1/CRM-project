@@ -12,6 +12,7 @@ export function SettingsTabs() {
     { href: "/settings/members", label: t.members.title },
     { href: "/settings/roles", label: t.roles.title },
     { href: "/settings/channels", label: t.channels.title },
+    { href: "/settings/workspace", label: t.workspace.tab },
     { href: "/settings/crm", label: t.crmSettings.tab },
     { href: "/settings/billing", label: t.billing.title },
     { href: "/settings/forms", label: t.forms.tab },

@@ -16,11 +16,16 @@ test("getting started: sample data in and out, a business template, the checklis
   await page.getByRole("region", { name: "Başlanğıc addımları" }).getByRole("button", { name: "Nümunə məlumatı sil" }).click();
   await expect(page.getByRole("region", { name: "Başlanğıc addımları" }).getByRole("button", { name: "Nümunə məlumat əlavə et" })).toBeVisible();
 
-  await page.getByRole("region", { name: "Başlanğıc addımları" }).getByRole("button", { name: "Biznes şablonu seçin" }).click();
-  await page.getByRole("button", { name: "Tətbiq et: Sifarişli istehsal" }).click();
-  await expect(page.getByText(/Şablon əlavə olundu: 3 sahə, 2 məhsul/)).toBeVisible();
+  // A new company is asked what it does: each trade shows what it sets up before applying
+  const setup = page.getByRole("region", { name: "Biznesiniz nədir?" });
+  await setup.getByRole("button", { name: /^Klinika/ }).click();
+  await expect(setup.getByText("Pasiyentlər", { exact: true })).toBeVisible();
+  await setup.getByRole("button", { name: "Bu quruluşu tətbiq et" }).click();
+  await expect(page.getByText("Hazırdır! Sistem «Klinika / stomatologiya» üçün quruldu.")).toBeVisible();
+  // The menu now speaks the clinic's language
+  await expect(page.getByRole("complementary", { name: "Əsas menyu" }).getByRole("link", { name: "Pasiyentlər" })).toBeVisible();
   await page.goto("/settings/crm");
-  await expect(page.getByText("Sifarişli istehsal").first()).toBeVisible();
+  await expect(page.getByText("Pasiyent qəbulu").first()).toBeVisible();
   await expect(page.getByText("Tətbiq olundu")).toBeVisible();
 });
 

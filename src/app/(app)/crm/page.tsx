@@ -10,10 +10,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageSize } from "@/components/ui/PageSize";
 import { Pagination } from "@/components/ui/Pagination";
 import { StatChips } from "@/components/ui/StatChips";
-import { getContacts, getFields, getMembers, getSession } from "@/lib/api";
+import { getContacts, getFields, getMembers, getSession, getViews } from "@/lib/api";
+import { SavedViews } from "@/components/crm/SavedViews";
 import { formatNumber } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "CRM" };
 
@@ -39,12 +40,13 @@ export default async function ContactsPage({ searchParams }: Props) {
   const dir: "asc" | "desc" = params.dir === "asc" ? "asc" : "desc";
 
   const one = (extra: Record<string, string | undefined>) => getContacts({ ...extra, limit: "1" }).then((r) => r.total);
-  const [{ t, locale }, me, list, members, fields, all, hot, customers, passive, ...byStage] = await Promise.all([
-    getI18n(),
+  const [{ t, locale }, me, list, members, fields, views, all, hot, customers, passive, ...byStage] = await Promise.all([
+    getAppI18n(),
     getSession(),
     getContacts({ ...filters, stage, page: String(page), limit: String(limit), sort, dir }),
     getMembers(),
     getFields(),
+    getViews("contacts"),
     // The cards: the whole base (each a one-row query for its total)
     one({}),
     one({ level: "hot" }),
@@ -152,6 +154,14 @@ export default async function ContactsPage({ searchParams }: Props) {
         </div>
       </div>
 
+      <SavedViews
+        entity="contacts"
+        base="/crm"
+        initial={views}
+        current={new URLSearchParams(Object.entries({ ...filters, stage, sort: state.sort, dir: state.dir }).filter((e): e is [string, string] => !!e[1])).toString()}
+        canShare={me.permissions.includes("crm.configure")}
+      />
+
       <ContactFilters
         values={{ q: params.q, source, ownerId: params.ownerId, tag: params.tag, from: filters.from, to: filters.to, type, level, activity, field, value }}
         keep={{ stage, view: state.view, limit: state.limit, sort: state.sort, dir: state.dir }}
@@ -167,9 +177,10 @@ export default async function ContactsPage({ searchParams }: Props) {
             title={c.empty}
             hint={filtered || stage ? c.emptyHint : t.empties.contacts.hint}
             action={!filtered && !stage && me.permissions.includes("contacts.create") ? { href: "/crm/new", label: t.empties.contacts.action } : undefined}
+            secondary={!filtered && !stage && me.permissions.includes("data.import") ? { href: "/crm/import", label: t.empties.contacts.import } : undefined}
           />
         ) : (
-          <ContactTable items={list.items} view={view} permissions={me.permissions} members={members} activitySort={activitySort} />
+          <ContactTable items={list.items} view={view} permissions={me.permissions} members={members} activitySort={activitySort} fields={filterFields} />
         )}
 
         {list.total > 0 && (

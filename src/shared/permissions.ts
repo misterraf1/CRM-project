@@ -59,6 +59,8 @@ export const PERMISSIONS = [
   "automations.manage",
   /** Pipelines and stages, custom fields, currency rates */
   "crm.configure",
+  /** API keys and outgoing webhooks */
+  "integrations.manage",
   "audit.view",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
@@ -70,7 +72,7 @@ export const PERMISSION_GROUPS = {
   data: ["contacts.export", "deals.export", "data.import"],
   sales: ["quotes.manage", "discounts.approve", "orders.manage", "products.manage", "invoices.manage", "finance.view"],
   work: ["inbox.reply", "inbox.assign", "tasks.create", "tasks.assign_any", "cases.manage", "analytics.view", "targets.manage", "campaigns.manage", "automations.manage"],
-  admin: ["members.view", "members.invite", "members.manage", "roles.manage", "departments.manage", "channels.manage", "crm.configure", "audit.view", "billing.manage"],
+  admin: ["members.view", "members.invite", "members.manage", "roles.manage", "departments.manage", "channels.manage", "crm.configure", "integrations.manage", "audit.view", "billing.manage"],
 } as const satisfies Record<string, readonly Permission[]>;
 
 const ALL: readonly Permission[] = PERMISSIONS;

@@ -7,7 +7,7 @@ import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { TaskList } from "@/components/tasks/TaskList";
 import { TaskQuickAdd } from "@/components/tasks/TaskQuickAdd";
 import { getMembers, getProjects, getSession, getTasks } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Tasks" };
 
@@ -20,7 +20,7 @@ export default async function TasksPage({ searchParams }: Props) {
   // The board shows a "done" column, so it always includes recently finished tasks
   const includeDone = layout === "board" || params.done === "1";
   const [{ t }, me, members, projects, tasks] = await Promise.all([
-    getI18n(),
+    getAppI18n(),
     getSession(),
     getMembers(),
     getProjects(),

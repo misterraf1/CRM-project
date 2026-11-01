@@ -217,7 +217,7 @@ export class AuthService {
   async me(): Promise<MeResponse> {
     const ctx = authedContext();
     return this.db.scoped(async (tx) => {
-      const [user, membership, tenant, subscription, seats, [rows, tenants], aiUsage] = await Promise.all([
+      const [user, membership, tenant, subscription, seats, [rows, tenants], aiUsage, objects] = await Promise.all([
         tx.user.get({ id: ctx.userId }),
         tx.membership.get({ id: ctx.membershipId }),
         tx.tenant.get({ id: ctx.tenantId }),
@@ -227,12 +227,13 @@ export class AuthService {
           .find({ userId: ctx.userId, status: "ACTIVE" }, { sort: { joinedAt: 1 } })
           .then(async (rows) => [rows, new Map((await tx.tenant.find({ id: { $in: rows.map((m) => m.tenantId) } })).map((t) => [t.id, t]))] as const),
         this.ai.usage(tx, ctx.tenantId),
+        tx.customObject.find({ tenantId: ctx.tenantId }, { sort: { createdAt: 1 }, projection: { id: 1, name: 1, icon: 1 } }),
       ]);
       const role = membership.roleId ? await tx.role.findOne({ id: membership.roleId, tenantId: ctx.tenantId }) : null;
       const memberships = rows.filter((m) => tenants.has(m.tenantId)).map((m) => ({ ...m, tenant: tenants.get(m.tenantId)! }));
       return {
         user: { id: user.id, fullName: user.fullName, email: user.email, locale: user.locale },
-        tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, currency: tenant.currency, timezone: tenant.timezone },
+        tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, currency: tenant.currency, timezone: tenant.timezone, workspace: tenant.workspace ?? { hiddenModules: [], terms: {} }, objects: objects.map((o) => ({ id: o.id, name: o.name, icon: o.icon })) },
         membership: {
           id: membership.id,
           role: membership.role,

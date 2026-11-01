@@ -8,7 +8,7 @@ import { getMembers, getOrder } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatMoneyExact } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Order" };
 
@@ -20,7 +20,7 @@ export default async function OrderPage({ params }: Props) {
     if (e instanceof ApiRequestError && (e.status === 404 || e.status === 403)) notFound();
     throw e;
   });
-  const [{ t, locale }, members] = await Promise.all([getI18n(), getMembers()]);
+  const [{ t, locale }, members] = await Promise.all([getAppI18n(), getMembers()]);
   const k = t.orders;
   return (
     <div className="space-y-4">

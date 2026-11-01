@@ -138,6 +138,11 @@ export interface PortalDto {
  * What can be connected. "live" ones work today; "planned" ones have their place
  * (settings card, provider interface) and are added once the provider is approved.
  */
+/**
+ * What can be connected and how far along it is:
+ *  live — works now; api — through API keys and webhooks (the other tool calls us);
+ *  keys — needs the provider's approval or account; planned — not built yet.
+ */
 export const INTEGRATIONS = [
   { key: "whatsapp", status: "live", href: "/settings/channels" },
   { key: "instagram", status: "live", href: "/settings/channels" },
@@ -146,14 +151,25 @@ export const INTEGRATIONS = [
   { key: "email", status: "live", href: "/settings/channels" },
   { key: "webchat", status: "live", href: "/settings/channels" },
   { key: "forms", status: "live", href: "/settings/forms" },
+  { key: "site_forms", status: "live", href: "#inbound" },
+  { key: "google_ads", status: "live", href: "#inbound" },
+  { key: "shopify", status: "live", href: "#inbound" },
+  { key: "woocommerce", status: "live", href: "#inbound" },
+  { key: "voip", status: "live", href: "#inbound" },
+  { key: "public_api", status: "live", href: "#api" },
+  { key: "webhooks", status: "live", href: "#webhooks" },
+  { key: "zapier", status: "api", href: "#api" },
+  { key: "make", status: "api", href: "#api" },
+  { key: "n8n", status: "api", href: "#api" },
+  { key: "accounting", status: "api", href: "#api" },
   { key: "ai", status: "live", href: null },
-  { key: "public_api", status: "planned", href: null },
-  { key: "webhooks", status: "planned", href: null },
-  { key: "google_calendar", status: "planned", href: null },
-  { key: "voip", status: "planned", href: null },
-  { key: "sms", status: "planned", href: null },
+  { key: "facebook_lead_ads", status: "keys", href: null },
+  { key: "gmail_outlook", status: "keys", href: null },
+  { key: "google_calendar", status: "keys", href: null },
+  { key: "google_drive", status: "keys", href: null },
+  { key: "sms", status: "keys", href: null },
+  { key: "mailchimp", status: "planned", href: null },
   { key: "speech", status: "planned", href: null },
   { key: "payments", status: "planned", href: null },
-  { key: "accounting", status: "planned", href: null },
 ] as const;
 export type IntegrationKey = (typeof INTEGRATIONS)[number]["key"];

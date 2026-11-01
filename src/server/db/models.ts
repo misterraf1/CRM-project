@@ -77,6 +77,8 @@ export interface Tenant {
   securitySettings: import("@/shared").CompanySecurity | null;
   /** Getting started: checklist hidden, templates applied, sample records to remove */
   onboarding: { dismissedAt: Date | null; templates: string[]; demo: { contactIds: string[]; dealIds: string[]; taskIds: string[] } | null };
+  /** Menu sections hidden and words renamed by the company (null = everything shown, own words) */
+  workspace: import("@/shared").WorkspaceDto | null;
   /** Seller details printed on quotes and invoices */
   docSettings: {
     legalName?: string | null;
@@ -263,6 +265,8 @@ export interface Contact {
   name: string;
   email: string | null;
   phone: string | null;
+  /** Further numbers, normalised like `phone` */
+  extraPhones: string[];
   companyName: string | null;
   companyId: string | null;
   stage: LifecycleStage;
@@ -302,6 +306,8 @@ export interface PipelineStage {
   order: number;
   probability: number;
   kind: string;
+  /** Deal custom field ids that must be filled before a deal enters the stage */
+  requiredFields: string[];
 }
 
 export interface Deal {
@@ -654,8 +660,13 @@ export interface ImportJob {
   summary: { create: number; update: number; skip: number; failed: number; companies: number };
   issues: JsonValue;
   issueRows: JsonValue;
-  /** Records the import created (for tracing them back, and a future undo) */
+  /** Sheets of one workbook imported together */
+  batchId: string | null;
+  /** Records the import created (archived or removed on undo) */
   createdIds: string[];
+  /** Values the import overwrote, put back on undo */
+  undo: { id: string; set: Record<string, unknown> }[];
+  undoneAt: Date | null;
   byId: string | null;
   createdAt: Date;
 }
@@ -854,6 +865,114 @@ export interface SalesTarget {
   updatedAt: Date;
 }
 
+/** A key for the public API: acts as the member who made it, limited to its scopes. */
+export interface ApiKey {
+  id: string;
+  tenantId: string;
+  name: string;
+  /** First characters, to recognise the key in lists (the key itself is only shown once) */
+  prefix: string;
+  /** sha256 of the whole key */
+  tokenHash: string;
+  scopes: string[];
+  createdById: string;
+  lastUsedAt: Date | null;
+  revokedAt: Date | null;
+  createdAt: Date;
+}
+
+/** An outside address told about events (signed with its secret). */
+export interface WebhookEndpoint {
+  id: string;
+  tenantId: string;
+  url: string;
+  events: string[];
+  /** Signing secret (HMAC-SHA256), shown to the company's admins */
+  secret: string;
+  active: boolean;
+  description: string | null;
+  lastDeliveryAt: Date | null;
+  lastStatus: "success" | "failed" | null;
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  tenantId: string;
+  endpointId: string;
+  event: string;
+  payload: JsonValue;
+  status: "pending" | "processing" | "success" | "failed";
+  attempts: number;
+  nextAttemptAt: Date;
+  responseStatus: number | null;
+  error: string | null;
+  deliveredAt: Date | null;
+  createdAt: Date;
+}
+
+/** An incoming integration's secret address (website forms, ads, shops, telephony). */
+export interface InboundHook {
+  id: string;
+  tenantId: string;
+  kind: string;
+  name: string;
+  /** Random part of the address (/api/v1/public/in/<tenant>.<token>); admins can copy it again */
+  token: string;
+  /** Shopify/WooCommerce webhook secret, Google Ads key */
+  secret: string | null;
+  ownerId: string | null;
+  createDeal: boolean;
+  active: boolean;
+  received: number;
+  lastReceivedAt: Date | null;
+  lastError: string | null;
+  /** Recent external ids (orders, calls, leads): a repeated delivery isn't recorded twice */
+  seen: string[];
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** A named list filter (the list's query string), for one member or the whole team. */
+export interface SavedView {
+  id: string;
+  tenantId: string;
+  ownerId: string;
+  entity: string;
+  name: string;
+  query: string;
+  shared: boolean;
+  createdAt: Date;
+}
+
+/** A company's own section ("Cars", "Properties", "Courses"): its fields live here. */
+export interface CustomObject {
+  id: string;
+  tenantId: string;
+  name: string;
+  singular: string;
+  icon: string;
+  fields: { id: string; label: string; type: string; options: string[]; required: boolean; archived: boolean }[];
+  createdById: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CustomRecord {
+  id: string;
+  tenantId: string;
+  objectId: string;
+  title: string;
+  values: JsonValue;
+  contactId: string | null;
+  ownerId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface WebForm {
   id: string;
   tenantId: string;
@@ -964,6 +1083,13 @@ export interface Models {
   Renewal: Renewal;
   SalesTarget: SalesTarget;
   WebForm: WebForm;
+  CustomObject: CustomObject;
+  CustomRecord: CustomRecord;
+  SavedView: SavedView;
+  InboundHook: InboundHook;
+  ApiKey: ApiKey;
+  WebhookEndpoint: WebhookEndpoint;
+  WebhookDelivery: WebhookDelivery;
   Campaign: Campaign;
   PortalAccess: PortalAccess;
 }
@@ -974,7 +1100,7 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   User: { passwordHash: null, avatarUrl: null, locale: "AZ", platformRole: "NONE", emailVerified: null, mfaSecret: null, mfaEnabledAt: null, mfaLastStep: null, mfaRecoveryCodes: [], lastLoginAt: null, createdAt: "now", updatedAt: "now" },
   AdminSession: { revokedAt: null, ip: null, userAgent: null, createdAt: "now" },
   Session: { userAgent: null, ip: null, rotatedAt: null, revokedAt: null, createdAt: "now" },
-  Tenant: { logoUrl: null, timezone: "Asia/Baku", currency: "AZN", fxRates: {}, docSettings: {}, inboxSettings: null, securitySettings: null, onboarding: { dismissedAt: null, templates: [], demo: null }, locale: "AZ", status: "TRIALING", lockVersion: 0, createdAt: "now", updatedAt: "now" },
+  Tenant: { logoUrl: null, timezone: "Asia/Baku", currency: "AZN", fxRates: {}, docSettings: {}, inboxSettings: null, securitySettings: null, onboarding: { dismissedAt: null, templates: [], demo: null }, workspace: null, locale: "AZ", status: "TRIALING", lockVersion: 0, createdAt: "now", updatedAt: "now" },
   Plan: { currency: "AZN", aiCredits: 0, extraSeatPrice: 900, extraStorageGbPrice: 500, features: [], contactLimit: null, automationLimit: null, isPublic: true, sortOrder: 0, createdAt: "now", updatedAt: "now" },
   Subscription: { status: "TRIALING", interval: "MONTH", extraSeats: 0, extraStorageMb: 0, trialEndsAt: null, graceEndsAt: null, cancelAtPeriodEnd: false, scheduledPlanId: null, providerRef: null, paymentMethod: null, retryCount: 0, nextRetryAt: null, trialReminderSentAt: null, demoNextChargeFails: false, limitOverrides: {}, featureGrants: [], complimentary: false, createdAt: "now", updatedAt: "now" },
   Invoice: { kind: "subscription", status: "OPEN", currency: "AZN", apply: null, paidAt: null, createdAt: "now" },
@@ -985,9 +1111,9 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   Membership: { role: "EMPLOYEE", roleId: null, presence: "available", mutedNotifications: [], status: "INVITED", departmentId: null, title: null, permissions: [], inviteToken: null, invitedAt: null, joinedAt: null, savedReports: [], createdAt: "now" },
   Role: { description: null, permissions: [], createdAt: "now", updatedAt: "now" },
   Department: { headId: null, parentId: null },
-  Contact: { ownerId: null, type: "person", email: null, phone: null, companyName: null, companyId: null, stage: "LEAD", source: null, tags: [], customFields: {}, messagingConsent: null, lastActivityAt: null, inactiveAlertedAt: null, emailOptOutAt: null, score: null, scoreLevel: null, scoreReasons: [], scoredAt: null, createdAt: "now", updatedAt: "now", deletedAt: null },
+  Contact: { ownerId: null, type: "person", email: null, phone: null, extraPhones: [], companyName: null, companyId: null, stage: "LEAD", source: null, tags: [], customFields: {}, messagingConsent: null, lastActivityAt: null, inactiveAlertedAt: null, emailOptOutAt: null, score: null, scoreLevel: null, scoreReasons: [], scoredAt: null, createdAt: "now", updatedAt: "now", deletedAt: null },
   Pipeline: { isDefault: false },
-  PipelineStage: { probability: 0, kind: "open" },
+  PipelineStage: { probability: 0, kind: "open", requiredFields: [] },
   Deal: { contactId: null, ownerId: null, amount: 0, currency: "AZN", baseAmount: 0, customFields: {}, expectedClose: null, closedAt: null, lostReason: null, position: 0, createdAt: "now", updatedAt: "now" },
   Activity: { contactId: null, dealId: null, actorId: null, createdAt: "now" },
   Project: { ownerId: null, archived: false, createdAt: "now" },
@@ -1012,12 +1138,19 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
   PasswordReset: { usedAt: null, ip: null, createdAt: "now" },
   EmailMessage: { tenantId: null, inboxMessageId: null, campaignId: null, contactId: null, from: null, headers: {}, status: "queued", attempts: 0, error: null, createdAt: "now", sentAt: null },
   FieldDefinition: { options: [], required: false, order: 0, archived: false, createdAt: "now" },
-  ImportJob: { issues: [], issueRows: [], createdIds: [], byId: null, createdAt: "now" },
+  ImportJob: { batchId: null, issues: [], issueRows: [], createdIds: [], undo: [], undoneAt: null, byId: null, createdAt: "now" },
   Product: { sku: null, description: null, unit: "ədəd", taxBp: 0, active: true, components: [], renewalMonths: null, priceTiers: [], createdAt: "now", updatedAt: "now" },
   Order: { status: "new", dealId: null, quoteId: null, ownerId: null, currency: "AZN", total: 0, dueDate: null, deliveryDate: null, notes: null, steps: [], completedAt: null, warrantyMonths: null, createdAt: "now", updatedAt: "now" },
   ServiceCase: { dealId: null, orderId: null, type: "complaint", description: null, priority: "MEDIUM", status: "open", assigneeId: null, warranty: null, resolution: null, resolvedAt: null, notes: [], overdueNotifiedAt: null, createdById: null, createdAt: "now", updatedAt: "now" },
   Renewal: { status: "upcoming", ownerId: null, taskId: null, createdAt: "now", updatedAt: "now" },
   SalesTarget: { memberId: null, period: "month", createdById: null, createdAt: "now", updatedAt: "now" },
+  ApiKey: { lastUsedAt: null, revokedAt: null, createdAt: "now" },
+  SavedView: { shared: false, createdAt: "now" },
+  CustomObject: { icon: "box", fields: [], createdById: null, createdAt: "now", updatedAt: "now" },
+  CustomRecord: { values: {}, contactId: null, ownerId: null, createdAt: "now", updatedAt: "now" },
+  InboundHook: { secret: null, ownerId: null, createDeal: false, active: true, received: 0, lastReceivedAt: null, lastError: null, seen: [], createdById: null, createdAt: "now", updatedAt: "now" },
+  WebhookEndpoint: { active: true, description: null, lastDeliveryAt: null, lastStatus: null, createdById: null, createdAt: "now", updatedAt: "now" },
+  WebhookDelivery: { status: "pending", attempts: 0, responseStatus: null, error: null, deliveredAt: null, createdAt: "now" },
   WebForm: { assigneeIds: [], rrCursor: 0, createDeal: false, active: true, submissions: 0, lastSubmissionAt: null, createdById: null, createdAt: "now", updatedAt: "now" },
   Campaign: { segment: {}, status: "draft", recipients: 0, sentAt: null, createdById: null, createdAt: "now", updatedAt: "now" },
   PortalAccess: { createdById: null, lastUsedAt: null, revokedAt: null, createdAt: "now" },
@@ -1028,7 +1161,7 @@ export const DEFAULTS: { [M in ModelName]: Partial<Record<keyof Models[M], unkno
 };
 
 /** Models whose `updatedAt` is bumped on every update. */
-export const HAS_UPDATED_AT: ReadonlySet<ModelName> = new Set<ModelName>(["User", "Tenant", "Plan", "Subscription", "Role", "Contact", "Deal", "Task", "SupportTicket", "AutomationRule", "Product", "SalesDoc", "Order", "CalendarEvent", "ServiceCase", "Renewal", "SalesTarget", "WebForm", "Campaign"]);
+export const HAS_UPDATED_AT: ReadonlySet<ModelName> = new Set<ModelName>(["User", "Tenant", "Plan", "Subscription", "Role", "Contact", "Deal", "Task", "SupportTicket", "AutomationRule", "Product", "SalesDoc", "Order", "CalendarEvent", "ServiceCase", "Renewal", "SalesTarget", "WebForm", "Campaign", "WebhookEndpoint", "InboundHook", "CustomObject", "CustomRecord"]);
 
 /** Models that carry `tenantId` (tenant-isolated by the repository layer). Session is not: refresh tokens are looked up by hash before any identity exists. */
-export const TENANT_MODELS: ReadonlySet<ModelName> = new Set<ModelName>(["Subscription", "Invoice", "Payment", "UsageCounter", "Membership", "Role", "Department", "Contact", "Pipeline", "PipelineStage", "Deal", "Activity", "Project", "Task", "TaskComment", "Channel", "Conversation", "Message", "CannedResponse", "ChatRoom", "ChatMember", "ChatMessage", "FileObject", "Notification", "AuditLog", "SupportTicket", "SupportTicketMessage", "AutomationRule", "AutomationEvent", "AutomationRun", "EmailMessage", "FieldDefinition", "ImportJob", "Product", "SalesDoc", "DocPayment", "Order", "CalendarEvent", "ServiceCase", "Renewal", "SalesTarget", "WebForm", "Campaign", "PortalAccess"]);
+export const TENANT_MODELS: ReadonlySet<ModelName> = new Set<ModelName>(["Subscription", "Invoice", "Payment", "UsageCounter", "Membership", "Role", "Department", "Contact", "Pipeline", "PipelineStage", "Deal", "Activity", "Project", "Task", "TaskComment", "Channel", "Conversation", "Message", "CannedResponse", "ChatRoom", "ChatMember", "ChatMessage", "FileObject", "Notification", "AuditLog", "SupportTicket", "SupportTicketMessage", "AutomationRule", "AutomationEvent", "AutomationRun", "EmailMessage", "FieldDefinition", "ImportJob", "Product", "SalesDoc", "DocPayment", "Order", "CalendarEvent", "ServiceCase", "Renewal", "SalesTarget", "WebForm", "Campaign", "PortalAccess", "ApiKey", "WebhookEndpoint", "WebhookDelivery", "InboundHook", "SavedView", "CustomObject", "CustomRecord"]);

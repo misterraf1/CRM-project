@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import { NotificationPrefs } from "@/components/settings/NotificationPrefs";
 import { getNotificationPrefs } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Notifications" };
 
 /** Personal: which notifications this member receives. */
 export default async function NotificationsSettingsPage() {
-  const [{ t }, prefs] = await Promise.all([getI18n(), getNotificationPrefs()]);
+  const [{ t }, prefs] = await Promise.all([getAppI18n(), getNotificationPrefs()]);
   return (
     <div className="space-y-5">
       <div>

@@ -21,3 +21,8 @@ export * from "./calendar";
 export * from "./service";
 export * from "./growth";
 export * from "./onboarding";
+export * from "./workspace";
+export * from "./integrations";
+export * from "./inbound";
+export * from "./views";
+export * from "./objects";

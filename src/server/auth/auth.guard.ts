@@ -5,6 +5,7 @@ import type { RouteOptions } from "../http/router";
 import { EntitlementsService, INACTIVE_STATUSES, subscriptionOf } from "../billing/entitlements.service";
 import type { Database } from "../db/database";
 import { TokensService } from "./tokens.service";
+import { ApiKeysService, isApiKey } from "../integrations/api-keys.service";
 
 /**
  * Runs for every non-public route. Verifies the access token, then re-reads the session and membership
@@ -16,12 +17,15 @@ export class AuthGuard {
     private readonly tokens: TokensService,
     private readonly db: Database,
     private readonly entitlements: EntitlementsService,
+    private readonly apiKeys: ApiKeysService,
   ) {}
 
   async check(req: Request, route: Pick<RouteOptions, "permission" | "feature" | "allowInactive" | "withoutMfa">): Promise<void> {
     const header = req.headers.get("authorization") ?? "";
     const [scheme, token] = header.split(" ");
     if (scheme !== "Bearer" || !token) throw new AppError("UNAUTHENTICATED", "Missing bearer token");
+    // Public API keys (integrations): their own checks, limited to the paths their scopes open
+    if (isApiKey(token)) return this.apiKeys.authenticate(req, token, route);
 
     const payload = await this.tokens.verifyAccess(token);
     // One parallel round trip, outside a transaction: this runs before every API call

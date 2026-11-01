@@ -58,6 +58,13 @@ const MODELS = [
   "WebForm",
   "Campaign",
   "PortalAccess",
+  "ApiKey",
+  "WebhookEndpoint",
+  "WebhookDelivery",
+  "InboundHook",
+  "SavedView",
+  "CustomObject",
+  "CustomRecord",
 ] as const satisfies readonly ModelName[];
 
 type Key<M extends string> = Uncapitalize<M>;

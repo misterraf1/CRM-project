@@ -191,18 +191,28 @@ export function serialToIso(serial: number) {
 
 /** The first worksheet of an XLSX file as rows of strings. */
 export function readXlsx(buffer: Buffer): Sheet {
+  return readXlsxBook(buffer)[0]?.rows ?? fail("format");
+}
+
+/** Every worksheet of an XLSX file, in workbook order, with its tab name. */
+export function readXlsxBook(buffer: Buffer): { name: string; rows: Sheet }[] {
   const read = unzip(buffer);
   const workbook = read("xl/workbook.xml") ?? fail("format");
-  const rid = attr(/<sheet\b([^>]*)\/?>/.exec(workbook)?.[1] ?? "", "r:id");
-  const rels = read("xl/_rels/workbook.xml.rels") ?? "";
-  const target = [...rels.matchAll(/<Relationship\b([^>]*)\/?>/g)].map((m) => m[1]!).find((a) => attr(a, "Id") === rid);
-  const href = target ? attr(target, "Target")! : "worksheets/sheet1.xml";
-  const path = href.startsWith("/") ? href.slice(1) : `xl/${href}`;
-  const sheet = read(path) ?? fail("format");
-
+  const rels = [...(read("xl/_rels/workbook.xml.rels") ?? "").matchAll(/<Relationship\b([^>]*)\/?>/g)].map((m) => m[1]!);
   const shared = [...(read("xl/sharedStrings.xml") ?? "").matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => runsText(m[1]!));
   const dates = dateStyles(read("xl/styles.xml"));
+  const tabs = [...workbook.matchAll(/<sheet\b([^>]*)\/?>/g)].map((m) => m[1]!);
+  if (!tabs.length) fail("format");
+  return tabs.map((tab, i) => {
+    const rid = attr(tab, "r:id");
+    const target = rels.find((a) => attr(a, "Id") === rid);
+    const href = target ? attr(target, "Target")! : `worksheets/sheet${i + 1}.xml`;
+    const path = href.startsWith("/") ? href.slice(1) : `xl/${href}`;
+    return { name: xmlText(attr(tab, "name") ?? `Sheet${i + 1}`), rows: sheetRows(read(path) ?? fail("format"), shared, dates) };
+  });
+}
 
+function sheetRows(sheet: string, shared: string[], dates: Set<number>): Sheet {
   const rows: Sheet = [];
   for (const rm of sheet.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
     const row: string[] = [];
@@ -262,7 +272,46 @@ const columnName = (i: number) => {
 
 /** One-sheet XLSX. Strings are inline (never formulas); numbers stay numbers; the first row is bold and frozen. */
 export function toXlsx(rows: Cell[][], sheetName = "Sheet1"): Buffer {
-  const sheetRows = rows
+  return toXlsxBook([{ name: sheetName, rows }]);
+}
+
+/** A workbook with one tab per sheet (header row bold and frozen on each). */
+export function toXlsxBook(sheets: { name: string; rows: Cell[][] }[]): Buffer {
+  const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  const ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+  const rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+  const used = new Set<string>();
+  const names = sheets.map((sh, i) => {
+    let name = sh.name.replace(/[\\/?*[\]:]/g, " ").slice(0, 31) || `Sheet${i + 1}`;
+    while (used.has(name.toLowerCase())) name = `${name.slice(0, 28)} ${i + 1}`;
+    used.add(name.toLowerCase());
+    return escapeXml(name);
+  });
+  const n = sheets.map((_, i) => i + 1);
+  return zip([
+    [
+      "[Content_Types].xml",
+      `${xml}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${n.map((i) => `<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
+    ],
+    ["_rels/.rels", `${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ["xl/workbook.xml", `${xml}<workbook ${ns} xmlns:r="${rel}"><sheets>${n.map((i) => `<sheet name="${names[i - 1]}" sheetId="${i}" r:id="rId${i}"/>`).join("")}</sheets></workbook>`],
+    [
+      "xl/_rels/workbook.xml.rels",
+      `${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${n.map((i) => `<Relationship Id="rId${i}" Type="${rel}/worksheet" Target="worksheets/sheet${i}.xml"/>`).join("")}<Relationship Id="rId${sheets.length + 1}" Type="${rel}/styles" Target="styles.xml"/></Relationships>`,
+    ],
+    [
+      "xl/styles.xml",
+      `${xml}<styleSheet ${ns}><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`,
+    ],
+    ...sheets.map((sh, i): [string, string] => [
+      `xl/worksheets/sheet${i + 1}.xml`,
+      `${xml}<worksheet ${ns}><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>${worksheetRows(sh.rows)}</sheetData></worksheet>`,
+    ]),
+  ]);
+}
+
+function worksheetRows(rows: Cell[][]) {
+  return rows
     .map((r, ri) => {
       const cells = r
         .map((v, ci) => {
@@ -276,30 +325,6 @@ export function toXlsx(rows: Cell[][], sheetName = "Sheet1"): Buffer {
       return `<row r="${ri + 1}">${cells}</row>`;
     })
     .join("");
-  const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
-  const ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
-  const rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-  const name = escapeXml(sheetName.replace(/[\\/?*[\]:]/g, " ").slice(0, 31) || "Sheet1");
-  return zip([
-    [
-      "[Content_Types].xml",
-      `${xml}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`,
-    ],
-    ["_rels/.rels", `${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
-    ["xl/workbook.xml", `${xml}<workbook ${ns} xmlns:r="${rel}"><sheets><sheet name="${name}" sheetId="1" r:id="rId1"/></sheets></workbook>`],
-    [
-      "xl/_rels/workbook.xml.rels",
-      `${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${rel}/styles" Target="styles.xml"/></Relationships>`,
-    ],
-    [
-      "xl/styles.xml",
-      `${xml}<styleSheet ${ns}><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`,
-    ],
-    [
-      "xl/worksheets/sheet1.xml",
-      `${xml}<worksheet ${ns}><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>${sheetRows}</sheetData></worksheet>`,
-    ],
-  ]);
 }
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {

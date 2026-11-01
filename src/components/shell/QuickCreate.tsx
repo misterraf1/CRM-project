@@ -10,13 +10,13 @@ import { useI18n } from "@/lib/i18n/client";
 import { allowedQuickCreate } from "@/lib/quick-create";
 
 /** "+ New" in the header: a customer, deal, task, meeting, quote or case from any page. */
-export function QuickCreate({ permissions }: { permissions: Permission[] }) {
+export function QuickCreate({ permissions, hidden }: { permissions: Permission[]; hidden: readonly string[] }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const pathname = usePathname();
-  const items = allowedQuickCreate(permissions);
+  const items = allowedQuickCreate(permissions, hidden);
 
   // A followed link closes the menu
   useEffect(() => setOpen(false), [pathname]);

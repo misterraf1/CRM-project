@@ -1,4 +1,4 @@
-import type { AdminUsageRow, AiTextDto, ContactDto, DealDto, DocDto, OnboardingDto, PipelineDto, ProductSalesDto, ReceivablesDto, SavedReportDto, TemplateResultDto } from "@/shared";
+import type { MeResponse, TemplatePreviewDto, WorkspaceDto, AdminUsageRow, AiTextDto, ContactDto, DealDto, DocDto, OnboardingDto, PipelineDto, ProductSalesDto, ReceivablesDto, SavedReportDto, TemplateResultDto } from "@/shared";
 import request from "supertest";
 import { AiService, type AiClient } from "@/server/ai/ai.service";
 import { addMember, createApp, platformStaff, signup, withRawDb, type TestApp } from "./helpers";
@@ -89,6 +89,42 @@ describe("Reports, onboarding and templates, AI over the CRM, platform usage", (
     expect(((await http().patch("/v1/onboarding").set(owner.auth).send({ dismissed: true }).expect(200)).body as OnboardingDto).dismissed).toBe(true);
     const emp = await addMember(app, owner, "EMPLOYEE");
     await http().post("/v1/onboarding/demo").set(emp.auth).expect(403);
+  });
+
+  it("first-run set-up: previews of every trade, then the menu and the trade's words; sections hide without losing data", async () => {
+    const owner = await signup(app);
+    const previews = (await http().get("/v1/onboarding/templates").set(owner.auth).expect(200)).body as TemplatePreviewDto[];
+    expect(previews).toHaveLength(15);
+    const clinic = previews.find((p) => p.key === "clinic")!;
+    expect(clinic).toMatchObject({ pipeline: "Pasiyent qəbulu", terms: { contacts: "Pasiyentlər", newContact: "Yeni pasiyent" } });
+    expect(clinic.hide).toContain("campaigns");
+
+    // Adding a template from settings leaves the menu alone; the first-run choice sets it
+    await http().post("/v1/onboarding/template").set(owner.auth).send({ key: "retail" }).expect(201);
+    expect(((await http().get("/v1/me").set(owner.auth)).body as MeResponse).tenant.workspace).toEqual({ hiddenModules: [], terms: {} });
+    await http().post("/v1/onboarding/template").set(owner.auth).send({ key: "clinic", makeDefault: true, setup: true }).expect(201);
+    const me = (await http().get("/v1/me").set(owner.auth)).body as MeResponse;
+    expect(me.tenant.workspace.hiddenModules).toEqual(clinic.hide);
+    expect(me.tenant.workspace.terms.ru?.contacts).toBe("Пациенты");
+
+    // Own words; blanks fall back to the default and are not stored
+    const c = await contact(owner, { name: "Gizli bölmədə də qalır" });
+    const ws = (await http()
+      .patch("/v1/settings/workspace")
+      .set(owner.auth)
+      .send({ hiddenModules: ["campaigns", "campaigns", "deals"], terms: { az: { contacts: "  Tələbələr ", deals: "" }, en: {} } })
+      .expect(200)).body as WorkspaceDto;
+    expect(ws).toEqual({ hiddenModules: ["campaigns", "deals"], terms: { az: { contacts: "Tələbələr" } } });
+    expect(((await http().get("/v1/settings/workspace").set(owner.auth)).body as WorkspaceDto)).toEqual(ws);
+    // A hidden section's data and API stay
+    await http().get(`/v1/contacts/${c.id}`).set(owner.auth).expect(200);
+    await http().get("/v1/deals").set(owner.auth).expect(200);
+    await http().patch("/v1/settings/workspace").set(owner.auth).send({ hiddenModules: ["crm"], terms: {} }).expect(400);
+
+    const emp = await addMember(app, owner, "EMPLOYEE");
+    expect(((await http().get("/v1/me").set(emp.auth)).body as MeResponse).tenant.workspace.hiddenModules).toEqual(["campaigns", "deals"]);
+    await http().patch("/v1/settings/workspace").set(emp.auth).send({ hiddenModules: [], terms: {} }).expect(403);
+    await http().get("/v1/onboarding/templates").set(emp.auth).expect(403);
   });
 
   it("AI briefs and questions see only what the caller may see; the record is data", async () => {

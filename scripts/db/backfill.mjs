@@ -44,6 +44,13 @@ export const BACKFILLS = [
   ["Tenant", { onboarding: { dismissedAt: null, templates: [], demo: null } }],
   // Inbox v3 — important conversations
   ["Conversation", { starred: false }],
+  // Universal plan U1 — hidden sections and own words
+  ["Tenant", { workspace: null }],
+  // U3 — more numbers per customer, undoable imports
+  ["Contact", { extraPhones: [] }],
+  ["ImportJob", { batchId: null, undo: [], undoneAt: null }],
+  // U2 — required fields per stage
+  ["PipelineStage", { requiredFields: [] }],
 ];
 
 /**

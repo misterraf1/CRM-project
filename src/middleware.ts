@@ -48,6 +48,8 @@ export async function middleware(req: NextRequest) {
   if (path === "/admin" || path.startsWith("/admin/") || path.startsWith("/api/admin/")) return adminGate(req);
   if (PUBLIC.some((re) => re.test(req.nextUrl.pathname))) return NextResponse.next();
   if (req.cookies.get(ACCESS_COOKIE)) return NextResponse.next();
+  // Integrations call the API with a key instead of a session (checked by the API itself)
+  if (path.startsWith("/api/v1/") && /^Bearer axk_/.test(req.headers.get("authorization") ?? "")) return NextResponse.next();
 
   if (!req.cookies.get(REFRESH_COOKIE)) return unauthenticated(req);
 

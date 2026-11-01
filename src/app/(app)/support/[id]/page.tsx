@@ -6,7 +6,7 @@ import { TicketStatusBadge } from "@/components/support/TicketStatusBadge";
 import { TicketThread } from "@/components/support/TicketThread";
 import { getTicket } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Support" };
 
@@ -18,7 +18,7 @@ export default async function TicketPage({ params }: Props) {
     if (e instanceof ApiRequestError && e.status === 404) notFound();
     throw e;
   });
-  const { t } = await getI18n();
+  const { t } = await getAppI18n();
   const s = t.support;
   return (
     <div className="mx-auto max-w-3xl space-y-4">

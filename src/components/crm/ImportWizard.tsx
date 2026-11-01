@@ -15,7 +15,7 @@ import {
   type ImportSummary,
 } from "@/shared";
 import clsx from "clsx";
-import { Download, FileSpreadsheet, Upload } from "lucide-react";
+import { Download, FileSpreadsheet, Undo2, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
@@ -25,6 +25,7 @@ import { useI18n } from "@/lib/i18n/client";
 import type { Dictionary } from "@/lib/i18n/dictionaries/az";
 import { errorMessage } from "@/lib/i18n/errors";
 import { interpolate } from "@/lib/i18n/locales";
+import { WorkbookImport } from "./WorkbookImport";
 
 type Step = "file" | "map" | "done";
 
@@ -32,7 +33,9 @@ type Step = "file" | "map" | "done";
 function fieldLabel(t: Dictionary, entity: ImportEntity, key: string, fields: FieldDefinitionDto[]) {
   if (key.startsWith("cf.")) return fields.find((f) => f.id === key.slice(3))?.label ?? key;
   const columns = t.imports.columns;
-  return (entity === "deal" && key === "stage" ? columns.dealStage : columns[key as keyof typeof columns]) ?? key;
+  const label =
+    entity === "deal" && key === "stage" ? "dealStage" : entity === "task" && key === "title" ? "taskTitle" : entity === "task" && key === "owner" ? "assignee" : entity === "product" && key === "name" ? "productName" : key;
+  return columns[label as keyof typeof columns] ?? key;
 }
 
 function issueText(t: Dictionary, entity: ImportEntity, issue: ImportIssue, fields: FieldDefinitionDto[]) {
@@ -57,11 +60,15 @@ function downloadIssues(t: Dictionary, job: ImportJobDetailDto, fields: FieldDef
   URL.revokeObjectURL(a.href);
 }
 
-/** CSV/Excel import: choose a file, match its columns, check, import. */
-export function ImportWizard({ fields, canDeals, history: initialHistory, initialEntity }: { fields: FieldDefinitionDto[]; canDeals: boolean; history: ImportJobDto[]; initialEntity: ImportEntity }) {
+/** Where an import's records are listed */
+const RESULT_PAGE: Record<ImportEntity, string> = { person: "/crm?type=person", company: "/crm?type=company", deal: "/deals", product: "/sales/products", task: "/tasks" };
+
+/** CSV/Excel import: choose a file, match its columns, check, import — one list, or a whole workbook. */
+export function ImportWizard({ fields, kinds, history: initialHistory, initialEntity }: { fields: FieldDefinitionDto[]; kinds: ImportEntity[]; history: ImportJobDto[]; initialEntity: ImportEntity }) {
   const { t, locale } = useI18n();
   const k = t.imports;
   const router = useRouter();
+  const [mode, setMode] = useState<"single" | "workbook">("single");
   const [step, setStep] = useState<Step>("file");
   const [entity, setEntity] = useState<ImportEntity>(initialEntity);
   const [file, setFile] = useState<File | null>(null);
@@ -155,7 +162,17 @@ export function ImportWizard({ fields, canDeals, history: initialHistory, initia
     else setError(errorMessage(t, res.code));
   }
 
-  const missingRequired = !mapping.includes(required);
+  async function undo(h: ImportJobDto) {
+    if (!window.confirm(k.confirmUndo)) return;
+    setError(undefined);
+    const res = await api<ImportJobDto[]>(`/imports/${h.id}/undo`, "POST");
+    if (!res.ok) return setError(errorMessage(t, res.code));
+    setHistory(res.data);
+    router.refresh();
+  }
+
+  // People may come as separate first/last name columns
+  const missingRequired = !mapping.includes(required) && !(entity === "person" && (mapping.includes("firstName") || mapping.includes("lastName")));
   const summary = preview && !stale && !preview.missing.length ? preview.summary : null;
   const steps: [Step, string][] = [
     ["file", k.stepFile],
@@ -165,6 +182,24 @@ export function ImportWizard({ fields, canDeals, history: initialHistory, initia
 
   return (
     <div className="space-y-5">
+      <div role="group" aria-label={`${k.modeSingle} / ${k.modeWorkbook}`} className="inline-flex rounded-xl border border-border p-1">
+        {(["single", "workbook"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            aria-pressed={mode === m}
+            onClick={() => (setMode(m), restart())}
+            className={clsx("rounded-lg px-3 py-1.5 text-sm font-medium", mode === m ? "bg-accent text-accent-fg" : "text-fg-muted hover:bg-muted")}
+          >
+            {m === "single" ? k.modeSingle : k.modeWorkbook}
+          </button>
+        ))}
+      </div>
+
+      {mode === "workbook" && <WorkbookImport kinds={kinds} onImported={setHistory} />}
+
+      {mode === "single" && (
+      <>
       <ol className="flex flex-wrap gap-2 text-xs font-medium" aria-label={k.title}>
         {steps.map(([s, name], i) => (
           <li key={s} aria-current={step === s ? "step" : undefined} className={clsx("rounded-full px-3 py-1", step === s ? "bg-accent text-accent-fg" : "bg-muted text-fg-muted")}>
@@ -184,9 +219,7 @@ export function ImportWizard({ fields, canDeals, history: initialHistory, initia
           <fieldset>
             <legend className="field-label">{k.entity}</legend>
             <div className="mt-2 flex flex-wrap gap-2">
-              {(["person", "company", "deal"] as const)
-                .filter((e) => e !== "deal" || canDeals)
-                .map((e) => (
+              {kinds.map((e) => (
                   <label key={e} className={clsx("flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm", entity === e ? "border-accent bg-accent/5" : "border-border")}>
                     <input type="radio" name="entity" value={e} checked={entity === e} onChange={() => setEntity(e)} className="accent-[rgb(var(--accent))]" />
                     {k.entities[e]}
@@ -220,7 +253,11 @@ export function ImportWizard({ fields, canDeals, history: initialHistory, initia
               {k.template}
             </a>
           </div>
-          <p className="text-xs text-fg-subtle">{k.automationNote}</p>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-fg-subtle">
+            {(entity === "person" || entity === "company") && <li>{k.phonesHint}</li>}
+            <li>{k.otherCrm}</li>
+            <li>{k.automationNote}</li>
+          </ul>
         </form>
       )}
 
@@ -277,7 +314,7 @@ export function ImportWizard({ fields, canDeals, history: initialHistory, initia
             </div>
 
             <div className="space-y-3 border-t border-border p-5">
-              {entity !== "deal" && (
+              {entity !== "deal" && entity !== "task" && (
                 <fieldset>
                   <legend className="field-label">{k.duplicates}</legend>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
@@ -353,14 +390,16 @@ export function ImportWizard({ fields, canDeals, history: initialHistory, initia
                 {k.downloadIssues}
               </button>
             )}
-            <Link href={job.entity === "deal" ? "/deals" : `/crm?type=${job.entity}`} className="btn-primary">
-              {job.entity === "deal" ? t.deals.title : t.crm.title}
+            <Link href={RESULT_PAGE[job.entity]} className="btn-primary">
+              {k.entities[job.entity]}
             </Link>
             <button type="button" onClick={restart} className="btn-ghost">
               {k.another}
             </button>
           </div>
         </section>
+      )}
+      </>
       )}
 
       <section className="card">
@@ -386,6 +425,16 @@ export function ImportWizard({ fields, canDeals, history: initialHistory, initia
                     <Download className="h-3.5 w-3.5" aria-hidden />
                   </button>
                 )}
+                {h.undoneAt ? (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-fg-muted">{k.undone}</span>
+                ) : (
+                  h.summary.create + h.summary.update > 0 && (
+                    <button type="button" onClick={() => undo(h)} aria-label={`${k.undo}: ${h.fileName}`} className="btn-ghost h-7 gap-1 px-2 text-xs">
+                      <Undo2 className="h-3.5 w-3.5" aria-hidden />
+                      {k.undo}
+                    </button>
+                  )
+                )}
               </li>
             ))}
           </ul>
@@ -395,7 +444,7 @@ export function ImportWizard({ fields, canDeals, history: initialHistory, initia
   );
 }
 
-function SummaryTiles({ summary, t, locale }: { summary: ImportSummary; t: Dictionary; locale: Parameters<typeof formatNumber>[1] }) {
+export function SummaryTiles({ summary, t, locale }: { summary: ImportSummary; t: Dictionary; locale: Parameters<typeof formatNumber>[1] }) {
   const k = t.imports.summary;
   const tiles: [string, number, string][] = [
     [k.create, summary.create, "text-success"],

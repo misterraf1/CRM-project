@@ -5,7 +5,7 @@ import Link from "next/link";
 import { FILE_SOURCES, type FileSource } from "@/shared";
 import { FileBrowser } from "@/components/files/FileBrowser";
 import { getFiles } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Files" };
 
@@ -14,7 +14,7 @@ type Props = { searchParams: Promise<{ q?: string; source?: string }> };
 export default async function FilesPage({ searchParams }: Props) {
   const sp = await searchParams;
   const source = FILE_SOURCES.find((s) => s === sp.source) as FileSource | undefined;
-  const [{ t }, data] = await Promise.all([getI18n(), getFiles({ q: sp.q, source })]);
+  const [{ t }, data] = await Promise.all([getAppI18n(), getFiles({ q: sp.q, source })]);
   const k = t.files;
   const href = (s?: string) => `/files?${new URLSearchParams({ ...(sp.q ? { q: sp.q } : {}), ...(s ? { source: s } : {}) })}`;
   return (

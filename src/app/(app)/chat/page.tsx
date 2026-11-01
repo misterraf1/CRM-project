@@ -9,7 +9,7 @@ import { LiveRefresh } from "@/components/shell/LiveRefresh";
 import { getChatRoom, getChatRooms, getMembers, getSession, getTasks, searchChat } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatRelative } from "@/lib/format";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Chat" };
 
@@ -21,7 +21,7 @@ export default async function ChatPage({ searchParams }: Props) {
   const { r, q } = await searchParams;
   const search = q && q.trim().length >= 2 ? q.trim() : undefined;
   const [{ t, locale }, me, rooms, members, hits] = await Promise.all([
-    getI18n(),
+    getAppI18n(),
     getSession(),
     getChatRooms(),
     getMembers(),

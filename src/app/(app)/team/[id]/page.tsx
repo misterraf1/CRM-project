@@ -9,7 +9,7 @@ import { getMemberProfile, getSession } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 import { planGate } from "@/components/billing/UpgradeGate";
 
 export const metadata: Metadata = { title: "Team" };
@@ -24,7 +24,7 @@ export default async function MemberProfilePage({ params }: Props) {
     if (e instanceof ApiRequestError && e.status === 404) notFound();
     throw e;
   });
-  const [{ t, locale }, me] = await Promise.all([getI18n(), getSession()]);
+  const [{ t, locale }, me] = await Promise.all([getAppI18n(), getSession()]);
   const k = t.team;
   const stats = [
     [k.openTasks, formatNumber(profile.openTasks, locale)],

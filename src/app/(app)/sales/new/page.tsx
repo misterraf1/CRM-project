@@ -4,14 +4,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DocEditor } from "@/components/sales/DocEditor";
 import { getContacts, getCurrencySettings, getDeal, getProducts, getSession } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "New document" };
 
 type Props = { searchParams: Promise<{ kind?: string; dealId?: string; contactId?: string }> };
 
 export default async function NewDocPage({ searchParams }: Props) {
-  const [{ t }, me, sp] = await Promise.all([getI18n(), getSession(), searchParams]);
+  const [{ t }, me, sp] = await Promise.all([getAppI18n(), getSession(), searchParams]);
   const k = t.sales;
   const kind: DocKind = sp.kind === "invoice" ? "invoice" : "quote";
   if (!me.permissions.includes(kind === "quote" ? "quotes.manage" : "invoices.manage")) return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;

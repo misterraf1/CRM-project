@@ -1,3 +1,4 @@
+import { integrationsRoutes } from "./integrations/integrations.routes";
 import { aiRoutes } from "./ai/ai.routes";
 import { onboardingRoutes } from "./onboarding/onboarding.routes";
 import { growthRoutes } from "./growth/growth.routes";
@@ -60,6 +61,7 @@ export function createApi(): ApiServer {
     dealsRoutes,
     crmSettingsRoutes,
     dataRoutes,
+    integrationsRoutes,
     dashboardRoutes,
     tasksRoutes,
     calendarRoutes,
@@ -94,6 +96,7 @@ export function createApi(): ApiServer {
       await m.track("billing", () => services.billingJob.run());
       await m.track("automations", () => services.automationRunner.drain());
       await m.track("mail", () => services.mail.send());
+      await m.track("webhooks", () => services.hooks.drain());
     },
     async close() {
       for (const job of jobs) job.stop();

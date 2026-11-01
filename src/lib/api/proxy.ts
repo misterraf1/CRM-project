@@ -16,8 +16,12 @@ export function crossSite(req: NextRequest) {
   return !origin || new URL(origin).host !== req.headers.get("host");
 }
 
+/** Signature headers of shops calling an incoming integration (checked by the API) */
+const SIGNATURES = /^x-(shopify-hmac-sha256|shopify-topic|wc-webhook-signature|wc-webhook-topic)$/;
+
 export async function forward(req: NextRequest, upstreamPath: string, token: string | undefined) {
   const contentType = req.headers.get("content-type");
+  const signatures = upstreamPath.startsWith("/v1/public/in/") ? [...req.headers].filter(([h]) => SIGNATURES.test(h)) : [];
   const upstream = await callApi(
     `${upstreamPath}${req.nextUrl.search}`,
     {
@@ -25,6 +29,7 @@ export async function forward(req: NextRequest, upstreamPath: string, token: str
       headers: {
         ...(token !== undefined ? { authorization: `Bearer ${token}` } : {}),
         ...(contentType ? { "content-type": contentType } : {}),
+        ...Object.fromEntries(signatures),
       },
       body: req.method === "GET" ? undefined : await req.arrayBuffer(),
       // Event streams end when the browser goes away

@@ -26,7 +26,7 @@ import { formatRelative } from "@/lib/format";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatMoney } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 import { hasFeature } from "@/lib/billing";
 
 export const metadata: Metadata = { title: "CRM" };
@@ -35,7 +35,7 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function ContactPage({ params }: Props) {
   const { id } = await params;
-  const [{ t, locale }, me, members, personFields, companyFields, dealFields] = await Promise.all([getI18n(), getSession(), getMembers(), getFields("contact"), getFields("company"), getFields("deal")]);
+  const [{ t, locale }, me, members, personFields, companyFields, dealFields] = await Promise.all([getAppI18n(), getSession(), getMembers(), getFields("contact"), getFields("company"), getFields("deal")]);
   // Deals are a PRO feature; without it the contact page simply has no deals block
   const pipelines = hasFeature(me, "deals.pipeline") ? await getPipelines() : [];
   const [contact, activities, tasks, conversations, files, events, value, cases] = await Promise.all([
@@ -217,6 +217,12 @@ export default async function ContactPage({ params }: Props) {
                   {contact.phone}
                 </a>
               )}
+              {contact.extraPhones.map((p) => (
+                <a key={p} href={`tel:${p}`} className="inline-flex items-center gap-1 hover:text-accent">
+                  <Phone className="h-3.5 w-3.5" aria-hidden />
+                  {p}
+                </a>
+              ))}
               {contact.email && (
                 <a href={`mailto:${contact.email}`} className="inline-flex items-center gap-1 hover:text-accent">
                   <Mail className="h-3.5 w-3.5" aria-hidden />

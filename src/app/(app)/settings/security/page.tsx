@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { MfaManager } from "@/components/auth/MfaManager";
 import { CompanySecurityCard } from "@/components/settings/CompanySecurityCard";
 import { getCompanySecurity, getMembers, getMySecurity, getSession } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Security" };
 
 /** Own 2FA for everyone; the company-wide rule for those who manage members. */
 export default async function SecuritySettingsPage() {
-  const [{ t }, session, me] = await Promise.all([getI18n(), getSession(), getMySecurity()]);
+  const [{ t }, session, me] = await Promise.all([getAppI18n(), getSession(), getMySecurity()]);
   const manages = session.permissions.includes("members.manage");
   const [company, members] = manages ? await Promise.all([getCompanySecurity(), getMembers()]) : [null, []];
   const k = t.security;

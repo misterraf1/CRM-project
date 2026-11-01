@@ -72,6 +72,8 @@ const stageInput = z.object({
   name: z.string().trim().min(1).max(40),
   probability: z.number().int().min(0).max(100),
   kind: z.enum(STAGE_KINDS),
+  /** Deal custom fields that must be filled before a deal enters this stage */
+  requiredFields: z.array(z.string().min(1).max(64)).max(20).optional(),
 });
 
 /** The full, ordered stage list: open stages, then exactly one won and one lost stage. */

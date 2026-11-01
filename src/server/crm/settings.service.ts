@@ -289,8 +289,11 @@ export class CrmSettingsService {
 
       if (removed.length) await tx.pipelineStage.deleteMany({ tenantId: ctx.tenantId, id: { $in: removed.map((s) => s.id) } });
       for (const s of existing.filter((x) => keptIds.includes(x.id))) await tx.pipelineStage.update({ id: s.id }, { $set: { order: s.order + ORDER_SHIFT } });
+      // Required fields: only the company's own deal fields
+      const dealFields = new Set((await tx.fieldDefinition.find({ tenantId: ctx.tenantId, entity: "deal" }, { projection: { id: 1 } })).map((f) => f.id));
       for (const [order, s] of stages.entries()) {
-        const fields = { name: s.name, probability: s.kind === "won" ? 100 : s.kind === "lost" ? 0 : s.probability, kind: s.kind, order };
+        const requiredFields = s.kind === "lost" ? [] : [...new Set(s.requiredFields ?? [])].filter((f) => dealFields.has(f));
+        const fields = { name: s.name, probability: s.kind === "won" ? 100 : s.kind === "lost" ? 0 : s.probability, kind: s.kind, order, requiredFields };
         if (s.id) await tx.pipelineStage.update({ id: s.id }, { $set: fields });
         else await tx.pipelineStage.insertOne({ tenantId: ctx.tenantId, pipelineId: id, ...fields });
       }

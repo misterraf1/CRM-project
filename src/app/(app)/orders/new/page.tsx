@@ -3,14 +3,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { OrderForm } from "@/components/orders/OrderForm";
 import { getContacts, getDoc, getDocSettings, getMembers, getSession } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "New order" };
 
 type Props = { searchParams: Promise<{ quoteId?: string; contactId?: string }> };
 
 export default async function NewOrderPage({ searchParams }: Props) {
-  const [{ t }, me, sp] = await Promise.all([getI18n(), getSession(), searchParams]);
+  const [{ t }, me, sp] = await Promise.all([getAppI18n(), getSession(), searchParams]);
   const k = t.orders;
   if (!me.permissions.includes("orders.manage")) return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;
   const [contacts, members, settings, quote] = await Promise.all([

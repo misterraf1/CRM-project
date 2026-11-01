@@ -56,6 +56,8 @@ interface Subject {
 export class AutomationRunner {
   private sweep?: NodeJS.Timeout;
   private draining?: Promise<number>;
+  /** Every event also goes to the company's outgoing webhooks (set by the container) */
+  onEvent?: (tx: Tx, tenantId: string, trigger: AutomationTrigger, payload: AutomationPayload) => Promise<void>;
 
   constructor(
     private readonly db: Database,
@@ -79,6 +81,7 @@ export class AutomationRunner {
 
   /** Records an event if the tenant has an enabled rule for it. Call inside the change's transaction. */
   async enqueue(tx: Tx, tenantId: string, trigger: AutomationTrigger, payload: AutomationPayload) {
+    await this.onEvent?.(tx, tenantId, trigger, payload);
     if (!(await tx.automationRule.count({ tenantId, trigger, enabled: true }))) return;
     await tx.automationEvent.insertOne({ tenantId, trigger, payload });
     this.soon();

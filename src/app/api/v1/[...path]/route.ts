@@ -13,6 +13,13 @@ type Ctx = { params: Promise<{ path: string[] }> };
 async function proxy(req: NextRequest, { params }: Ctx) {
   const { path } = await params;
   if (path[0] === "auth" || path[0] === "admin") return proxyError(404, "NOT_FOUND", "Not found");
+  // Integrations: a public API key in the Authorization header is used as is (never the cookie
+  // session). Browsers never attach such a header on their own, so CSRF doesn't apply.
+  const key = /^Bearer (axk_\S+)$/.exec(req.headers.get("authorization") ?? "")?.[1];
+  if (key) return forward(req, `/v1/${joinPath(path)}`, key);
+  if (path[0] === "openapi.json") return forward(req, "/v1/openapi.json", undefined);
+  // Incoming integrations are called by other servers (no Origin); the secret address is the credential
+  if (path[0] === "public" && path[1] === "in") return forward(req, `/v1/${joinPath(path)}`, undefined);
   if (crossSite(req)) return proxyError(403, "FORBIDDEN", "Cross-site request");
   // The anonymous widget API and customer document links need no token (and must not use a logged-in agent's)
   if (path[0] === "widget" || path[0] === "public") return forward(req, `/v1/${joinPath(path)}`, undefined);

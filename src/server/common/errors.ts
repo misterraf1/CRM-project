@@ -33,6 +33,7 @@ const STATUS: Record<ErrorCode, number> = {
   APPROVAL_REQUIRED: 409,
   /** The customer opted out of messages we start (STOP) */
   CONSENT_REQUIRED: 409,
+  STAGE_FIELDS_REQUIRED: 422,
   RATE_LIMITED: 429,
   INTERNAL: 500,
 };

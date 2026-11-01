@@ -11,7 +11,7 @@ import { getMembers, getProjects, getSession, getTask } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatDateTime } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Tasks" };
 
@@ -23,7 +23,7 @@ export default async function TaskPage({ params }: Props) {
     if (e instanceof ApiRequestError && e.status === 404) notFound();
     throw e;
   });
-  const [{ t, locale }, me, members, projects] = await Promise.all([getI18n(), getSession(), getMembers(), getProjects()]);
+  const [{ t, locale }, me, members, projects] = await Promise.all([getAppI18n(), getSession(), getMembers(), getProjects()]);
   const k = t.tasks;
 
   return (

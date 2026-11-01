@@ -6,7 +6,7 @@ import { ExportMenu } from "@/components/crm/ExportMenu";
 import { Board } from "@/components/deals/Board";
 import { ForecastBar } from "@/components/deals/ForecastBar";
 import { getDeals, getFields, getForecast, getPipelines, getSession } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 import { planGate } from "@/components/billing/UpgradeGate";
 
 export const metadata: Metadata = { title: "Deals" };
@@ -17,7 +17,7 @@ export default async function DealsPage({ searchParams }: Props) {
   const gate = await planGate("deals.pipeline");
   if (gate) return gate;
   const { q, pipeline: pipelineId, new: startNew } = await searchParams;
-  const [{ t, locale }, pipelines, me, dealFields] = await Promise.all([getI18n(), getPipelines(), getSession(), getFields("deal")]);
+  const [{ t, locale }, pipelines, me, dealFields] = await Promise.all([getAppI18n(), getPipelines(), getSession(), getFields("deal")]);
   // Default pipeline first (API order); ?pipeline= picks another
   const pipeline = pipelines.find((p) => p.id === pipelineId) ?? pipelines[0];
   // Every company gets a pipeline at signup; this only guards against broken data

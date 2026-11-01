@@ -4,12 +4,12 @@ import { NewTicket } from "@/components/support/NewTicket";
 import { TicketStatusBadge } from "@/components/support/TicketStatusBadge";
 import { getTickets } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Support" };
 
 export default async function SupportPage() {
-  const [{ t, locale }, tickets] = await Promise.all([getI18n(), getTickets()]);
+  const [{ t, locale }, tickets] = await Promise.all([getAppI18n(), getTickets()]);
   const s = t.support;
   return (
     <div className="space-y-5">

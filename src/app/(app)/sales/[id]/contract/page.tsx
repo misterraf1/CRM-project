@@ -6,7 +6,7 @@ import { PrintButton } from "@/components/billing/PrintButton";
 import { getDoc, getDocSettings, getSession } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { formatDate, formatMoneyExact } from "@/lib/format";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Contract" };
 
@@ -15,7 +15,7 @@ type Props = { params: Promise<{ id: string }> };
 /** The company's contract text filled in from a quote or invoice, ready to print or save as PDF. */
 export default async function ContractPage({ params }: Props) {
   const { id } = await params;
-  const [{ t, locale }, me, settings] = await Promise.all([getI18n(), getSession(), getDocSettings()]);
+  const [{ t, locale }, me, settings] = await Promise.all([getAppI18n(), getSession(), getDocSettings()]);
   const doc = await getDoc(id).catch((e) => {
     if (e instanceof ApiRequestError && e.status === 404) notFound();
     throw e;

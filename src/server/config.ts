@@ -74,6 +74,14 @@ const schema = z.object({
   MAIL_FROM: z.string().default("Axis <no-reply@axis.az>"),
   /** Public base URL for webhook addresses shown to customers (default: WEB_ORIGIN, same app) */
   PUBLIC_API_URL: z.string().url().optional(),
+  /**
+   * Outgoing webhooks may call http:// and private addresses. Only for tests and local
+   * development — in production webhooks go to public https addresses only.
+   */
+  WEBHOOKS_ALLOW_PRIVATE: z
+    .enum(["true", "false"])
+    .default(process.env.NODE_ENV === "test" ? "true" : "false")
+    .transform((v) => v === "true"),
   /** Bearer secret for /api/cron (Vercel Cron sends it as `Authorization: Bearer <CRON_SECRET>`) */
   CRON_SECRET: z.string().min(16).optional(),
   /**

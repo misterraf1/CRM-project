@@ -1,10 +1,10 @@
-import { EXPORT_FORMATS, IMPORT_ENTITIES, contactExportQuerySchema, dealExportQuerySchema, importRequestSchema } from "@/shared";
+import { EXPORT_FORMATS, IMPORT_ENTITIES, contactExportQuerySchema, dealExportQuerySchema, importRequestSchema, workbookRequestSchema } from "@/shared";
 import { z } from "zod";
 import type { Services } from "../container";
 import type { Router } from "../http/router";
 
 const templateQuery = z.object({
-  entity: z.enum(IMPORT_ENTITIES),
+  entity: z.union([z.enum(IMPORT_ENTITIES), z.literal("workbook")]),
   lang: z.enum(["az", "en", "ru"]).default("az"),
   format: z.enum(EXPORT_FORMATS).default("xlsx"),
 });
@@ -24,7 +24,12 @@ export function dataRoutes(router: Router, s: Services) {
 
     r.post("", { upload: true, body: importRequestSchema, throttle: heavy }, ({ file, body }) => s.imports.run(file, body.options));
 
+    // A workbook: every sheet (customers, companies, deals, products, tasks) in one go
+    r.post("workbook/preview", { upload: true, body: workbookRequestSchema, status: 200, throttle: heavy }, ({ file, body }) => s.imports.workbookPreview(file, body.options));
+    r.post("workbook", { upload: true, body: workbookRequestSchema, throttle: heavy }, ({ file, body }) => s.imports.workbookRun(file, body.options));
+
     r.get(":id", ({ params }) => s.imports.get(params.id!));
+    r.post(":id/undo", { status: 200 }, ({ params }) => s.imports.undo(params.id!));
   });
 
   router.group("/v1/exports", { throttle: heavy }, (r) => {

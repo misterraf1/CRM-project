@@ -12,6 +12,8 @@ export interface ContactDto {
   name: string;
   email: string | null;
   phone: string | null;
+  /** More numbers (imported files often carry several per customer) */
+  extraPhones: string[];
   companyName: string | null;
   /** Linked company contact (people only) */
   companyId: string | null;
@@ -46,6 +48,8 @@ export interface StageDto {
   order: number;
   probability: number;
   kind: StageKind;
+  /** Deal fields to fill before entering the stage */
+  requiredFields: string[];
 }
 
 export interface PipelineDto {

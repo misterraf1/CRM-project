@@ -4,20 +4,21 @@ import { DocSettingsCard } from "@/components/settings/DocSettingsCard";
 import { FieldsManager } from "@/components/settings/FieldsManager";
 import { PipelinesManager } from "@/components/settings/PipelinesManager";
 import { TemplatePicker } from "@/components/onboarding/TemplatePicker";
-import { getCurrencySettings, getDocSettings, getFields, getOnboarding, getPipelines, getSession } from "@/lib/api";
+import { getCurrencySettings, getDocSettings, getFields, getOnboarding, getPipelines, getSession, getTemplatePreviews } from "@/lib/api";
 import { hasFeature } from "@/lib/billing";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "CRM" };
 
 export default async function CrmSettingsPage() {
-  const [{ t }, me] = await Promise.all([getI18n(), getSession()]);
+  const [{ t }, me] = await Promise.all([getAppI18n(), getSession()]);
   const k = t.crmSettings;
   if (!me.permissions.includes("crm.configure")) {
     return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;
   }
   const withPipelines = hasFeature(me, "deals.pipeline");
   const [fields, currencies, pipelines, docSettings, onboarding] = await Promise.all([getFields(undefined, true), getCurrencySettings(), withPipelines ? getPipelines() : [], getDocSettings(), getOnboarding()]);
+  const previews = await getTemplatePreviews();
 
   return (
     <div className="space-y-5">
@@ -32,9 +33,9 @@ export default async function CrmSettingsPage() {
           <DocSettingsCard settings={docSettings} />
         </div>
         <div className="min-w-0 space-y-5">
-          <TemplatePicker applied={onboarding.appliedTemplates} />
+          <TemplatePicker applied={onboarding.appliedTemplates} previews={previews} />
           {withPipelines ? (
-            <PipelinesManager pipelines={pipelines} />
+            <PipelinesManager pipelines={pipelines} fields={fields.filter((f) => f.entity === "deal" && !f.archived)} />
           ) : (
             <section className="card p-5">
               <h2 className="text-sm font-semibold">{k.pipelines.title}</h2>

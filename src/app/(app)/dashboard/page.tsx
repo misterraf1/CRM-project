@@ -18,11 +18,12 @@ import { TodayStrip } from "@/components/dashboard/TodayStrip";
 import { WorkQueue } from "@/components/dashboard/WorkQueue";
 import { OnboardingCard } from "@/components/onboarding/OnboardingCard";
 import { CardHeader } from "@/components/ui/Card";
-import { getAttention, getDashboard, getOnboarding, getSession, getTargets, getToday, parsePeriod } from "@/lib/api";
+import { getAttention, getDashboard, getOnboarding, getSession, getTargets, getTemplatePreviews, getToday, parsePeriod } from "@/lib/api";
+import { TemplatePicker } from "@/components/onboarding/TemplatePicker";
 import { DASHBOARD_COOKIE, DASHBOARD_WIDGETS, hiddenWidgets, type DashboardWidget } from "@/lib/dashboard";
 import { formatDate } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -34,7 +35,7 @@ type Props = { searchParams: Promise<{ period?: string | string[] }> };
  */
 export default async function DashboardPage({ searchParams }: Props) {
   const period = parsePeriod((await searchParams).period);
-  const [{ t, locale }, session, jar] = await Promise.all([getI18n(), getSession(), cookies()]);
+  const [{ t, locale }, session, jar] = await Promise.all([getAppI18n(), getSession(), cookies()]);
   const hidden = new Set(hiddenWidgets(jar.get(DASHBOARD_COOKIE)?.value));
   const show = (w: DashboardWidget) => !hidden.has(w);
   const [data, attention, targets, onboarding, today] = await Promise.all([
@@ -44,6 +45,10 @@ export default async function DashboardPage({ searchParams }: Props) {
     getOnboarding(),
     show("today") ? getToday() : null,
   ]);
+  // A company that has not picked its line of business yet is asked first
+  const canConfigure = session.permissions.includes("crm.configure");
+  const firstRun = canConfigure && !onboarding.dismissed && onboarding.appliedTemplates.length === 0;
+  const previews = firstRun ? await getTemplatePreviews() : [];
   const now = new Date(data.generatedAt);
   const firstName = session.user.fullName.split(" ")[0] ?? session.user.fullName;
   const r = t.dashboard.revenue;
@@ -71,8 +76,9 @@ export default async function DashboardPage({ searchParams }: Props) {
         </div>
       </div>
 
-      {show("onboarding") && <OnboardingCard initial={onboarding} canManage={session.permissions.includes("crm.configure")} />}
-      {show("quick") && <QuickActions permissions={session.permissions} t={t} />}
+      {firstRun && <TemplatePicker setup applied={[]} previews={previews} />}
+      {show("onboarding") && <OnboardingCard initial={onboarding} canManage={canConfigure} />}
+      {show("quick") && <QuickActions permissions={session.permissions} hidden={session.tenant.workspace.hiddenModules} t={t} />}
       {today && <TodayStrip today={today} t={t} />}
 
       {show("kpis") && <KpiGrid crm={data} t={t} locale={locale} />}

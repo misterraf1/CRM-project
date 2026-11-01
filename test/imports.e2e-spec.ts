@@ -1,6 +1,6 @@
-import type { ContactDto, DealDto, FieldDefinitionDto, ImportJobDetailDto, ImportJobDto, ImportPreviewDto, PipelineDto } from "@/shared";
+import type { ProductDto, TaskDto, WorkbookResultDto, ContactDto, DealDto, FieldDefinitionDto, ImportJobDetailDto, ImportJobDto, ImportPreviewDto, PipelineDto } from "@/shared";
 import request from "supertest";
-import { readXlsx, toXlsx } from "../src/server/common/tabular";
+import { readXlsx, readXlsxBook, toXlsx, toXlsxBook } from "../src/server/common/tabular";
 import { addMember, createApp, signup, withRawDb, type TestApp } from "./helpers";
 
 describe("CSV/Excel import and export", () => {
@@ -147,7 +147,8 @@ describe("CSV/Excel import and export", () => {
     expect(job.mapping).toEqual(["name", "email", "phone"]);
     expect(job.summary).toMatchObject({ create: 1, skip: 1 });
     const bravo = (await contacts(owner, { q: "Bravo" }))[0]!;
-    expect(bravo).toMatchObject({ type: "company", phone: "994124000000" });
+    // Numbers are stored in one form: +994…
+    expect(bravo).toMatchObject({ type: "company", phone: "+994124000000" });
 
     const bad = await send(owner, "preview", Buffer.from("PK\u0003\u0004 not really a zip"), "x.xlsx", { entity: "company" }).expect(400);
     expect(bad.body.error.details).toEqual({ file: ["format"] });
@@ -207,9 +208,77 @@ describe("CSV/Excel import and export", () => {
     expect(again.summary).toMatchObject({ create: 1, skip: 1, failed: 0 });
 
     const template = await download(owner, "/v1/imports/template", { entity: "company", lang: "ru" }).expect(200);
-    expect(readXlsx(template.body as Buffer)[0]).toEqual(["Имя", "Email", "Телефон", "Статус", "Источник", "Метки", "Ответственный", "VÖEN"]);
+    expect(readXlsx(template.body as Buffer)[0]).toEqual(["Имя", "Email", "Телефон", "Доп. телефон", "Статус", "Источник", "Метки", "Ответственный", "VÖEN"]);
 
     const deals = await download(owner, "/v1/exports/deals", { format: "xlsx" }).expect(200);
     expect(readXlsx(deals.body as Buffer)[0]!.slice(0, 4)).toEqual(["Satışın adı", "Məbləğ", "Valyuta", "Əsas valyutada məbləğ (AZN)"]);
+  });
+
+  it("one workbook: sheets recognised by name or columns, other CRMs' headers, +994 numbers, links across sheets; a dry run writes nothing", async () => {
+    const owner = await signup(app);
+    await http().post("/v1/contacts").set(owner.auth).send({ name: "Mövcud Leyla", phone: "+994551112233" }).expect(201);
+    const book = toXlsxBook([
+      // HubSpot-style people export: first/last name, two phone columns, several numbers in one cell
+      { name: "Contacts", rows: [["First Name", "Last Name", "Email", "Mobile Phone", "Work Phone"], ["Aysel", "Məmmədova", "aysel@x.az", "050 123 45 67", "(012) 555-44-33, 0702223344"], ["Leyla", "", "", "055 111 22 33", ""], ["Səhv", "Nömrə", "", "12-34", ""]] },
+      // Bitrix24-style deals, linked to a customer of the sheet above by phone
+      { name: "Vərəq 2", rows: [["Название сделки", "Сумма", "Клиент"], ["Ofis mebeli", "1 500", "+994501234567"]] },
+      { name: "Məhsullar", rows: [["Məhsul", "Kod", "Qiymət", "ƏDV"], ["Konsultasiya", "K-1", "50", "18%"], ["Montaj", "", "120,5", "0.18"]] },
+      { name: "Tasks", rows: [["Tapşırıq", "Son tarix", "Prioritet", "Müştəri"], ["Ayselə zəng", "2030-01-15", "Yüksək", "aysel@x.az"]] },
+      { name: "Qeydlər", rows: [["Nə isə", "Başqa"], ["a", "b"]] },
+    ]);
+    const send2 = (path: string, options: object = {}) => http().post(`/v1/imports/${path}`).set(owner.auth).attach("file", book, "kohne-crm.xlsx").field("options", JSON.stringify(options));
+
+    const preview = (await send2("workbook/preview").expect(200)).body as WorkbookResultDto;
+    expect(preview.batchId).toBeNull();
+    expect(preview.sheets.map((s) => [s.sheet, s.entity])).toEqual([["Contacts", "person"], ["Vərəq 2", "deal"], ["Məhsullar", "product"], ["Tasks", "task"], ["Qeydlər", null]]);
+    const people = preview.sheets[0]!;
+    expect(people.mapping).toEqual(["firstName", "lastName", "email", "phone", "phone2"]);
+    // Leyla is already there (same number), the bad number fails
+    expect(people.summary).toMatchObject({ create: 1, skip: 1, failed: 1 });
+    expect(people.issues.find((i) => !i.skipped)).toMatchObject({ row: 4, field: "phone", code: "invalid_phone" });
+    // The deal finds Aysel although she is only in this file
+    expect(preview.sheets[1]!.summary).toMatchObject({ create: 1, failed: 0 });
+    expect(preview.sheets[3]!.summary).toMatchObject({ create: 1, failed: 0 });
+    // Nothing was written
+    expect(await contacts(owner)).toHaveLength(1);
+
+    const done = (await send2("workbook").expect(201)).body as WorkbookResultDto;
+    expect(done.batchId).toBeTruthy();
+    const aysel = (await contacts(owner, { q: "Aysel" }))[0]!;
+    expect(aysel).toMatchObject({ name: "Aysel Məmmədova", phone: "+994501234567", extraPhones: ["+994125554433", "+994702223344"] });
+    // Found by any of its numbers
+    expect((await contacts(owner, { q: "0702223344".slice(1) })).map((c) => c.id)).toEqual([aysel.id]);
+    const deals = (await http().get("/v1/deals").set(owner.auth)).body as { items?: DealDto[] } | DealDto[];
+    const dealList = Array.isArray(deals) ? deals : (deals.items ?? []);
+    expect(dealList.find((d) => d.title === "Ofis mebeli")).toMatchObject({ amount: 150_000, contact: { id: aysel.id } });
+    const products = (await http().get("/v1/products").set(owner.auth).expect(200)).body as ProductDto[];
+    expect(products.map((p) => [p.name, p.sku, p.price, p.taxBp]).sort()).toEqual([["Konsultasiya", "K-1", 5000, 1800], ["Montaj", null, 12050, 1800]]);
+    const tasks = (await http().get("/v1/tasks").query({ view: "all" }).set(owner.auth).expect(200)).body as TaskDto[] | { items: TaskDto[] };
+    expect((Array.isArray(tasks) ? tasks : tasks.items).find((x) => x.title === "Ayselə zəng")).toMatchObject({ priority: "HIGH" });
+
+    // Undo takes the whole workbook back: customers to the deleted list, products archived, deals and tasks removed
+    const history = (await http().get("/v1/imports").set(owner.auth)).body as ImportJobDto[];
+    expect(history.filter((h) => h.batchId === done.batchId)).toHaveLength(4);
+    const after = (await http().post(`/v1/imports/${history[0]!.id}/undo`).set(owner.auth).expect(200)).body as ImportJobDto[];
+    expect(after.filter((h) => h.batchId === done.batchId).every((h) => h.undoneAt)).toBe(true);
+    expect((await contacts(owner)).map((c) => c.name)).toEqual(["Mövcud Leyla"]);
+    expect(((await http().get("/v1/products").set(owner.auth)).body as ProductDto[]).every((p) => !p.active)).toBe(true);
+    await http().post(`/v1/imports/${history[0]!.id}/undo`).set(owner.auth).expect(409);
+
+    // The sample workbook has one tab per kind and imports back as is
+    const sample = await download(owner, "/v1/imports/template", { entity: "workbook", lang: "az" }).expect(200);
+    expect(readXlsxBook(sample.body as Buffer).map((s) => s.name)).toEqual(["Şirkətlər", "Şəxslər", "Məhsullar", "Satışlar", "Tapşırıqlar"]);
+    const again = (await http().post("/v1/imports/workbook/preview").set(owner.auth).attach("file", sample.body as Buffer, "sample.xlsx").field("options", "{}").expect(200)).body as WorkbookResultDto;
+    expect(again.sheets.map((s) => [s.entity, s.summary.failed])).toEqual([["company", 0], ["person", 0], ["product", 0], ["deal", 0], ["task", 0]]);
+  });
+
+  it("update mode puts the old values back on undo", async () => {
+    const owner = await signup(app);
+    const c = (await http().post("/v1/contacts").set(owner.auth).send({ name: "Rauf", email: "rauf@x.az", phone: "+994501110000" }).expect(201)).body as ContactDto;
+    const job = (await send(owner, "", csv(["Ad,Email,Telefon", "Rauf Quliyev,rauf@x.az,050 222 33 44"]), "u.csv", { entity: "person", duplicates: "update" }).expect(201)).body as ImportJobDetailDto;
+    expect(job.summary).toMatchObject({ update: 1 });
+    expect((await http().get(`/v1/contacts/${c.id}`).set(owner.auth)).body).toMatchObject({ name: "Rauf Quliyev", phone: "+994501110000", extraPhones: ["+994502223344"] });
+    await http().post(`/v1/imports/${job.id}/undo`).set(owner.auth).expect(200);
+    expect((await http().get(`/v1/contacts/${c.id}`).set(owner.auth)).body).toMatchObject({ name: "Rauf", extraPhones: [] });
   });
 });

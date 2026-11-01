@@ -18,21 +18,35 @@ import { QuickCreate } from "./QuickCreate";
 import { SkipLink } from "@/components/ui/SkipLink";
 import { Sidebar } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
+import { HelpPanel } from "./HelpPanel";
 
 const COLLAPSED_KEY = "axis-sidebar-collapsed";
+const SIMPLE_KEY = "axis-simple-mode";
 
 export function AppShell({ session, summary, children }: { session: MeResponse; summary: ShellSummary; children: ReactNode }) {
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [simple, setSimple] = useState(false);
 
   useEffect(() => {
     try {
       setCollapsed(localStorage.getItem(COLLAPSED_KEY) === "1");
+      setSimple(localStorage.getItem(SIMPLE_KEY) === "1");
     } catch {
-      /* default: expanded */
+      /* default: expanded, full menu */
     }
   }, []);
+
+  const toggleSimple = () =>
+    setSimple((prev) => {
+      try {
+        localStorage.setItem(SIMPLE_KEY, prev ? "0" : "1");
+      } catch {
+        /* preference just won't persist */
+      }
+      return !prev;
+    });
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -61,6 +75,8 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
         onToggleCollapsed={toggleCollapsed}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
+        simple={simple}
+        onToggleSimple={toggleSimple}
       />
       <div className={clsx("transition-[padding] duration-200 print:!pl-0", collapsed ? "lg:pl-[68px]" : "lg:pl-60")}>
         <header className="sticky top-0 z-20 flex print:hidden h-14 items-center gap-3 border-b border-border bg-surface/80 px-4 backdrop-blur-md lg:px-6">
@@ -75,7 +91,8 @@ export function AppShell({ session, summary, children }: { session: MeResponse; 
           <Section />
           <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <CommandPalette />
-            <QuickCreate permissions={session.permissions} />
+            <QuickCreate permissions={session.permissions} hidden={session.tenant.workspace.hiddenModules} />
+            <HelpPanel />
             <NotificationBell unread={summary.unreadNotifications} />
             <LocaleSwitcher />
             <ThemeToggle />
@@ -143,7 +160,8 @@ function BottomNav({ session, summary, onMore }: { session: MeResponse; summary:
   const { t } = useI18n();
   const pathname = usePathname();
   const active = current(pathname);
-  const links = BOTTOM.map((key) => items.find((i) => i.key === key)!).filter((i) => !i.permission || session.permissions.includes(i.permission));
+  const hidden: readonly string[] = session.tenant.workspace.hiddenModules;
+  const links = BOTTOM.map((key) => items.find((i) => i.key === key)!).filter((i) => (!i.permission || session.permissions.includes(i.permission)) && !hidden.includes(i.key));
   return (
     <nav aria-label={t.shell.bottomNav} className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden print:hidden">
       <ul className="mx-auto flex max-w-md">

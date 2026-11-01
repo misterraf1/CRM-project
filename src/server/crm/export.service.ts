@@ -1,9 +1,9 @@
-import { IMPORT_COLUMNS, type ContactExportQuery, type DealExportQuery, type ExportFormat, type ImportEntity } from "@/shared";
+import { IMPORT_COLUMNS, WORKBOOK_ORDER, type ContactExportQuery, type DealExportQuery, type ExportFormat, type ImportEntity } from "@/shared";
 import type { Locale } from "@/lib/i18n/locales";
 import { AuditService } from "../audit/audit.service";
 import { authedContext } from "../common/context";
 import { AppError, notFound } from "../common/errors";
-import type { Cell } from "../common/tabular";
+import { toXlsxBook, type Cell } from "../common/tabular";
 import type { Database, Tx } from "../db/database";
 import type { FieldDefinition } from "../db/models";
 import { and } from "../db/query";
@@ -134,20 +134,38 @@ export class ExportService {
   }
 
   /** An empty file with the importer's columns (plus custom fields) and one example row. */
-  async template(entity: ImportEntity, lang: Locale, format: ExportFormat): Promise<Response> {
+  /** A sample file: the columns in the chosen language and one example row (a workbook has a tab per kind). */
+  async template(entity: ImportEntity | "workbook", lang: Locale, format: ExportFormat): Promise<Response> {
     const ctx = authedContext();
-    const defs = await this.db.scoped((tx: Tx) =>
-      tx.fieldDefinition.find({ tenantId: ctx.tenantId, entity: entity === "deal" ? "deal" : contactEntity(entity), archived: false }, { sort: { order: 1 } }),
-    );
+    const defs = await this.db.scoped((tx: Tx) => tx.fieldDefinition.find({ tenantId: ctx.tenantId, archived: false }, { sort: { order: 1 } }));
     const d = DICTIONARIES[lang];
-    const example: Record<string, Cell> =
-      entity === "deal"
-        ? { title: "Ofis mebeli", amount: 1500, currency: "AZN", contact: "aysel@example.az", expectedClose: "2026-12-31" }
-        : entity === "company"
-          ? { name: "Araz MMC", email: "info@araz.az", phone: "+994124000000", stage: d.crm.stages.CUSTOMER, tags: "topdan" }
-          : { name: "Aysel Məmmədova", email: "aysel@example.az", phone: "+994501234567", company: "Araz MMC", stage: d.crm.stages.LEAD, source: d.crm.sources.website, tags: "vip, 2026" };
-    const keys = IMPORT_COLUMNS[entity];
-    const rows: Cell[][] = [[...keys.map((k) => columnLabel(lang, entity, k)), ...defs.map((f) => f.label)], [...keys.map((k) => example[k] ?? ""), ...defs.map(() => "")]];
-    return fileResponse(rows, format, `import-${entity}`, d.imports.entities[entity]);
+    const sheet = (e: ImportEntity): Cell[][] => {
+      const own = defs.filter((f) => f.entity === (e === "deal" ? "deal" : e === "person" || e === "company" ? contactEntity(e) : null));
+      const example = EXAMPLES(d)[e];
+      const keys = IMPORT_COLUMNS[e].filter((k) => k !== "firstName" && k !== "lastName");
+      return [[...keys.map((k) => columnLabel(lang, e, k)), ...own.map((f) => f.label)], [...keys.map((k) => example[k] ?? ""), ...own.map(() => "")]];
+    };
+    if (entity === "workbook") {
+      const body = toXlsxBook(WORKBOOK_ORDER.map((e) => ({ name: d.imports.entities[e], rows: sheet(e) })));
+      return new Response(body, {
+        headers: {
+          "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "content-disposition": `attachment; filename="import-workbook-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    }
+    return fileResponse(sheet(entity), format, `import-${entity}`, d.imports.entities[entity]);
   }
+
 }
+
+/** One believable row per kind; a workbook's rows point at each other (the deal's customer, the task's customer). */
+const EXAMPLES = (d: (typeof DICTIONARIES)["az"]): Record<ImportEntity, Record<string, Cell>> => ({
+  company: { name: "Araz MMC", email: "info@araz.az", phone: "012 400 00 00", stage: d.crm.stages.CUSTOMER, tags: "topdan" },
+  person: { name: "Aysel Məmmədova", email: "aysel@example.az", phone: "050 123 45 67", phone2: "012 555 44 33", company: "Araz MMC", stage: d.crm.stages.LEAD, source: d.crm.sources.website, tags: "vip, 2026" },
+  product: { name: "Konsultasiya", sku: "KONS-1", unit: "saat", price: 50, currency: "AZN", tax: 18, description: "1 saatlıq görüş" },
+  deal: { title: "Ofis mebeli", amount: 1500, currency: "AZN", contact: "aysel@example.az", expectedClose: "2026-12-31" },
+  task: { title: "Ayselə zəng et", dueAt: "2026-12-01", priority: d.dashboard.tasks.priority.HIGH, status: d.tasks.statuses.TODO, contact: "050 123 45 67" },
+});

@@ -83,7 +83,7 @@ export function Board({ pipeline, deals: initial, currency, requiredFields, canC
       const res = await api<DealDto>(`/deals/${deal.id}/move`, "POST", { stageId: stage.id, position, lostReason });
       if (!res.ok) {
         setDeals(before);
-        setError(errorMessage(t, res.code));
+        setError(errorMessage(t, res.code, res.details));
         return;
       }
       router.refresh(); // forecast and column totals

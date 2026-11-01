@@ -32,6 +32,7 @@ export type ErrorCode =
   | "BILLING_MANUAL"
   | "APPROVAL_REQUIRED"
   | "CONSENT_REQUIRED"
+  | "STAGE_FIELDS_REQUIRED"
   | "INTERNAL";
 
 export interface ApiError {
@@ -50,7 +51,7 @@ export type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "SUSPENDED
 
 export interface MeResponse {
   user: { id: string; fullName: string; email: string; locale: "AZ" | "EN" | "RU" };
-  tenant: { id: string; name: string; slug: string; currency: string; timezone: string };
+  tenant: { id: string; name: string; slug: string; currency: string; timezone: string; workspace: import("./workspace").WorkspaceDto; objects: { id: string; name: string; icon: string }[] };
   membership: { id: string; role: MemberRole; customRole: { id: string; name: string } | null; title: string | null; departmentId: string | null; presence: "available" | "away" };
   permissions: Permission[];
   subscription: {

@@ -12,7 +12,7 @@ import { getAnalyticsAdvanced, getAnalyticsBasic, getProductSales, getReceivable
 import { hasFeature } from "@/lib/billing";
 import { formatLocalMonth, formatMoney, formatNumber } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Analytics" };
 
@@ -25,7 +25,7 @@ const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)}%
 export default async function AnalyticsPage({ searchParams }: Props) {
   const gate = await planGate("analytics.basic");
   if (gate) return gate;
-  const [{ t, locale }, me, sp] = await Promise.all([getI18n(), getSession(), searchParams]);
+  const [{ t, locale }, me, sp] = await Promise.all([getAppI18n(), getSession(), searchParams]);
   const k = t.analytics;
   if (!me.permissions.includes("analytics.view")) return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;
 

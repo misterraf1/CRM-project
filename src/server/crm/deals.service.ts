@@ -80,7 +80,7 @@ export class DealsService {
       isDefault: p.isDefault,
       stages: stages
         .filter((s) => s.pipelineId === p.id)
-        .map((s) => ({ id: s.id, name: s.name, order: s.order, probability: s.probability, kind: s.kind as StageKind })),
+        .map((s) => ({ id: s.id, name: s.name, order: s.order, probability: s.probability, kind: s.kind as StageKind, requiredFields: s.requiredFields ?? [] })),
     }));
   }
 
@@ -206,6 +206,16 @@ export class DealsService {
       if (!to) throw new AppError("VALIDATION_FAILED", "Stage belongs to another pipeline", { stageId: ["Unknown stage"] });
       if (to.kind === "lost" && !input.lostReason && from.kind !== "lost") {
         throw new AppError("VALIDATION_FAILED", "A lost deal needs a reason", { lostReason: ["Required"] });
+      }
+      // The stage's own checklist (e.g. "Contract number" before "Contract"); losing a deal needs none
+      if (to.id !== from.id && to.kind !== "lost" && to.requiredFields?.length) {
+        const values = (deal.customFields ?? {}) as Record<string, unknown>;
+        const empty = (v: unknown) => v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length);
+        const missing = to.requiredFields.filter((f) => empty(values[f]));
+        if (missing.length) {
+          const defs = await tx.fieldDefinition.find({ tenantId: ctx.tenantId, id: { $in: missing }, archived: false }, { projection: { id: 1, label: 1 } });
+          if (defs.length) throw new AppError("STAGE_FIELDS_REQUIRED", "Required fields are empty", { fields: defs.map((d) => d.label).join(", "), fieldIds: defs.map((d) => d.id) });
+        }
       }
 
       const closing = to.kind !== "open";

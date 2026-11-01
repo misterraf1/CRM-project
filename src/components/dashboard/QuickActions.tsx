@@ -4,9 +4,9 @@ import type { Dictionary } from "@/lib/i18n/dictionaries/az";
 import { allowedQuickCreate } from "@/lib/quick-create";
 
 /** The everyday "new …" buttons, one tap from the dashboard. */
-export function QuickActions({ permissions, t }: { permissions: Permission[]; t: Dictionary }) {
+export function QuickActions({ permissions, hidden, t }: { permissions: Permission[]; hidden: readonly string[]; t: Dictionary }) {
   const k = t.dashboard.quick;
-  const items = allowedQuickCreate(permissions);
+  const items = allowedQuickCreate(permissions, hidden);
   if (!items.length) return null;
   return (
     <nav aria-label={k.title} className="grid grid-cols-3 gap-2 sm:grid-cols-6">

@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import { TargetsBoard } from "@/components/targets/TargetsBoard";
 import { getTargets } from "@/lib/api";
 import { formatMonth } from "@/lib/format";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Targets" };
 
 type Props = { searchParams: Promise<{ period?: string; start?: string }> };
 
 export default async function TargetsPage({ searchParams }: Props) {
-  const [{ t, locale }, sp] = await Promise.all([getI18n(), searchParams]);
+  const [{ t, locale }, sp] = await Promise.all([getAppI18n(), searchParams]);
   const period = sp.period === "quarter" ? "quarter" : "month";
   const start = sp.start && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.start) ? sp.start : undefined;
   const data = await getTargets(period, start);

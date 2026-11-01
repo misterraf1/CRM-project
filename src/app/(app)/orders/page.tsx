@@ -7,7 +7,7 @@ import Link from "next/link";
 import { OrderProgress, OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { getOrders, getSession } from "@/lib/api";
 import { formatDate, formatMoneyExact } from "@/lib/format";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Orders" };
 
@@ -16,7 +16,7 @@ const FILTERS = [...ORDER_STATUSES, "overdue"] as const;
 type Props = { searchParams: Promise<{ status?: string }> };
 
 export default async function OrdersPage({ searchParams }: Props) {
-  const [{ t, locale }, me, sp] = await Promise.all([getI18n(), getSession(), searchParams]);
+  const [{ t, locale }, me, sp] = await Promise.all([getAppI18n(), getSession(), searchParams]);
   const k = t.orders;
   if (!me.permissions.includes("orders.manage")) return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;
   const status = (FILTERS as readonly string[]).includes(sp.status ?? "") ? sp.status : undefined;

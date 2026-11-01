@@ -1,6 +1,6 @@
 "use client";
 
-import type { PipelineDto, StageKind } from "@/shared";
+import type { FieldDefinitionDto, PipelineDto, StageKind } from "@/shared";
 import clsx from "clsx";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -18,12 +18,13 @@ interface StageRow {
   name: string;
   probability: number;
   kind: StageKind;
+  requiredFields: string[];
 }
 
-const rowsOf = (p: PipelineDto): StageRow[] => p.stages.map((s) => ({ id: s.id, key: s.id, name: s.name, probability: s.probability, kind: s.kind }));
+const rowsOf = (p: PipelineDto): StageRow[] => p.stages.map((s) => ({ id: s.id, key: s.id, name: s.name, probability: s.probability, kind: s.kind, requiredFields: s.requiredFields ?? [] }));
 
 /** Pipelines and their stages. Open stages are free-form; one won and one lost stage close the list. */
-export function PipelinesManager({ pipelines: initial }: { pipelines: PipelineDto[] }) {
+export function PipelinesManager({ pipelines: initial, fields = [] }: { pipelines: PipelineDto[]; fields?: FieldDefinitionDto[] }) {
   const { t } = useI18n();
   const k = t.crmSettings;
   const router = useRouter();
@@ -208,6 +209,26 @@ export function PipelinesManager({ pipelines: initial }: { pipelines: PipelineDt
                     </>
                   )}
                 </span>
+                {r.kind !== "lost" && fields.length > 0 && (
+                  <details className="col-span-full -mt-1 text-xs">
+                    <summary className="cursor-pointer text-fg-muted hover:text-fg">
+                      {interpolate(p.requiredFields, { n: r.requiredFields.length })}
+                    </summary>
+                    <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5 rounded-lg bg-muted/50 p-2">
+                      {fields.map((f) => (
+                        <label key={f.id} className="flex items-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            checked={r.requiredFields.includes(f.id)}
+                            onChange={() => update(r.key, { requiredFields: r.requiredFields.includes(f.id) ? r.requiredFields.filter((x) => x !== f.id) : [...r.requiredFields, f.id] })}
+                            className="h-3.5 w-3.5"
+                          />
+                          {f.label}
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+                )}
               </li>
             );
           })}
@@ -216,7 +237,7 @@ export function PipelinesManager({ pipelines: initial }: { pipelines: PipelineDt
           <button
             type="button"
             disabled={open.length >= 18}
-            onClick={() => setRows([...open, { key: crypto.randomUUID(), name: "", probability: 50, kind: "open" }, ...closing])}
+            onClick={() => setRows([...open, { key: crypto.randomUUID(), name: "", probability: 50, kind: "open", requiredFields: [] }, ...closing])}
             className="inline-flex items-center gap-1 px-2 text-xs font-medium text-accent hover:underline disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
@@ -227,7 +248,7 @@ export function PipelinesManager({ pipelines: initial }: { pipelines: PipelineDt
             disabled={pending || rows.some((r) => !r.name.trim())}
             onClick={() =>
               run(
-                () => api<PipelineDto>(`/pipelines/${selected.id}/stages`, "PATCH", { stages: rows.map(({ id, name, probability, kind }) => ({ id, name: name.trim(), probability, kind })) }),
+                () => api<PipelineDto>(`/pipelines/${selected.id}/stages`, "PATCH", { stages: rows.map(({ id, name, probability, kind, requiredFields }) => ({ id, name: name.trim(), probability, kind, requiredFields })) }),
                 (p) => (replace(p), setSaved(true)),
               )
             }

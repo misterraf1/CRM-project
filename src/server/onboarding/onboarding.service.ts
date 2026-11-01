@@ -1,4 +1,4 @@
-import type { BusinessTemplateKey, OnboardingDto, TemplateResultDto } from "@/shared";
+import { BUSINESS_TEMPLATES_KEYS, cleanTerms, type BusinessTemplateKey, type OnboardingDto, type TemplatePreviewDto, type TemplateResultDto, type WorkspaceDto, type WorkspaceInput } from "@/shared";
 import { AuditService } from "../audit/audit.service";
 import { authedContext } from "../common/context";
 import { AppError } from "../common/errors";
@@ -75,8 +75,48 @@ export class OnboardingService {
     return this.state();
   }
 
-  /** Adds the template's pipeline, fields, order steps, products and (disabled) rules. */
-  async applyTemplate(key: BusinessTemplateKey, makeDefault: boolean): Promise<TemplateResultDto> {
+  /** Every template in the company's language, so the choice can be seen before it is made. */
+  async templates(): Promise<TemplatePreviewDto[]> {
+    const ctx = authedContext();
+    const tenant = await this.db.read((tx) => tx.tenant.get({ id: ctx.tenantId }));
+    const lang = langOf(tenant.locale);
+    return BUSINESS_TEMPLATES_KEYS.map((key) => {
+      const tpl = BUSINESS_TEMPLATES[key];
+      return {
+        key,
+        pipeline: tpl.pipeline[lang],
+        stages: tpl.stages.map((s) => s.name[lang]),
+        fields: tpl.fields.map((f) => f.label[lang]),
+        products: tpl.products.map((p) => p.name[lang]),
+        orderSteps: tpl.orderSteps.map((s) => s[lang]),
+        hide: tpl.hide,
+        terms: tpl.terms?.[lang] ?? {},
+      };
+    });
+  }
+
+  async workspace(): Promise<WorkspaceDto> {
+    const ctx = authedContext();
+    const tenant = await this.db.read((tx) => tx.tenant.get({ id: ctx.tenantId }));
+    return tenant.workspace ?? { hiddenModules: [], terms: {} };
+  }
+
+  /** Menu sections and words; hiding a section keeps its data and its pages. */
+  async updateWorkspace(input: WorkspaceInput): Promise<WorkspaceDto> {
+    const ctx = authedContext();
+    const workspace: WorkspaceDto = { hiddenModules: [...new Set(input.hiddenModules)], terms: cleanTerms(input.terms) };
+    await this.db.scoped(async (tx) => {
+      await tx.tenant.update({ id: ctx.tenantId }, { $set: { workspace } });
+      await this.audit.log(tx, { action: "workspace.updated", entityType: "tenant", entityId: ctx.tenantId, diff: { hiddenModules: workspace.hiddenModules } });
+    });
+    return workspace;
+  }
+
+  /**
+   * Adds the template's pipeline, fields, order steps, products and (disabled) rules.
+   * As the first-run choice (`setup`) it also sets the menu and the trade's words.
+   */
+  async applyTemplate(key: BusinessTemplateKey, makeDefault: boolean, setup = false): Promise<TemplateResultDto> {
     const ctx = authedContext();
     const tpl = BUSINESS_TEMPLATES[key];
     return this.db.scoped(async (tx) => {
@@ -120,6 +160,7 @@ export class OnboardingService {
         await tx.automationRule.insertOne({ tenantId: ctx.tenantId, name: names[a][lang], ...rule, enabled: false, createdById: ctx.membershipId } as never);
       }
       await tx.tenant.update({ id: ctx.tenantId }, { $addToSet: { "onboarding.templates": key } });
+      if (setup) await tx.tenant.update({ id: ctx.tenantId }, { $set: { workspace: { hiddenModules: tpl.hide, terms: tpl.terms ?? {} } } });
       await this.audit.log(tx, { action: "template.applied", entityType: "tenant", entityId: ctx.tenantId, diff: { key } });
       return { pipelineId: pipeline.id, fields, products, automations: tpl.automations.length };
     });

@@ -60,6 +60,11 @@ import { ReportsService } from "./analytics/reports.service";
 import { OnboardingService } from "./onboarding/onboarding.service";
 import { CrmAiService } from "./ai/crm-ai.service";
 import { Signals } from "./automations/signals";
+import { ApiKeysService } from "./integrations/api-keys.service";
+import { HooksService } from "./integrations/hooks.service";
+import { InboundService } from "./integrations/inbound.service";
+import { ViewsService } from "./crm/views.service";
+import { ObjectsService } from "./crm/objects.service";
 import { CasesService } from "./service/cases.service";
 import { RenewalsService } from "./service/renewals.service";
 import { TargetsService } from "./service/targets.service";
@@ -92,6 +97,9 @@ export function createServices() {
   const ai = new AiService(db);
   const tokens = new TokensService(jwt, db);
   const automationRunner = new AutomationRunner(db, notifications, entitlements, inboxEvents, monitor, activity, mail);
+  const hooks = new HooksService(db, audit, monitor);
+  automationRunner.onEvent = (tx, tenantId, trigger, payload) => hooks.enqueue(tx, tenantId, trigger, payload);
+  const apiKeys = new ApiKeysService(db, audit, entitlements);
   const ingest = new IngestService(inboxEvents, automationRunner, storage);
   const tasks = new TasksService(db, notifications, storage);
   const files = new FilesService(db, tasks, storage);
@@ -181,7 +189,12 @@ export function createServices() {
     inboxAi: new InboxAiService(db, inbox, ai),
     automations: new AutomationsService(db, audit, entitlements),
     admin: new AdminService(db, audit, monitor, ai, provider, storage, entitlements, notifications),
-    authGuard: new AuthGuard(tokens, db, entitlements),
+    views: new ViewsService(db),
+    objects: new ObjectsService(db, audit),
+    apiKeys,
+    hooks,
+    inbound: new InboundService(db, audit, activity, notifications, automationRunner, entitlements),
+    authGuard: new AuthGuard(tokens, db, entitlements, apiKeys),
     adminGuard: new AdminGuard(adminAuth),
   };
   return services;
@@ -190,4 +203,4 @@ export function createServices() {
 export type Services = ReturnType<typeof createServices>;
 
 /** Background work: in-process timers on a long-running server (each checks JOBS_ENABLED). */
-export const jobsOf = (s: Services) => [s.overdueJob, s.billingJob, s.mail, s.automationRunner];
+export const jobsOf = (s: Services) => [s.overdueJob, s.billingJob, s.mail, s.automationRunner, s.hooks];

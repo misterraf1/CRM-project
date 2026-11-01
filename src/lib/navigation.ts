@@ -82,3 +82,13 @@ export const NAV_GROUPS: { label: GroupKey; items: NavItem[] }[] = [
 ];
 
 export const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
+
+/** The menu as this member sees it: permitted items, minus sections the company hid. */
+export function visibleGroups(permissions: readonly Permission[], hidden: readonly string[]) {
+  return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => (!item.permission || permissions.includes(item.permission)) && !hidden.includes(item.key)) })).filter(
+    (group) => group.items.length > 0,
+  );
+}
+
+/** Simple mode (per member): the menu keeps only the everyday sections */
+export const SIMPLE_HIDDEN: readonly ModuleKey[] = ["chat", "cases", "campaigns", "team", "targets", "analytics", "automations", "files"];

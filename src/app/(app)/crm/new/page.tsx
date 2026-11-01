@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ContactForm } from "@/components/crm/ContactForm";
 import { getContact, getFields, getMembers, getSession } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "CRM" };
 
@@ -12,7 +12,7 @@ type Props = { searchParams: Promise<{ company?: string }> };
 export default async function NewContactPage({ searchParams }: Props) {
   const { company: companyId } = await searchParams;
   const [{ t }, me, members, personFields, companyFields, company] = await Promise.all([
-    getI18n(),
+    getAppI18n(),
     getSession(),
     getMembers(),
     getFields("contact"),

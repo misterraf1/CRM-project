@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import { ProductsManager } from "@/components/sales/ProductsManager";
 import { SalesTabs } from "@/components/sales/SalesTabs";
 import { getProducts, getSession } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Products" };
 
 export default async function ProductsPage() {
-  const [{ t }, me] = await Promise.all([getI18n(), getSession()]);
+  const [{ t }, me] = await Promise.all([getAppI18n(), getSession()]);
   const k = t.sales;
   const canManage = me.permissions.includes("products.manage");
   const products = await getProducts(canManage);

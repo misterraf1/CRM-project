@@ -8,7 +8,7 @@ import { DocStatusBadge } from "@/components/sales/DocStatusBadge";
 import { SalesTabs } from "@/components/sales/SalesTabs";
 import { getDocs, getSession } from "@/lib/api";
 import { formatDate, formatMoneyExact } from "@/lib/format";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Quotes & invoices" };
 
@@ -20,7 +20,7 @@ const FILTERS: Record<DocKind, string[]> = {
 type Props = { searchParams: Promise<{ kind?: string; status?: string }> };
 
 export default async function SalesPage({ searchParams }: Props) {
-  const [{ t, locale }, me, sp] = await Promise.all([getI18n(), getSession(), searchParams]);
+  const [{ t, locale }, me, sp] = await Promise.all([getAppI18n(), getSession(), searchParams]);
   const k = t.sales;
   const finance = me.permissions.includes("finance.view") || me.permissions.includes("invoices.manage");
   const canQuote = me.permissions.includes("quotes.manage") || me.permissions.includes("finance.view");

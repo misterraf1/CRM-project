@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { FormsManager } from "@/components/growth/FormsManager";
 import { getForms, getMembers, getSession } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Forms" };
 
 export default async function FormsSettingsPage() {
-  const [{ t }, me, h] = await Promise.all([getI18n(), getSession(), headers()]);
+  const [{ t }, me, h] = await Promise.all([getAppI18n(), getSession(), headers()]);
   const k = t.forms;
   if (!me.permissions.includes("crm.configure")) return <p className="card p-6 text-sm text-fg-muted">{t.crmSettings.noAccess}</p>;
   const [forms, members] = await Promise.all([getForms(), getMembers()]);

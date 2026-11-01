@@ -11,7 +11,7 @@ import { getContact, getContacts, getCurrencySettings, getDoc, getDocSettings, g
 import { ApiRequestError } from "@/lib/api/server";
 import { formatDate } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Document" };
 
@@ -56,7 +56,7 @@ export default async function DocPage({ params, searchParams }: Props) {
     if (e instanceof ApiRequestError && (e.status === 404 || e.status === 403)) notFound();
     throw e;
   });
-  const [{ t, locale }, me] = await Promise.all([getI18n(), getSession()]);
+  const [{ t, locale }, me] = await Promise.all([getAppI18n(), getSession()]);
   const k = t.sales;
   const canWrite = me.permissions.includes(doc.kind === "quote" ? "quotes.manage" : "invoices.manage");
   const editable = canWrite && (doc.status === "draft" || (doc.kind === "quote" && doc.status === "sent"));

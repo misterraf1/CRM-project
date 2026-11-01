@@ -2,7 +2,7 @@ import { z } from "zod";
 import { CONTACT_SOURCES, LIFECYCLE_STAGES } from "./crm-schemas";
 
 /** What a file can be imported as. People and companies have separate custom fields. */
-export const IMPORT_ENTITIES = ["person", "company", "deal"] as const;
+export const IMPORT_ENTITIES = ["person", "company", "deal", "product", "task"] as const;
 export type ImportEntity = (typeof IMPORT_ENTITIES)[number];
 
 /** Rows matching an existing record (people/companies: email, phone; companies also name). */
@@ -11,14 +11,19 @@ export type DuplicateMode = (typeof DUPLICATE_MODES)[number];
 
 /** Built-in columns per entity; custom fields are mapped as `cf.<fieldId>`. */
 export const IMPORT_COLUMNS = {
-  person: ["name", "email", "phone", "company", "stage", "source", "tags", "owner"],
-  company: ["name", "email", "phone", "stage", "source", "tags", "owner"],
+  person: ["name", "firstName", "lastName", "email", "phone", "phone2", "company", "stage", "source", "tags", "owner"],
+  company: ["name", "email", "phone", "phone2", "stage", "source", "tags", "owner"],
   deal: ["title", "amount", "currency", "pipeline", "stage", "contact", "owner", "expectedClose", "closedAt", "lostReason"],
+  product: ["name", "sku", "unit", "price", "currency", "tax", "description"],
+  task: ["title", "description", "dueAt", "priority", "status", "owner", "contact"],
 } as const satisfies Record<ImportEntity, readonly string[]>;
 export type ImportColumn = (typeof IMPORT_COLUMNS)[ImportEntity][number];
 
-/** Columns a row can't be imported without */
-export const REQUIRED_COLUMNS: Record<ImportEntity, ImportColumn> = { person: "name", company: "name", deal: "title" };
+/** Columns a row can't be imported without (people: a name, or first/last name columns) */
+export const REQUIRED_COLUMNS: Record<ImportEntity, ImportColumn> = { person: "name", company: "name", deal: "title", product: "name", task: "title" };
+
+/** Order a workbook's sheets are written in, so later sheets can point at earlier ones */
+export const WORKBOOK_ORDER: readonly ImportEntity[] = ["company", "person", "product", "deal", "task"];
 
 export const IMPORT_LIMITS = { fileMb: 5, rows: 5000, columns: 60 } as const;
 
@@ -32,6 +37,30 @@ export const importOptionsSchema = z.object({
   createCompanies: z.boolean().default(true),
 });
 export type ImportOptions = z.infer<typeof importOptionsSchema>;
+
+/** A workbook: every sheet is recognised by its tab name (or its columns) and imported in one go */
+export const workbookOptionsSchema = z.object({
+  duplicates: z.enum(DUPLICATE_MODES).default("skip"),
+  createCompanies: z.boolean().default(true),
+  /** Tab name → what it holds ("" = leave the sheet out). Omitted: recognised automatically. */
+  sheets: z.record(z.string().max(100), z.union([z.enum(IMPORT_ENTITIES), z.literal("")])).optional(),
+});
+export type WorkbookOptions = z.infer<typeof workbookOptionsSchema>;
+
+export const workbookRequestSchema = z.object({
+  options: z
+    .string()
+    .max(20_000)
+    .transform((s, ctx) => {
+      try {
+        return JSON.parse(s) as unknown;
+      } catch {
+        ctx.addIssue({ code: "custom", message: "Malformed JSON" });
+        return z.NEVER;
+      }
+    })
+    .pipe(workbookOptionsSchema),
+});
 
 export const importRequestSchema = z.object({
   options: z
@@ -142,6 +171,8 @@ export interface ImportPreviewDto {
 
 export interface ImportJobDto {
   id: string;
+  /** Sheets imported together from one workbook share it (and are undone together) */
+  batchId: string | null;
   entity: ImportEntity;
   fileName: string;
   duplicates: DuplicateMode;
@@ -149,6 +180,28 @@ export interface ImportJobDto {
   summary: ImportSummary;
   by: { id: string; name: string } | null;
   createdAt: string;
+  /** Undone: created records archived, updated ones put back */
+  undoneAt: string | null;
+}
+
+export interface WorkbookSheetDto {
+  sheet: string;
+  /** null: not recognised (left out unless chosen) */
+  entity: ImportEntity | null;
+  headers: string[];
+  mapping: string[];
+  rows: number;
+  missing: string[];
+  summary: ImportSummary;
+  issues: ImportIssue[];
+  issueCount: number;
+}
+
+export interface WorkbookResultDto {
+  fileName: string;
+  sheets: WorkbookSheetDto[];
+  /** Set once imported */
+  batchId: string | null;
 }
 
 export interface ImportJobDetailDto extends ImportJobDto {

@@ -10,7 +10,6 @@ import { api } from "@/lib/api/client";
 import { useI18n } from "@/lib/i18n/client";
 import { errorMessage } from "@/lib/i18n/errors";
 import { interpolate } from "@/lib/i18n/locales";
-import { TemplatePicker } from "./TemplatePicker";
 
 const OPEN_KEY = "axis.onboarding.open";
 
@@ -24,7 +23,6 @@ export function OnboardingCard({ initial, canManage }: { initial: OnboardingDto;
   const router = useRouter();
   const [state, setState] = useState(initial);
   const [open, setOpen] = useState(false);
-  const [templates, setTemplates] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
   // A brand-new company starts with it open; afterwards the member's choice is remembered.
@@ -76,15 +74,9 @@ export function OnboardingCard({ initial, canManage }: { initial: OnboardingDto;
           </div>
         </div>
         {next && !open && (
-          next.key === "template" ? (
-            <button type="button" onClick={() => (setOpen(true), setTemplates(true))} className="btn-primary h-8 text-xs">
-              {k.steps.template.label}
-            </button>
-          ) : (
-            <Link href={k.steps[next.key].href} className="btn-primary h-8 text-xs">
-              {k.steps[next.key].label}
-            </Link>
-          )
+          <Link href={k.steps[next.key].href} className="btn-primary h-8 text-xs">
+            {k.steps[next.key].label}
+          </Link>
         )}
         <button type="button" onClick={toggle} aria-expanded={open} aria-controls="onboarding-body" className="btn-ghost h-8 text-xs">
           {open ? k.collapse : k.expand}
@@ -111,15 +103,9 @@ export function OnboardingCard({ initial, canManage }: { initial: OnboardingDto;
               const cls = clsx("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted", s.done && "text-fg-muted line-through");
               return (
                 <li key={s.key}>
-                  {s.key === "template" ? (
-                    <button type="button" onClick={() => setTemplates((v) => !v)} aria-expanded={templates} className={cls}>
-                      {inner}
-                    </button>
-                  ) : (
-                    <Link href={k.steps[s.key].href} className={cls}>
-                      {inner}
-                    </Link>
-                  )}
+                  <Link href={k.steps[s.key].href} className={cls}>
+                    {inner}
+                  </Link>
                 </li>
               );
             })}
@@ -139,11 +125,6 @@ export function OnboardingCard({ initial, canManage }: { initial: OnboardingDto;
             </div>
           )}
           {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
-          {canManage && templates && (
-            <div className="mt-4">
-              <TemplatePicker applied={state.appliedTemplates} />
-            </div>
-          )}
       </div>
     </section>
   );

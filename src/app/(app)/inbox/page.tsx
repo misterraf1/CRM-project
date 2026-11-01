@@ -25,7 +25,7 @@ import {
 } from "@/lib/api";
 import { ApiRequestError } from "@/lib/api/server";
 import { interpolate } from "@/lib/i18n/locales";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Inbox" };
 
@@ -42,7 +42,7 @@ export default async function InboxPage({ searchParams }: Props) {
   const channelType = (CHANNEL_TYPES as readonly string[]).includes(params.channel ?? "") ? params.channel : undefined;
   const filters = { status, assignee, channelType, q: params.q };
   const [{ t, locale }, list, counts, channels, metrics, me] = await Promise.all([
-    getI18n(),
+    getAppI18n(),
     getConversations({ ...filters, view }),
     getConversationCounts(filters),
     getChannels(),
@@ -183,7 +183,7 @@ export default async function InboxPage({ searchParams }: Props) {
 }
 
 /** No channel yet: what the inbox is for, and the way to switch it on. */
-function Welcome({ t }: { t: Awaited<ReturnType<typeof getI18n>>["t"] }) {
+function Welcome({ t }: { t: Awaited<ReturnType<typeof getAppI18n>>["t"] }) {
   const k = t.inbox;
   return (
     <div className="h-full overflow-y-auto bg-gradient-to-b from-accent-soft/40 to-surface p-6 sm:p-10">

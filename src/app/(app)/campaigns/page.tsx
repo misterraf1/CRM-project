@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { CampaignsManager } from "@/components/growth/CampaignsManager";
 import { getCampaigns, getMembers, getSession } from "@/lib/api";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 
 export const metadata: Metadata = { title: "Campaigns" };
 
 export default async function CampaignsPage() {
-  const [{ t }, me] = await Promise.all([getI18n(), getSession()]);
+  const [{ t }, me] = await Promise.all([getAppI18n(), getSession()]);
   const k = t.campaigns;
   if (!me.permissions.includes("campaigns.manage")) return <p className="card p-6 text-sm text-fg-muted">{k.noAccess}</p>;
   const [campaigns, members] = await Promise.all([getCampaigns(), getMembers()]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { CONTACT_SOURCES, LIFECYCLE_STAGES, type ContactDto, type MemberDto, type Permission } from "@/shared";
+import { CONTACT_SOURCES, LIFECYCLE_STAGES, type ContactDto, type FieldDefinitionDto, type MemberDto, type Permission } from "@/shared";
 import clsx from "clsx";
 import {
   ArrowDown,
@@ -9,6 +9,7 @@ import {
   Building2,
   CheckCircle2,
   CircleDashed,
+  Columns3,
   Flame,
   Star,
   Zap,
@@ -61,6 +62,11 @@ const STATUS: Record<ContactDto["stage"], { icon: LucideIcon; className: string 
   CHURNED: { icon: CircleDashed, className: "bg-muted text-fg-muted" },
 };
 
+/** Columns a member can show; the name and the menu are always there */
+const OPTIONAL = ["contact", "status", "source", "owner", "activity", "tags", "score", "created"] as const;
+const DEFAULT_COLUMNS: string[] = ["contact", "status", "source", "owner", "activity"];
+const COLUMNS_KEY = "axis.crm.columns";
+
 export interface SortLink {
   href: string;
   dir: "asc" | "desc" | null;
@@ -73,12 +79,15 @@ export function ContactTable({
   permissions,
   members,
   activitySort,
+  fields = [],
 }: {
   items: ContactDto[];
   view: "list" | "grid";
   permissions: Permission[];
   members: MemberDto[];
   activitySort: SortLink;
+  /** Custom fields that can be shown as columns */
+  fields?: FieldDefinitionDto[];
 }) {
   const { t, locale } = useI18n();
   const c = t.crm;
@@ -96,6 +105,35 @@ export function ContactTable({
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
+  // Shown columns, per member and browser (built-in keys and `cf.<fieldId>`)
+  const [cols, setCols] = useState<string[]>(DEFAULT_COLUMNS);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(COLUMNS_KEY) ?? "null") as string[] | null;
+      if (Array.isArray(saved)) setCols(saved);
+    } catch {
+      /* defaults */
+    }
+  }, []);
+  const toggleCol = (key: string) =>
+    setCols((all) => {
+      const next = all.includes(key) ? all.filter((x) => x !== key) : [...all, key];
+      try {
+        localStorage.setItem(COLUMNS_KEY, JSON.stringify(next));
+      } catch {
+        /* not remembered */
+      }
+      return next;
+    });
+  const shownFields = fields.filter((f) => !f.archived && cols.includes(`cf.${f.id}`));
+  const fieldValue = (f: FieldDefinitionDto, v: ContactDto["customFields"][string] | undefined) => {
+    if (v === null || v === undefined || v === "") return "—";
+    if (f.type === "date" && typeof v === "string") return formatDate(v, locale);
+    if (f.type === "checkbox") return v ? c.yes : "—";
+    if (f.type === "currency" && typeof v === "number") return (v / 100).toLocaleString(locale);
+    return Array.isArray(v) ? v.join(", ") : String(v);
+  };
+  const colLabel: Record<(typeof OPTIONAL)[number], string> = { contact: c.colContact, status: k.colStatus, source: k.colSource, owner: c.colOwner, activity: k.colActivity, tags: k.colTags, score: k.colScore, created: k.colCreated };
   const can = (p: Permission) => permissions.includes(p);
   const allOn = items.length > 0 && items.every((x) => selected.has(x.id));
   const toggle = (id: string) =>
@@ -338,18 +376,40 @@ export function ContactTable({
                   />
                 </th>
                 <th scope="col" className="px-3 py-3 font-semibold">{c.colName}</th>
-                <th scope="col" className="px-3 py-3 font-semibold">{c.colContact}</th>
-                <th scope="col" className="px-3 py-3 font-semibold">{k.colStatus}</th>
-                <th scope="col" className="px-3 py-3 font-semibold">{k.colSource}</th>
-                <th scope="col" className="px-3 py-3 font-semibold">{c.colOwner}</th>
-                <th scope="col" aria-sort={activitySort.dir === "asc" ? "ascending" : activitySort.dir === "desc" ? "descending" : undefined} className="px-3 py-3 font-semibold">
-                  <Link href={activitySort.href} title={k.sortActivity} className="inline-flex items-center gap-1 hover:text-accent">
-                    {k.colActivity}
-                    <SortIcon className={clsx("h-3.5 w-3.5", activitySort.dir ? "text-accent" : "text-fg-subtle")} aria-hidden />
-                  </Link>
-                </th>
-                <th scope="col" className="w-14 py-3 pr-4">
-                  <span className="sr-only">{t.record.actions}</span>
+                {cols.includes("contact") && <th scope="col" className="px-3 py-3 font-semibold">{c.colContact}</th>}
+                {cols.includes("status") && <th scope="col" className="px-3 py-3 font-semibold">{k.colStatus}</th>}
+                {cols.includes("source") && <th scope="col" className="px-3 py-3 font-semibold">{k.colSource}</th>}
+                {cols.includes("owner") && <th scope="col" className="px-3 py-3 font-semibold">{c.colOwner}</th>}
+                {cols.includes("activity") && (
+                  <th scope="col" aria-sort={activitySort.dir === "asc" ? "ascending" : activitySort.dir === "desc" ? "descending" : undefined} className="px-3 py-3 font-semibold">
+                    <Link href={activitySort.href} title={k.sortActivity} className="inline-flex items-center gap-1 hover:text-accent">
+                      {k.colActivity}
+                      <SortIcon className={clsx("h-3.5 w-3.5", activitySort.dir ? "text-accent" : "text-fg-subtle")} aria-hidden />
+                    </Link>
+                  </th>
+                )}
+                {cols.includes("tags") && <th scope="col" className="px-3 py-3 font-semibold">{k.colTags}</th>}
+                {cols.includes("score") && <th scope="col" className="px-3 py-3 font-semibold">{k.colScore}</th>}
+                {cols.includes("created") && <th scope="col" className="px-3 py-3 font-semibold">{k.colCreated}</th>}
+                {shownFields.map((f) => (
+                  <th key={f.id} scope="col" className="px-3 py-3 font-semibold">
+                    {f.label}
+                  </th>
+                ))}
+                <th scope="col" className="w-14 py-3 pr-4 text-right">
+                  <Popover label={k.columns} trigger={<Columns3 className="h-4 w-4" aria-hidden />} className="grid h-8 w-8 place-items-center rounded-lg text-fg-muted hover:bg-muted" panelClassName="w-60 text-left font-normal">
+                    {() => (
+                      <div className="max-h-80 space-y-0.5 overflow-y-auto">
+                        <p className="px-2.5 pb-1 pt-0.5 text-xs font-semibold text-fg-muted">{k.columns}</p>
+                        {[...OPTIONAL.map((key) => [key, colLabel[key]] as const), ...fields.filter((f) => !f.archived).map((f) => [`cf.${f.id}`, f.label] as const)].map(([key, label]) => (
+                          <label key={key} className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm hover:bg-muted">
+                            <input type="checkbox" checked={cols.includes(key)} onChange={() => toggleCol(key)} className="h-4 w-4" />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </Popover>
                 </th>
               </tr>
             </thead>
@@ -366,6 +426,7 @@ export function ContactTable({
                       </span>
                     </Link>
                   </td>
+                  {cols.includes("contact") && (
                   <td className="px-3 py-3 text-[13px]">
                     {x.phone && (
                       <span className="flex items-center gap-2">
@@ -381,10 +442,19 @@ export function ContactTable({
                     )}
                     {!x.phone && !x.email && <span className="text-fg-subtle">—</span>}
                   </td>
-                  <td className="px-3 py-3">{status(x)}</td>
-                  <td className="px-3 py-3">{source(x.source)}</td>
-                  <td className="max-w-40 px-3 py-3 text-[13px]">{owner(x)}</td>
-                  <td className="whitespace-nowrap px-3 py-3 text-[13px] text-fg-muted">{activity(x.lastActivityAt)}</td>
+                  )}
+                  {cols.includes("status") && <td className="px-3 py-3">{status(x)}</td>}
+                  {cols.includes("source") && <td className="px-3 py-3">{source(x.source)}</td>}
+                  {cols.includes("owner") && <td className="max-w-40 px-3 py-3 text-[13px]">{owner(x)}</td>}
+                  {cols.includes("activity") && <td className="whitespace-nowrap px-3 py-3 text-[13px] text-fg-muted">{activity(x.lastActivityAt)}</td>}
+                  {cols.includes("tags") && <td className="max-w-48 truncate px-3 py-3 text-[13px] text-fg-muted">{x.tags.join(", ") || "—"}</td>}
+                  {cols.includes("score") && <td className="tabular px-3 py-3 text-[13px]">{x.score ?? "—"}</td>}
+                  {cols.includes("created") && <td className="whitespace-nowrap px-3 py-3 text-[13px] text-fg-muted">{formatDate(x.createdAt, locale)}</td>}
+                  {shownFields.map((f) => (
+                    <td key={f.id} className="max-w-48 truncate px-3 py-3 text-[13px]">
+                      {fieldValue(f, x.customFields[f.id])}
+                    </td>
+                  ))}
                   <td className="py-3 pr-4 text-right">{rowMenu(x)}</td>
                 </tr>
               ))}

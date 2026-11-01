@@ -14,7 +14,7 @@ import { getContacts, getCurrencySettings, getDeal, getDealDocs, getFields, getM
 import { ApiRequestError } from "@/lib/api/server";
 import { formatDate, formatMoney } from "@/lib/format";
 import { interpolate } from "@/lib/i18n/locales";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 import { planGate } from "@/components/billing/UpgradeGate";
 
 export const metadata: Metadata = { title: "Deals" };
@@ -30,7 +30,7 @@ export default async function DealPage({ params }: Props) {
     throw e;
   });
   const [{ t, locale }, me, pipelines, members, contacts, currencies, fields, docs, files] = await Promise.all([
-    getI18n(),
+    getAppI18n(),
     getSession(),
     getPipelines(),
     getMembers(),

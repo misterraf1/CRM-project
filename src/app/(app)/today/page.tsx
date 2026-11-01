@@ -8,14 +8,14 @@ import { ChannelIcon } from "@/components/ui/ChannelIcon";
 import { getToday } from "@/lib/api";
 import { dayKey, timeOf } from "@/lib/calendar";
 import { formatDate, formatDateTime, formatDuration, formatMoneyExact } from "@/lib/format";
-import { getI18n } from "@/lib/i18n/server";
+import { getAppI18n } from "@/lib/i18n/server";
 import { interpolate } from "@/lib/i18n/locales";
 
 export const metadata: Metadata = { title: "Today" };
 
 /** One screen for the working day: meetings, deadlines, waiting customers, deals to close. */
 export default async function TodayPage() {
-  const [{ t, locale }, d] = await Promise.all([getI18n(), getToday()]);
+  const [{ t, locale }, d] = await Promise.all([getAppI18n(), getToday()]);
   const k = t.today;
   const now = new Date();
   const empty = !d.events.length && !d.overdueTasks.length && !d.todayTasks.length && !d.conversations.length && !d.deals.length && !d.callbacks.length && !d.cases.length;

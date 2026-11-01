@@ -67,7 +67,7 @@ export async function contactListWhere(tx: Tx, ctx: AuthedContext, query: Omit<C
     query.activity ? { lastActivityAt: { [query.activity === "passive" ? "$lt" : "$gte"]: new Date(Date.now() - 30 * 86_400_000) } } : {},
     fieldFilter,
     Object.keys(created).length ? { createdAt: created } : {},
-    q ? { $or: [{ name: contains(q) }, { email: contains(q) }, { companyName: contains(q) }, { phone: contains(q.replace(/[\s()-]/g, ""), false) }] } : {},
+    q ? { $or: [{ name: contains(q) }, { email: contains(q) }, { companyName: contains(q) }, { phone: contains(q.replace(/[\s()-]/g, ""), false) }, { extraPhones: contains(q.replace(/[\s()-]/g, ""), false) }] } : {},
   );
 }
 
@@ -152,7 +152,7 @@ export class ContactsService {
     const digits = (q.phone ?? "").replace(/\D/g, "");
     const or = [
       ...(q.email && q.email.includes("@") ? [{ email: q.email }] : []),
-      ...(digits.length >= 7 ? [{ phone: { $regex: `${digits.slice(-9)}$` } }] : []),
+      ...(digits.length >= 7 ? [{ phone: { $regex: `${digits.slice(-9)}$` } }, { extraPhones: { $regex: `${digits.slice(-9)}$` } }] : []),
     ];
     if (!or.length) return { items: [], hidden: 0 };
     return this.db.scoped(async (tx) => {
@@ -331,6 +331,7 @@ export class ContactsService {
         name: c.name,
         email: c.email,
         phone: c.phone,
+        extraPhones: c.extraPhones ?? [],
         companyName: c.companyName,
         companyId: c.companyId ?? null,
         stage: c.stage,
